@@ -103,3 +103,51 @@ canvas { display: block; }
 .tablet-row--small { font-size: 10px; opacity: 0.7; margin-top: 4px; }
 .tablet-label { color: #6aa3d1; }
 .tablet-value { color: #d6f0ff; font-variant-numeric: tabular-nums; }
+
+/* Tablet "app" button (Fast Travel, more later) */
+.tablet-app-btn {
+  display: flex;
+  margin-top: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: linear-gradient(135deg, #1a4060, #0c2238);
+  border: 1px solid rgba(120, 180, 240, 0.35);
+  border-radius: 6px;
+  color: #d6f0ff;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  align-items: center;
+  gap: 8px;
+  /* Hidden until the player presses to start. Opacity transition; the
+     invisible state also disables clicks via pointer-events: none. */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+.tablet-app-btn--visible { opacity: 1; pointer-events: auto; }
+.tablet-app-btn:hover:not(:disabled) { background: linear-gradient(135deg, #235080, #103050); }
+.tablet-app-btn:active:not(:disabled) { transform: translateY(1px); }
+.tablet-app-btn:disabled { cursor: progress; opacity: 0.65; }
+.tablet-app-btn--active { box-shadow: 0 0 16px rgba(120, 200, 255, 0.6); }
+.tablet-app-btn__icon { font-size: 14px; opacity: 0.85; }
+.tablet-app-btn__label { flex: 1; text-align: left; font-weight: 600; }
+.tablet-app-btn__key {
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(120, 180, 240, 0.18);
+  font-size: 10px;
+}
+
+/* Warp flash overlay */
+#warp-flash {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at center, #ffffff 0%, #c4dfff 40%, #6aa3d1 80%, #0a1a30 100%);
+  pointer-events: none;
+  opacity: 0;
+  z-index: 6;
+  transition: none; /* opacity is driven by JS, not CSS */
+}

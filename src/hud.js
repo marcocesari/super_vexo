@@ -32,6 +32,11 @@ export function createHud() {
           <div class="tablet-row tablet-row--small">
             <span class="tablet-value" data-damping>${strings.hud.dampingOff}</span>
           </div>
+          <button class="tablet-app-btn" data-fast-travel type="button">
+            <span class="tablet-app-btn__icon">⤴</span>
+            <span class="tablet-app-btn__label">${strings.hud.fastTravelButton}</span>
+            <span class="tablet-app-btn__key">${strings.hud.fastTravelHint}</span>
+          </button>
         </div>
       </div>
     </div>
@@ -43,6 +48,7 @@ export function createHud() {
   const elFps = root.querySelector('[data-fps]');
   const elSource = root.querySelector('[data-source]');
   const elDamping = root.querySelector('[data-damping]');
+  const elFastTravel = root.querySelector('[data-fast-travel]');
 
   // FPS uses a 0.5s moving window so the number doesn't strobe.
   let fpsAccumFrames = 0;
@@ -66,6 +72,24 @@ export function createHud() {
 
       elSource.textContent = sources.join('+');
       elDamping.textContent = dampingOn ? strings.hud.dampingOn : strings.hud.dampingOff;
+    },
+
+    /** Show the Fast Travel button (after the title state). */
+    showFastTravel() {
+      elFastTravel.classList.add('tablet-app-btn--visible');
+    },
+
+    /** Visual feedback while a warp is in progress. */
+    setFastTravelActive(active) {
+      elFastTravel.classList.toggle('tablet-app-btn--active', active);
+      const label = elFastTravel.querySelector('.tablet-app-btn__label');
+      label.textContent = active ? strings.hud.fastTravelActive : strings.hud.fastTravelButton;
+      elFastTravel.disabled = active;
+    },
+
+    /** Listener for HUD button clicks. */
+    onFastTravel(handler) {
+      elFastTravel.addEventListener('click', handler);
     },
   };
 }

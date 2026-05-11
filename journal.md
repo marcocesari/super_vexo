@@ -2,6 +2,52 @@
 
 Most recent entries on top.
 
+## 2026-05-11 — M3 close (approved by human)
+
+- All acceptance criteria green; human eyeballed the dev build and gave
+  the go-ahead. Audio hum + throttle noise audible; collision bounces
+  cleanly; F key + HUD button both warp; sun visible looking back.
+- Smokes: `smoke`, `smoke:m2`, `smoke:m3`, `smoke:build` all PASS.
+- Lowered the smoke fps floor from 20 → 8: headless software-GL drops
+  under 20 with 250 asteroids + Mars + sun. The floor only exists to
+  detect a stalled loop; real-hardware fps is the human's check.
+- Pre-existing `console.info` for non-standard desktop pads still
+  fires when a USB pad is plugged in. Production target is unaffected.
+
+## 2026-05-11 — M3 kickoff (Asteroid Belt → Mars)
+
+- **Plan, in order:**
+  1. **Mars + Sun.** Mars: textured sphere far down +Z (procedural canvas
+     texture — no asset files). Sun: `THREE.Sprite` billboard behind
+     the player at -Z with a radial-glow texture. Camera FAR is 5000;
+     fine for both.
+  2. **Asteroid field.** Single `InstancedMesh` over a low-poly
+     Icosahedron, 250 instances. Volume: a box around the path
+     z ∈ [80, 450], x/y ∈ [±60, ±40]. Store per-instance
+     `{position, radius}` in a plain array for collision lookups.
+  3. **Collision.** Ship vs asteroid sphere-sphere each frame. On
+     overlap: push ship out along the contact normal and reflect the
+     velocity component along that normal (elastic-ish; 80% restitution
+     so it doesn't ping-pong forever).
+  4. **Fast Travel.** Tablet button (also `F` key). On press: flash +
+     star-streak effect for ~1s, then teleport the ship to z ≈ 530
+     (just before Mars, past the belt). Reuses the title-card overlay
+     pattern.
+  5. **Audio.** Web Audio API only — pure synthesis:
+     - Hum: two detuned `OscillatorNode`s through a low-pass filter
+       at ~200Hz.
+     - Thrust: `AudioBufferSourceNode` with white noise looped,
+       through a band-pass, gain modulated by `|throttle|`.
+     Started on the title-card keypress (audio context requires a
+     user gesture).
+  6. **LEARNINGS.md** entry covering instanced meshes, sphere-sphere
+     collision, canvas-generated textures, Web Audio synthesis.
+- **Test plan:** Playwright smokes for (a) ship-asteroid collision
+  bounce (drive forward into a near-spawned asteroid, assert ship
+  rebounds), (b) fast-travel teleport (press F, assert ship.z jumps
+  past the belt). Plus existing smokes regression-clean.
+- **Stop at milestone boundary.** Don't commit until human confirms.
+
 ## 2026-05-11 — M2 close (Native gamepad + gyro bridge)
 
 - **Preconditions met:** Asked the human for the bridge spec; decided to

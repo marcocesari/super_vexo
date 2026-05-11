@@ -14,5 +14,8 @@ export const strings = {
     inputSource: 'IN',
     dampingOn: 'damping: ON',
     dampingOff: 'damping: OFF',
+    fastTravelButton: 'FAST TRAVEL',
+    fastTravelHint: 'F',
+    fastTravelActive: 'warping…',
   },
 };

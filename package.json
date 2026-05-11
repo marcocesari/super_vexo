@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "smoke": "node tools/smoke.mjs",
     "smoke:m2": "node tools/smoke-m2.mjs",
+    "smoke:m3": "node tools/smoke-m3.mjs",
     "smoke:build": "node tools/smoke-build.mjs"
   },
   "dependencies": {

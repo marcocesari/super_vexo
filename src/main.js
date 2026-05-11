@@ -13,9 +13,16 @@ import './native-gamepad-bridge.js';
 import { createScene, createCamera } from './scene.js';
 import { createShip, updateShip } from './ship.js';
 import { createStarfield, updateStarfield } from './world/starfield.js';
+import { createAsteroids } from './world/asteroids.js';
+import { createMars } from './world/mars.js';
+import { createSun } from './world/sun.js';
+import * as physics from './physics.js';
+const { resolveAsteroidCollisions } = physics;
 import { createInput } from './input/index.js';
 import { createHud } from './hud.js';
 import { createTitleCard } from './titleCard.js';
+import { createFastTravel } from './fastTravel.js';
+import { createAudio } from './audio.js';
 
 // --- Renderer ---------------------------------------------------------------
 const container = document.getElementById('app');
@@ -30,8 +37,15 @@ const camera = createCamera();
 const ship = createShip();
 const starfield = createStarfield();
 
+const asteroids = createAsteroids();
+const mars = createMars();
+const sun = createSun();
+
 scene.add(ship.mesh);
 scene.add(starfield);
+scene.add(asteroids.mesh);
+scene.add(mars.mesh);
+scene.add(sun.sprite);
 
 // Hide the ship during the title state so it doesn't show up behind the
 // title card. It pops in on the first keypress.
@@ -41,6 +55,19 @@ ship.mesh.visible = false;
 const input = createInput();
 const hud = createHud();
 const titleCard = createTitleCard();
+const fastTravel = createFastTravel(document.body);
+const audio = createAudio();
+
+// HUD button → kick off a warp. Same effect as pressing F.
+hud.onFastTravel(() => { tryBeginWarp(); });
+
+function tryBeginWarp() {
+  if (fastTravel.active) return;
+  hud.setFastTravelActive(true);
+  fastTravel.begin(ship, {
+    onDone: () => hud.setFastTravelActive(false),
+  });
+}
 
 // --- Chase camera -----------------------------------------------------------
 // The camera trails the ship from a fixed offset in the ship's local frame:
@@ -121,11 +148,11 @@ function frame(now) {
       state = STATE.FLY;
       ship.mesh.visible = true;
       titleCard.dismiss();
-      // First user gesture → safe to ask for gyro permission on iOS.
-      // On desktop this resolves true without prompting and just
-      // attaches a listener (most desktops emit no events; harmless).
-      // We don't await: a denied / pending promise must not block the loop.
+      hud.showFastTravel();
+      // First user gesture → safe to ask for gyro permission on iOS
+      // AND to start the audio context (autoplay policy gate).
       input.enableGyro().catch(() => {});
+      audio.start();
     }
     // Starfield + camera still update behind the title card.
   } else {
@@ -133,9 +160,30 @@ function frame(now) {
     if (input.keyboard.consumeJustPressed(['KeyX'])) {
       ship.arcadeDamping = !ship.arcadeDamping;
     }
-    updateShip(ship, input.sample(), dt);
+    // F triggers a warp (same effect as the HUD button).
+    if (input.keyboard.consumeJustPressed(['KeyF'])) {
+      tryBeginWarp();
+    }
+
+    if (fastTravel.suppressInput) {
+      // During a warp the ship is on rails; ignore controls.
+    } else {
+      const axes = input.sample();
+      updateShip(ship, axes, dt);
+      audio.setThrottle(axes.throttle);
+      // Resolve collisions AFTER moving the ship this frame.
+      resolveAsteroidCollisions(
+        { position: ship.mesh.position, velocity: ship.velocity },
+        asteroids.instances,
+      );
+    }
   }
 
+  fastTravel.update(dt);
+  audio.update(dt);
+  asteroids.update(dt);
+  mars.update(dt);
+  sun.update(camera);
   updateStarfield(starfield, camera);
   updateChaseCamera(dt);
 
@@ -158,3 +206,10 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+// Dev-only handle for the smoke harness. Stripped in production builds:
+// Vite replaces `import.meta.env.DEV` with `false` at build time and the
+// dead branch is removed.
+if (import.meta.env.DEV) {
+  window.__superVexo = { ship, asteroids, audio, fastTravel, physics };
+}
