@@ -10,6 +10,7 @@
     "smoke": "node tools/smoke.mjs",
     "smoke:m2": "node tools/smoke-m2.mjs",
     "smoke:m3": "node tools/smoke-m3.mjs",
+    "smoke:m4": "node tools/smoke-m4.mjs",
     "smoke:build": "node tools/smoke-build.mjs"
   },
   "dependencies": {

@@ -5,6 +5,179 @@ Marco — read top to bottom.
 
 ---
 
+## M4 — The Mars Rover Mission
+
+### 1. State machines
+
+A **state machine** is a tiny rule book: the program is always in one
+state, and only certain rules let it move to other states. In M4 we
+have two of them.
+
+**Per rover**:
+
+    untouched ──ship enters range──> in-range
+    in-range  ──holding H──>          repairing
+    repairing ──progress = 100%──>    fixed
+    repairing ──holds released──>     in-range (resets to 0)
+
+**Top-level mission**:
+
+    ACTIVE ──last rover fixed──> COMPLETE
+
+The big idea: instead of scattering "did we fix this rover yet?" flags
+all over the code, we keep the state in *one* place (`src/mission.js`)
+and have everything else *ask* it. The HUD asks "what should I draw?";
+the audio asks "should I chirp?"; the upgrade screen asks "how many
+credits?". One source of truth, many readers. That makes bugs almost
+impossible — a state can't be "fixed in the HUD but not in the
+audio".
+
+### 2. A tiny economy
+
+Earn → spend → keep playing. Credits are awarded per rover (60 each)
+and on mission complete (100 bonus). Upgrades cost 80–100 credits.
+
+Two design rules we follow:
+
+1. **All mutation goes through `mission.spendCredits()`.** Even the
+   Upgrades app doesn't deduct credits itself; it asks the mission.
+   Reason: same as the state-machine rule — if anyone could decrement
+   `credits`, debugging would be a nightmare.
+2. **Upgrades mutate `shipConfig` directly.** The ship reads `shipConfig.maxSpeed`
+   every frame, so a purchase takes effect immediately, no extra
+   plumbing. The trade-off: if you ever want to *undo* an upgrade,
+   you'd need to store the original values somewhere. We don't, on
+   purpose — there's no refund button.
+
+### 3. Hold-to-act with grace
+
+Holding H for 2 seconds is a tiny game design problem in disguise:
+
+- What if the player leaves range mid-hold?
+- What if they switch to a different rover?
+- What if they keep H pressed *forever*?
+
+Our rules (see `mission.update()`):
+- Leaving range → progress resets to 0. No half-saves.
+- Holding H while approaching a *different* in-range rover → progress
+  starts on the new one.
+- Progress maxes at 1.0; further hold does nothing.
+
+These aren't physics. They're *design decisions*. There's no "right
+answer" — each one is a small judgment about how forgiving you want
+the player experience to be. Marco will encounter many of these in
+his own games. Write them down so future-you can change them on
+purpose, not by accident.
+
+### 4. `THREE.Group` for composite objects
+
+A rover isn't one mesh — it's a body + 4 wheels + an antenna +
+solar panel + a little red ball on top. We could merge them into one
+geometry, but `THREE.Group` is simpler: parent everything under a
+single Object3D, and now `group.position` moves the whole thing.
+
+When the group rotates, the wheels rotate around the group's origin —
+not their own. That's how parenting in 3D works everywhere (game
+engines, Maya, Blender). You'll see this trick again when we attach
+weapons or thrusters to the ship.
+
+---
+
+## M2 — Native gamepad + gyro bridge
+
+### 1. Event-driven input
+
+The keyboard in `src/input/keyboard.js` doesn't *ask* "is W pressed?"
+every frame. The browser **tells** us when a key changes: it fires
+`keydown` and `keyup` events.
+
+We keep a set of currently-pressed keys, add codes on keydown, remove
+them on keyup. When the game loop wants to know "is W down?" it asks
+the set — instant, no overhead.
+
+This is **event-driven** input. The alternative ("polling") would be
+to check the keyboard's physical state every frame. Web browsers
+won't even let you do that — there's no API for it. Events are the
+only way, and once you get used to them, they're cleaner: you
+respond to *changes*, not to *state*.
+
+There's also a second set, `justPressed`, that holds keys pressed
+*this frame*. The game loop reads it for one-shot actions (toggle
+damping, fire warp, hack), then clears it. Without that
+distinction, holding F would warp repeatedly.
+
+### 2. Capability detection vs platform detection
+
+The native iOS wrapper injects `window.__p5NativeHost = true`. Our
+code does **not** check "are we on iOS?" — it asks "does the bridge
+exist?" via `isBridgeAvailable()` in `src/bridge.js`.
+
+That's an important rule: don't ask *who* the player is, ask *what
+they can do*. The same web app could run on Android with a different
+wrapper, in a future browser that supports gamepads better, or in
+Safari without a wrapper at all. The capability check works in every
+case; a platform check would have to be rewritten each time.
+
+### 3. Bridge → standard API (monkey-patching)
+
+The iOS wrapper bridge does something sneaky in `native-gamepad-bridge.js`:
+it **replaces** `navigator.getGamepads()` with our own function that
+returns a fake "synthetic gamepad" built from data Swift pushes in.
+
+Why? Because the rest of the game code uses the **standard Web
+Gamepad API** — `navigator.getGamepads()` — same as a desktop
+browser. No iOS-specific calls anywhere. The bridge is invisible
+to game code; we get a single input path that works in every
+environment.
+
+This trick is called **monkey-patching** — replacing a built-in
+method with your own at runtime. Use sparingly. It's powerful but
+makes debugging harder because the thing that *looks* like a
+built-in is actually yours.
+
+### 4. Sensor fusion (gyro + stick)
+
+When two input sources both have an opinion on the same axis, how do
+you combine them? That's **sensor fusion**, and it shows up
+everywhere — VR headsets, drones, self-driving cars.
+
+Our rule for pitch and yaw:
+
+    final_axis = stick_input + GYRO_CONTRIBUTION * gyro_delta
+
+The gamepad stick is the **primary** signal — big swings, deliberate
+motion. The gyro is a **fine-tune** — small movements of the device
+in the player's hands add a 20% correction on top. With more
+weighting the controls feel "swimmy"; less and you can't feel the
+device at all. 0.2 is the experimental sweet spot.
+
+The math after that is just clamping the result back to `[-1, 1]`
+so a player who maxes the stick AND tilts the device doesn't
+suddenly get 120% input.
+
+### 5. Calibration as "remember the rest position"
+
+A phone never sits perfectly flat. When the player picks it up to
+fly, "neutral" isn't the same physical orientation every time —
+sometimes it's a couple of degrees tilted, sometimes a phone case
+adds a curve. If we just used the raw `beta` and `gamma` values,
+the ship would constantly veer in some direction depending on
+how the player happens to be holding the device.
+
+**Calibration** fixes this. For the first 1 second of the session
+(`gyro.js`), we average every event we receive. That average becomes
+`neutral`. From then on, we report **deltas** from neutral:
+
+    pitch_input = (current_beta - neutral_beta) / 35°
+
+Hold the device exactly as you held it during calibration → input
+is zero. Tilt it 35° forward → input is +1.
+
+This is the same idea inertial sensors use everywhere — "tare" on a
+scale, "level" on a stabilizer gimbal, "calibrate" on a VR headset.
+
+---
+
 ## M3 — Asteroid Belt + Mars
 
 ### 1. `InstancedMesh` — many objects, one draw call

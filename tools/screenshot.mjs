@@ -13,30 +13,53 @@ const browser = await chromium.launch();
 const page = await browser.newContext({ viewport: { width: 1280, height: 800 } }).then((c) => c.newPage());
 await page.goto(URL, { waitUntil: 'load' });
 
-// 1. Title card.
 await page.waitForSelector('#title-card');
 await page.screenshot({ path: resolve(outDir, 'title.png') });
 
-// 2. Approaching the asteroid belt: dismiss title, hold W ~1s.
 await page.keyboard.press('Space');
 await page.waitForSelector('#title-card', { state: 'detached' });
-await page.keyboard.down('KeyW');
-await page.waitForTimeout(1500);
-await page.keyboard.up('KeyW');
-await page.waitForTimeout(150);
-await page.screenshot({ path: resolve(outDir, 'belt.png') });
 
-// 3. After fast travel: Mars looms.
+// Fast travel to Mars orbit.
 await page.keyboard.press('KeyF');
 await page.waitForTimeout(1500);
-await page.screenshot({ path: resolve(outDir, 'mars.png') });
 
-// 4. Turn around to face the Sun.
-await page.keyboard.down('KeyA');
-await page.waitForTimeout(2200);
-await page.keyboard.up('KeyA');
+// Move toward a rover and hold H briefly to capture the hack prompt.
+await page.evaluate(() => {
+  const svr = window.__superVexo;
+  const r = svr.rovers.rovers[0];
+  svr.ship.mesh.position.set(r.position.x + 1, r.position.y, r.position.z);
+  svr.ship.velocity.set(0, 0, 0);
+});
+await page.keyboard.down('KeyH');
+await page.waitForTimeout(700);
+await page.screenshot({ path: resolve(outDir, 'hack.png') });
+await page.waitForTimeout(1300);
+await page.keyboard.up('KeyH');
 await page.waitForTimeout(150);
-await page.screenshot({ path: resolve(outDir, 'sun.png') });
+await page.screenshot({ path: resolve(outDir, 'fixed.png') });
+
+// Force mission complete and screenshot the overlay.
+await page.evaluate(() => {
+  const svr = window.__superVexo;
+  // Repair remaining rovers via the test shortcut.
+  const unfixed = svr.rovers.rovers.filter((r) => !r.fixed);
+  for (let i = 1; i < unfixed.length; i++) svr.rovers.markFixed(unfixed[i]);
+  const last = unfixed[0];
+  if (last) {
+    svr.ship.mesh.position.set(last.position.x + 1, last.position.y, last.position.z);
+    svr.ship.velocity.set(0, 0, 0);
+  }
+});
+await page.keyboard.down('KeyH');
+await page.waitForTimeout(2400);
+await page.keyboard.up('KeyH');
+await page.waitForTimeout(400);
+await page.screenshot({ path: resolve(outDir, 'mission-complete.png') });
+
+// Open Upgrades from the complete overlay.
+await page.click('[data-action="open-upgrades"]');
+await page.waitForTimeout(200);
+await page.screenshot({ path: resolve(outDir, 'upgrades.png') });
 
 await browser.close();
-console.log('wrote title.png, belt.png, mars.png, sun.png');
+console.log('wrote title, hack, fixed, mission-complete, upgrades');

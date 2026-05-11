@@ -25,6 +25,22 @@
 
 export const DEAD_ZONE = 0.15;
 
+/**
+ * Axis bindings. Each entry says: pull from `axisIndex` of the Web
+ * Gamepad's `axes`, multiply by `sign`, and use the result as the
+ * named flight axis. Change *here* to remap; nothing else cares.
+ *
+ * Signs explained: the Web Gamepad API uses positive-Y = stick *down*.
+ * Pilots expect "stick up = nose up / throttle forward", so most
+ * Y-derived axes have sign -1.
+ */
+export const AXIS_BINDINGS = {
+  yaw:      { axisIndex: 0, sign: -1 },  // LX: left → +yaw (turn nose left)
+  pitch:    { axisIndex: 1, sign: -1 },  // LY: up   → +pitch (nose up)
+  roll:     { axisIndex: 2, sign: -1 },  // RX: left → +roll
+  throttle: { axisIndex: 3, sign: -1 },  // RY: up   → forward thrust
+};
+
 /** Apply a radial deadzone to a stick value. */
 function applyDeadzone(value, dz = DEAD_ZONE) {
   const abs = Math.abs(value);
@@ -32,6 +48,10 @@ function applyDeadzone(value, dz = DEAD_ZONE) {
   // Rescale so the value goes 0→1 smoothly outside the deadzone instead
   // of jumping from 0 to dz.
   return Math.sign(value) * ((abs - dz) / (1 - dz));
+}
+
+function readBound(pad, binding) {
+  return binding.sign * applyDeadzone(pad.axes[binding.axisIndex] ?? 0);
 }
 
 export function createGamepad() {
@@ -70,18 +90,12 @@ export function createGamepad() {
         );
       }
 
-      const lx = applyDeadzone(pad.axes[0] ?? 0);
-      const ly = applyDeadzone(pad.axes[1] ?? 0);
-      const rx = applyDeadzone(pad.axes[2] ?? 0);
-      const ry = applyDeadzone(pad.axes[3] ?? 0);
+      const yaw = readBound(pad, AXIS_BINDINGS.yaw);
+      const pitch = readBound(pad, AXIS_BINDINGS.pitch);
+      const roll = readBound(pad, AXIS_BINDINGS.roll);
+      const throttle = readBound(pad, AXIS_BINDINGS.throttle);
 
-      // Web Gamepad Y is positive-down → invert for pitch and throttle.
-      const yaw = -lx;          // left = +yaw (turn nose left)
-      const pitch = -ly;        // stick up = nose up
-      const roll = -rx;         // right stick left = roll left
-      const throttle = -ry;     // stick up = forward thrust
-
-      active = (lx || ly || rx || ry) !== 0;
+      active = (yaw || pitch || roll || throttle) !== 0;
       return { throttle, yaw, pitch, roll };
     },
   };

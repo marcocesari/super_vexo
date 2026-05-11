@@ -101,6 +101,17 @@ canvas { display: block; }
   justify-content: space-between;
 }
 .tablet-row--small { font-size: 10px; opacity: 0.7; margin-top: 4px; }
+.tablet-row--hint {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(80, 140, 200, 0.12);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #6aa3d1;
+  opacity: 0.7;
+  text-align: right;
+}
 .tablet-label { color: #6aa3d1; }
 .tablet-value { color: #d6f0ff; font-variant-numeric: tabular-nums; }
 
@@ -140,6 +151,115 @@ canvas { display: block; }
   background: rgba(120, 180, 240, 0.18);
   font-size: 10px;
 }
+
+/* Mission panel inside the Tablet */
+.tablet-mission {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(80, 140, 200, 0.18);
+}
+.tablet-hack {
+  margin-top: 8px;
+  padding: 8px;
+  background: rgba(80, 160, 255, 0.08);
+  border: 1px solid rgba(120, 180, 240, 0.35);
+  border-radius: 4px;
+}
+.tablet-hack__name {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #d6f0ff;
+}
+.tablet-hack__hint {
+  font-size: 10px;
+  color: #9adfff;
+  opacity: 0.85;
+  margin-bottom: 4px;
+}
+.tablet-hack__bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.tablet-hack__fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #4aa3ff, #9adfff);
+  transition: none;
+}
+
+/* Full-screen overlay screens (Mission Complete, Upgrades) */
+.screen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: radial-gradient(ellipse at center, rgba(8, 14, 30, 0.78) 0%, rgba(0, 0, 0, 0.92) 80%);
+  pointer-events: auto;
+}
+.screen-overlay[hidden] { display: none; }
+.screen-card {
+  max-width: 460px;
+  padding: 1.6rem 1.8rem;
+  background: linear-gradient(160deg, #0e1e30, #050a14);
+  border: 1px solid rgba(120, 180, 240, 0.3);
+  border-radius: 10px;
+  box-shadow: 0 8px 36px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  color: #d6f0ff;
+  text-align: center;
+}
+.screen-card--wide { max-width: 520px; text-align: left; }
+.screen-card__title {
+  margin: 0 0 0.5rem 0;
+  font-size: clamp(1.2rem, 2.2vw, 1.8rem);
+  letter-spacing: 0.08em;
+  color: #b8e0ff;
+}
+.screen-card__body { color: #9fc6e7; font-size: 0.95rem; line-height: 1.5; }
+.screen-card__row { margin: 0.8rem 0; }
+.screen-card__credits { font-size: 1.1rem; font-weight: 700; color: #ffdf80; }
+.screen-card__credits-label { font-size: 0.7rem; letter-spacing: 0.15em; color: #6aa3d1; margin-right: 6px; font-weight: 400; }
+.screen-card__actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 1rem;
+}
+.screen-btn {
+  padding: 8px 14px;
+  background: linear-gradient(135deg, #1a4060, #0c2238);
+  border: 1px solid rgba(120, 180, 240, 0.35);
+  border-radius: 5px;
+  color: #d6f0ff;
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.screen-btn--primary { background: linear-gradient(135deg, #2660a0, #154070); border-color: rgba(160, 220, 255, 0.6); }
+.screen-btn--small { padding: 5px 10px; font-size: 11px; }
+.screen-btn:hover:not(:disabled) { filter: brightness(1.15); }
+.screen-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.upgrade-list { list-style: none; padding: 0; margin: 0; }
+.upgrade-item {
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: rgba(80, 160, 255, 0.06);
+  border: 1px solid rgba(120, 180, 240, 0.18);
+  border-radius: 6px;
+}
+.upgrade-item--bought { opacity: 0.65; border-color: rgba(100, 220, 180, 0.4); }
+.upgrade-item__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.upgrade-item__name { font-weight: 700; color: #d6f0ff; letter-spacing: 0.05em; }
+.upgrade-item__cost { color: #ffdf80; font-weight: 700; font-variant-numeric: tabular-nums; }
+.upgrade-item__desc { margin: 4px 0 8px 0; font-size: 12px; color: #9fc6e7; line-height: 1.4; }
 
 /* Warp flash overlay */
 #warp-flash {

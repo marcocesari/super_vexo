@@ -2,6 +2,74 @@
 
 Most recent entries on top.
 
+## 2026-05-11 — M4 close (approved by human)
+
+- All M4 minimum criteria green, smoke passes 17/17 (M4 + reset), and
+  the M1/M2/M3/build regressions are clean.
+- Audited M0–M4 against `program.md`. Found and fixed:
+  1. **Quality bar item**: "Game state resettable without page reload"
+     was never implemented. Added R hotkey + `resetGame()` that
+     restores ship, mission, rovers, upgrades, and `shipConfig`
+     defaults; closes overlays. Audio context is preserved (autoplay
+     gate is one-shot per user gesture).
+  2. **Educational gap**: LEARNINGS.md had no M2 section. Wrote it —
+     event-driven input, capability detection vs platform detection,
+     monkey-patching the Web Gamepad API, sensor fusion (gyro+stick),
+     calibration as "remember rest position".
+  3. **M2 spec polish**: extracted gamepad axis mapping to
+     `AXIS_BINDINGS` config table per "configurable in code" wording.
+- Side fix encountered while smoking: Vite's dynamic `import()` of a
+  module that's already been statically imported can return a
+  different instance during HMR, making the smoke think upgrades
+  didn't apply. Exposed `shipConfig` directly on the dev handle
+  (`window.__superVexo.shipConfig`) so the smoke reads the
+  canonical mutable instance.
+- Not done (intentional): `src/world/station.js` and
+  `public/{models,textures,sounds}/` from program.md's file layout —
+  nothing in M0–M4 needs them; the project stays procedural.
+- **STOP — milestone boundary.** Awaiting human direction on which
+  M5+ option to start.
+
+## 2026-05-11 — M4 kickoff (Mars Rover Mission)
+
+- **Plan, in phases:**
+  1. **Rovers.** Six rovers — Spirit, Opportunity, Curiosity,
+     Perseverance, Sojourner, Zhurong — orbit Mars as "debris" around
+     z=700, scattered ±40 each axis from the planet's center, kept
+     outside Mars's radius. Each is a small `THREE.Group`: low-poly
+     box body + 4 cylindrical wheels + a thin "antenna" line. Per-
+     instance state: `{name, position, fixed, creditValue, repairProgress}`.
+  2. **Mission state.** `src/mission.js`: rovers list, total credits,
+     `remaining()`, `creditsForFix()`. Tablet adds a row for
+     "Rovers: X/Y" and "Credits: N".
+  3. **Approach detection.** Each frame, find the nearest unfixed
+     rover within HACK_RADIUS (8) AND below HACK_MAX_SPEED (8). When
+     present, surface in Tablet: "Hold H to hack: PERSEVERANCE".
+  4. **Hold-to-repair.** Holding H accumulates `repairProgress` over
+     2s on the in-range rover. Progress bar in Tablet. Release drops
+     progress to 0 (no half-saves). On 100% → fixed, credits added,
+     repair effect plays.
+  5. **Repair effect.** Brief expanding-ring of sparkle particles via
+     a small `Points` cloud at the rover's position; quick rising
+     beep through the audio module's existing context (reuse, no
+     new context). Rover material switches from grey to glowing cyan.
+  6. **Mission complete.** When `remaining() === 0`: full-screen
+     overlay like the title card, with completion bonus added to
+     credits and a "Open Upgrades" button.
+  7. **Upgrades app.** A second Tablet button "UPGRADES" toggles a
+     full-screen panel with 3 options. Each costs credits and bumps a
+     value in `src/ship.js` constants (or, cleaner, a `shipConfig`
+     object the ship/physics reads through). Picks apply
+     immediately, persist for the session.
+- **Educational note:** state machines (rover state: untouched →
+  in-range → repairing → fixed) and a tiny economy (earn → spend).
+  Goes into LEARNINGS.md.
+- **Test plan:** Playwright smoke that teleports the ship onto a
+  rover at low velocity, holds H, asserts the rover becomes fixed and
+  credits go up; checks mission-complete overlay fires after fixing
+  all of them; checks an upgrade purchase actually changes the value.
+- **Stop at milestone boundary.** No commit until human confirms.
+
 ## 2026-05-11 — M3 close (approved by human)
 
 - All acceptance criteria green; human eyeballed the dev build and gave

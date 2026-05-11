@@ -17,5 +17,20 @@ export const strings = {
     fastTravelButton: 'FAST TRAVEL',
     fastTravelHint: 'F',
     fastTravelActive: 'warping…',
+
+    rovers: 'ROVERS',
+    credits: 'CRED',
+    hackHint: 'Hold H to hack',
+    upgradeButton: 'UPGRADES',
+    upgradeHint: 'U',
+    upgradeBought: 'OWNED',
+    upgradeBuy: 'BUY',
+
+    missionCompleteTitle: 'MISSION COMPLETE',
+    missionCompleteBody: 'All rovers repaired. Earth Command transfers a bonus to your account.',
+    missionCompleteCta: 'Open Upgrades',
+    missionCompleteClose: 'Continue Flying',
+
+    resetHint: 'R = reset',
   },
 };

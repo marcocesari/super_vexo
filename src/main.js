@@ -16,6 +16,8 @@ import { createStarfield, updateStarfield } from './world/starfield.js';
 import { createAsteroids } from './world/asteroids.js';
 import { createMars } from './world/mars.js';
 import { createSun } from './world/sun.js';
+import { createRovers } from './world/rovers.js';
+import { createRepairEffect } from './world/repairEffect.js';
 import * as physics from './physics.js';
 const { resolveAsteroidCollisions } = physics;
 import { createInput } from './input/index.js';
@@ -23,6 +25,10 @@ import { createHud } from './hud.js';
 import { createTitleCard } from './titleCard.js';
 import { createFastTravel } from './fastTravel.js';
 import { createAudio } from './audio.js';
+import { createMission } from './mission.js';
+import { createUpgrades } from './upgrades.js';
+import { createMissionScreens } from './missionScreens.js';
+import { shipConfig, DEFAULTS as shipConfigDefaults, resetShipConfig } from './shipConfig.js';
 
 // --- Renderer ---------------------------------------------------------------
 const container = document.getElementById('app');
@@ -40,12 +46,16 @@ const starfield = createStarfield();
 const asteroids = createAsteroids();
 const mars = createMars();
 const sun = createSun();
+const roverApi = createRovers();
+const repairFx = createRepairEffect();
 
 scene.add(ship.mesh);
 scene.add(starfield);
 scene.add(asteroids.mesh);
 scene.add(mars.mesh);
 scene.add(sun.sprite);
+for (const r of roverApi.rovers) scene.add(r.mesh);
+scene.add(repairFx.points);
 
 // Hide the ship during the title state so it doesn't show up behind the
 // title card. It pops in on the first keypress.
@@ -57,9 +67,47 @@ const hud = createHud();
 const titleCard = createTitleCard();
 const fastTravel = createFastTravel(document.body);
 const audio = createAudio();
+const upgrades = createUpgrades();
+const mission = createMission(roverApi);
+const missionScreens = createMissionScreens({ upgrades, mission, audio });
+
+mission.setOnRepaired((rover) => {
+  repairFx.fire(rover.mesh.position);
+  audio.chirp();
+});
+mission.setOnComplete(() => {
+  audio.fanfare();
+  missionScreens.show('complete');
+});
 
 // HUD button → kick off a warp. Same effect as pressing F.
 hud.onFastTravel(() => { tryBeginWarp(); });
+hud.onUpgradesClick(() => { missionScreens.show('upgrades'); });
+
+/**
+ * Reset the entire game state without reloading the page. Required by
+ * the program.md quality bar. Restores the ship, mission, rovers, and
+ * shipConfig to their initial values, closes any open overlay, and
+ * cancels an in-flight warp.
+ *
+ * Audio is **not** torn down: re-creating the AudioContext would
+ * require another user gesture (autoplay policy), which we already
+ * spent at the title-card keypress. So audio just keeps playing
+ * across resets.
+ */
+function resetGame() {
+  ship.mesh.position.set(0, 0, 0);
+  ship.velocity.set(0, 0, 0);
+  ship.mesh.quaternion.identity();
+  ship.arcadeDamping = false;
+
+  mission.reset();
+  roverApi.reset();
+  upgrades.reset();
+  resetShipConfig();
+
+  missionScreens.hideAll();
+}
 
 function tryBeginWarp() {
   if (fastTravel.active) return;
@@ -149,6 +197,9 @@ function frame(now) {
       ship.mesh.visible = true;
       titleCard.dismiss();
       hud.showFastTravel();
+      hud.showUpgrades();
+      hud.setMissionVisible(true);
+      hud.showResetHint();
       // First user gesture → safe to ask for gyro permission on iOS
       // AND to start the audio context (autoplay policy gate).
       input.enableGyro().catch(() => {});
@@ -164,9 +215,19 @@ function frame(now) {
     if (input.keyboard.consumeJustPressed(['KeyF'])) {
       tryBeginWarp();
     }
+    // U toggles the Upgrades screen.
+    if (input.keyboard.consumeJustPressed(['KeyU'])) {
+      if (missionScreens.isOpen()) missionScreens.hideAll();
+      else missionScreens.show('upgrades');
+    }
+    // R resets the whole game without reloading the page.
+    if (input.keyboard.consumeJustPressed(['KeyR'])) {
+      resetGame();
+    }
 
-    if (fastTravel.suppressInput) {
-      // During a warp the ship is on rails; ignore controls.
+    if (fastTravel.suppressInput || missionScreens.isOpen()) {
+      // Ship on rails (warp) or player is in a menu → ignore flight input.
+      audio.setThrottle(0);
     } else {
       const axes = input.sample();
       updateShip(ship, axes, dt);
@@ -177,6 +238,15 @@ function frame(now) {
         asteroids.instances,
       );
     }
+
+    // Mission state: drive hack progress from the H key.
+    const holdHack = input.keyboard.isDown('KeyH');
+    mission.update({
+      shipPos: ship.mesh.position,
+      shipSpeed: ship.velocity.length(),
+      holdActive: holdHack && !missionScreens.isOpen() && !fastTravel.suppressInput,
+      dt,
+    });
   }
 
   fastTravel.update(dt);
@@ -184,6 +254,8 @@ function frame(now) {
   asteroids.update(dt);
   mars.update(dt);
   sun.update(camera);
+  roverApi.update(dt);
+  repairFx.update(dt);
   updateStarfield(starfield, camera);
   updateChaseCamera(dt);
 
@@ -203,6 +275,18 @@ function frame(now) {
     dampingOn: ship.arcadeDamping,
   });
 
+  // Mission UI: rover counts + the (maybe-present) hack prompt.
+  hud.updateMission({
+    remaining: mission.remaining(),
+    total: mission.totalRovers(),
+    credits: mission.credits,
+  });
+  const target = mission.repairing ?? mission.inRange;
+  hud.updateHack({
+    name: target ? target.name : null,
+    progress: target ? target.repairProgress : 0,
+  });
+
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -211,5 +295,10 @@ requestAnimationFrame(frame);
 // Vite replaces `import.meta.env.DEV` with `false` at build time and the
 // dead branch is removed.
 if (import.meta.env.DEV) {
-  window.__superVexo = { ship, asteroids, audio, fastTravel, physics };
+  window.__superVexo = {
+    ship, asteroids, audio, fastTravel, physics,
+    rovers: roverApi, mission, upgrades, missionScreens,
+    shipConfig, shipConfigDefaults,
+    resetGame,
+  };
 }

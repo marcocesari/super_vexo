@@ -32,11 +32,38 @@ export function createHud() {
           <div class="tablet-row tablet-row--small">
             <span class="tablet-value" data-damping>${strings.hud.dampingOff}</span>
           </div>
+
+          <!-- Mission panel: rover progress + credits -->
+          <div class="tablet-mission" data-mission hidden>
+            <div class="tablet-row">
+              <span class="tablet-label">${strings.hud.rovers}</span>
+              <span class="tablet-value" data-rovers>0/0</span>
+            </div>
+            <div class="tablet-row">
+              <span class="tablet-label">${strings.hud.credits}</span>
+              <span class="tablet-value" data-credits>0</span>
+            </div>
+            <!-- Hack prompt: only visible when a rover is in range -->
+            <div class="tablet-hack" data-hack hidden>
+              <div class="tablet-hack__name" data-hack-name>—</div>
+              <div class="tablet-hack__hint">${strings.hud.hackHint}</div>
+              <div class="tablet-hack__bar"><div class="tablet-hack__fill" data-hack-fill></div></div>
+            </div>
+          </div>
+
           <button class="tablet-app-btn" data-fast-travel type="button">
             <span class="tablet-app-btn__icon">⤴</span>
             <span class="tablet-app-btn__label">${strings.hud.fastTravelButton}</span>
             <span class="tablet-app-btn__key">${strings.hud.fastTravelHint}</span>
           </button>
+          <button class="tablet-app-btn" data-upgrades type="button">
+            <span class="tablet-app-btn__icon">⚙</span>
+            <span class="tablet-app-btn__label">${strings.hud.upgradeButton}</span>
+            <span class="tablet-app-btn__key">${strings.hud.upgradeHint}</span>
+          </button>
+          <div class="tablet-row tablet-row--hint" data-reset-hint hidden>
+            ${strings.hud.resetHint}
+          </div>
         </div>
       </div>
     </div>
@@ -49,6 +76,14 @@ export function createHud() {
   const elSource = root.querySelector('[data-source]');
   const elDamping = root.querySelector('[data-damping]');
   const elFastTravel = root.querySelector('[data-fast-travel]');
+  const elUpgrades = root.querySelector('[data-upgrades]');
+  const elResetHint = root.querySelector('[data-reset-hint]');
+  const elMission = root.querySelector('[data-mission]');
+  const elRovers = root.querySelector('[data-rovers]');
+  const elCredits = root.querySelector('[data-credits]');
+  const elHack = root.querySelector('[data-hack]');
+  const elHackName = root.querySelector('[data-hack-name]');
+  const elHackFill = root.querySelector('[data-hack-fill]');
 
   // FPS uses a 0.5s moving window so the number doesn't strobe.
   let fpsAccumFrames = 0;
@@ -77,6 +112,46 @@ export function createHud() {
     /** Show the Fast Travel button (after the title state). */
     showFastTravel() {
       elFastTravel.classList.add('tablet-app-btn--visible');
+    },
+
+    /** Show the Upgrades button (after the title state, alongside FT). */
+    showUpgrades() {
+      elUpgrades.classList.add('tablet-app-btn--visible');
+    },
+
+    /** Show the small "R = reset" hint at the bottom of the Tablet. */
+    showResetHint() {
+      elResetHint.hidden = false;
+    },
+
+    /** Show / hide the mission panel as a whole. */
+    setMissionVisible(visible) {
+      elMission.hidden = !visible;
+    },
+
+    /** Update mission readout: rover count + credits. */
+    updateMission({ remaining, total, credits }) {
+      elRovers.textContent = `${total - remaining}/${total}`;
+      elCredits.textContent = String(credits);
+    },
+
+    /**
+     * Drive the hack prompt:
+     *   - `name`: the rover name to display (or null to hide)
+     *   - `progress`: 0..1
+     */
+    updateHack({ name, progress }) {
+      if (!name) {
+        elHack.hidden = true;
+        return;
+      }
+      elHack.hidden = false;
+      elHackName.textContent = name;
+      elHackFill.style.width = `${Math.max(0, Math.min(1, progress)) * 100}%`;
+    },
+
+    onUpgradesClick(handler) {
+      elUpgrades.addEventListener('click', handler);
     },
 
     /** Visual feedback while a warp is in progress. */

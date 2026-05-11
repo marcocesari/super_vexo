@@ -76,10 +76,39 @@ export function createAudio() {
     ctx = null;
   }
 
+  /**
+   * One-shot rising chirp for "rover repaired". Built on the fly each
+   * call: a short oscillator that ramps frequency and decays gain.
+   */
+  function chirp({ fromHz = 300, toHz = 900, durationS = 0.35, peakGain = 0.18 } = {}) {
+    if (!started) return;
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(fromHz, t0);
+    osc.frequency.exponentialRampToValueAtTime(toHz, t0 + durationS);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(peakGain, t0 + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + durationS);
+    osc.connect(g);
+    g.connect(masterGain);
+    osc.start(t0);
+    osc.stop(t0 + durationS + 0.05);
+  }
+
+  /** A triumphant two-note flourish for mission complete. */
+  function fanfare() {
+    chirp({ fromHz: 440, toHz: 660, durationS: 0.45, peakGain: 0.2 });
+    setTimeout(() => chirp({ fromHz: 660, toHz: 990, durationS: 0.6, peakGain: 0.22 }), 200);
+  }
+
   return {
     start,
     update,
     setThrottle,
+    chirp,
+    fanfare,
     dispose,
     get running() { return started; },
   };
