@@ -2,6 +2,23 @@
 
 Most recent entries on top.
 
+## 2026-05-11 — M1 fix: defer the bundled script
+
+- **Bug:** Loading `dist/index.html` in Chrome showed a black page with
+  `Uncaught TypeError: Cannot read properties of null (reading
+  'appendChild')`. Cause: I'd switched the build from ESM to IIFE and
+  stripped `type="module"`. Module scripts are *deferred by default*;
+  classic scripts are not. The script tag in `<head>` was executing
+  before `<div id="app">` existed.
+- **Fix:** Vite plugin now also adds `defer` to the entry script tag
+  when stripping `type="module"`, so timing matches the original module
+  behavior.
+- **Regression net:** new `tools/smoke-build.mjs` (`npm run smoke:build`)
+  runs the build, serves dist via a Node http server *and* opens
+  `dist/index.html` directly via `file://`. Asserts the title card
+  renders in both — exactly the failure mode we just hit.
+- Passes against both. Eyeballed dev mode (60fps) by human earlier.
+
 ## 2026-05-11 — M1 close
 
 - M1 implementation landed (commit 6e5449f). All acceptance criteria green.

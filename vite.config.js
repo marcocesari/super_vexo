@@ -13,7 +13,13 @@ import { defineConfig } from 'vite';
 
 // Vite tags the entry script `type="module"` and adds `crossorigin` by
 // default. Both block file:// loads. The bundle is IIFE (a classic
-// script), so we strip both attrs to get a plain `<script src=...>`.
+// script), so we strip both attrs.
+//
+// `type="module"` scripts are *deferred* by default; classic scripts
+// are not. Without `defer`, the script in <head> runs before
+// `<div id="app">` exists and `appendChild` throws. Add `defer` so
+// the classic script executes after the HTML is parsed — the same
+// timing the module build had.
 function makeFileUrlSafe() {
   return {
     name: 'file-url-safe',
@@ -21,7 +27,10 @@ function makeFileUrlSafe() {
     transformIndexHtml(html) {
       return html
         .replace(/\s+crossorigin(="[^"]*")?/g, '')
-        .replace(/\s+type="module"/g, '');
+        .replace(/<script\s+type="module"\s+src=/g, '<script defer src=')
+        // Defence in depth: if Vite ever emits a script tag without
+        // `type="module"` but with `src=`, still mark it deferred.
+        .replace(/<script\s+src=/g, '<script defer src=');
     },
   };
 }
