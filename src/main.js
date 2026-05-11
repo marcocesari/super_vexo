@@ -1,50 +1,85 @@
-// Entry point. M0: a rotating cube to prove the renderer + game loop are wired up.
+// Entry point. Renderer + game loop + assembly.
+// Story-wise this is Vexo's pre-mission practice flight (M1: Earth
+// training). Mechanically it's the 6DOF flight foundation every later
+// milestone builds on.
 import * as THREE from 'three';
+import './style.css';
 
-const container = document.getElementById('app');
+import { createScene, createCamera } from './scene.js';
+import { createShip, updateShip } from './ship.js';
+import { createStarfield, updateStarfield } from './world/starfield.js';
+import { createInput } from './input/index.js';
+import { createHud } from './hud.js';
+import { createTitleCard } from './titleCard.js';
 
 // --- Renderer ---------------------------------------------------------------
-// Cap pixel ratio at 2: on a 3x Retina display the cost of rendering 9x the
-// pixels is not worth the difference your eyes can see.
+const container = document.getElementById('app');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 container.appendChild(renderer.domElement);
 
-// --- Scene + camera ---------------------------------------------------------
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x05060a);
+// --- World ------------------------------------------------------------------
+const scene = createScene();
+const camera = createCamera();
+const ship = createShip();
+const starfield = createStarfield();
 
-const FOV_DEG = 60;
-const NEAR = 0.1;
-const FAR = 1000;
-const camera = new THREE.PerspectiveCamera(
-  FOV_DEG,
-  window.innerWidth / window.innerHeight,
-  NEAR,
-  FAR,
-);
-camera.position.set(0, 0, 4);
+scene.add(ship.mesh);
+scene.add(starfield);
 
-// --- Lights -----------------------------------------------------------------
-// Ambient gives every face a baseline so nothing is pitch-black; the
-// directional light adds shape so the cube reads as a cube.
-const ambient = new THREE.AmbientLight(0xffffff, 0.4);
-scene.add(ambient);
+// --- Input + UI -------------------------------------------------------------
+const input = createInput();
+const hud = createHud();
+const titleCard = createTitleCard();
 
-const sun = new THREE.DirectionalLight(0xffffff, 1.0);
-sun.position.set(3, 5, 4);
-scene.add(sun);
+// --- Chase camera -----------------------------------------------------------
+// The camera trails the ship from a fixed offset in the ship's local frame:
+// behind and slightly above. We lerp toward the target each frame so the
+// camera has a little "spring" — it lags briefly when the ship turns, which
+// reads as motion and feels more cinematic than a rigid mount.
+const CAM_OFFSET_LOCAL = new THREE.Vector3(0, 1.4, -5.5); // behind & above
+const CAM_LOOKAHEAD_LOCAL = new THREE.Vector3(0, 0, 4);  // look slightly past the nose
+// "Half-life" of the spring in seconds: lower = snappier, higher = floatier.
+const CAM_POS_HALFLIFE = 0.12;
+const CAM_LOOK_HALFLIFE = 0.10;
 
-// --- Cube -------------------------------------------------------------------
-const cube = new THREE.Mesh(
-  new THREE.BoxGeometry(1, 1, 1),
-  new THREE.MeshStandardMaterial({ color: 0x4aa3ff, roughness: 0.4, metalness: 0.1 }),
-);
-scene.add(cube);
+const _camTargetPos = new THREE.Vector3();
+const _camTargetLook = new THREE.Vector3();
+const _camCurrentLook = new THREE.Vector3();
+let camLookInitialized = false;
 
-const ROT_SPEED_X = 0.6; // radians per second
-const ROT_SPEED_Y = 0.9;
+function updateChaseCamera(dt) {
+  // Target position in world space = ship position + ship-rotated offset.
+  _camTargetPos.copy(CAM_OFFSET_LOCAL)
+    .applyQuaternion(ship.mesh.quaternion)
+    .add(ship.mesh.position);
+
+  _camTargetLook.copy(CAM_LOOKAHEAD_LOCAL)
+    .applyQuaternion(ship.mesh.quaternion)
+    .add(ship.mesh.position);
+
+  if (!camLookInitialized) {
+    camera.position.copy(_camTargetPos);
+    _camCurrentLook.copy(_camTargetLook);
+    camLookInitialized = true;
+  } else {
+    // Frame-rate-independent exponential smoothing.
+    // alpha = 1 - 2^(-dt / halflife) means after `halflife` seconds we have
+    // closed exactly half the remaining distance, regardless of dt.
+    const aPos = 1 - Math.pow(2, -dt / CAM_POS_HALFLIFE);
+    const aLook = 1 - Math.pow(2, -dt / CAM_LOOK_HALFLIFE);
+    camera.position.lerp(_camTargetPos, aPos);
+    _camCurrentLook.lerp(_camTargetLook, aLook);
+  }
+
+  camera.lookAt(_camCurrentLook);
+  // Roll the camera with the ship so banked turns feel right.
+  // (lookAt resets up; reapply ship up so we get the roll.)
+  const shipUp = new THREE.Vector3(0, 1, 0).applyQuaternion(ship.mesh.quaternion);
+  camera.up.copy(shipUp);
+  camera.lookAt(_camCurrentLook);
+}
 
 // --- Resize -----------------------------------------------------------------
 function onResize() {
@@ -56,18 +91,55 @@ function onResize() {
 }
 window.addEventListener('resize', onResize);
 
+// --- State machine ----------------------------------------------------------
+// Two states for M1: TITLE (waiting for first keypress) and FLY.
+const STATE = { TITLE: 'title', FLY: 'fly' };
+let state = STATE.TITLE;
+
 // --- Game loop --------------------------------------------------------------
-// deltaTime in seconds keeps motion frame-rate independent: 60fps and 120fps
-// machines see the cube spin at the same speed.
 let lastT = performance.now();
+const _euler = new THREE.Euler();
+
 function frame(now) {
-  const dt = (now - lastT) / 1000;
+  // Cap dt at 100ms so a long pause (tab backgrounded) doesn't fling the
+  // ship across the universe on resume.
+  const rawDt = (now - lastT) / 1000;
+  const dt = Math.min(rawDt, 0.1);
   lastT = now;
 
-  cube.rotation.x += ROT_SPEED_X * dt;
-  cube.rotation.y += ROT_SPEED_Y * dt;
+  if (state === STATE.TITLE) {
+    if (input.keyboard.consumeAnyJustPressed()) {
+      state = STATE.FLY;
+      titleCard.dismiss();
+    }
+    // Still render the scene behind the title card so it's not a blank gap.
+  } else {
+    // Toggle arcade damping with X.
+    if (input.keyboard.consumeJustPressed(['KeyX'])) {
+      ship.arcadeDamping = !ship.arcadeDamping;
+    }
+    updateShip(ship, input.sample(), dt);
+  }
+
+  updateStarfield(starfield, camera);
+  updateChaseCamera(dt);
 
   renderer.render(scene, camera);
+
+  // HUD reflects state every frame so values are live.
+  _euler.setFromQuaternion(ship.mesh.quaternion, 'YXZ');
+  hud.update({
+    velocity: ship.velocity.length(),
+    eulerDeg: {
+      x: THREE.MathUtils.radToDeg(_euler.x),
+      y: THREE.MathUtils.radToDeg(_euler.y),
+      z: THREE.MathUtils.radToDeg(_euler.z),
+    },
+    dt,
+    sources: input.activeSources(),
+    dampingOn: ship.arcadeDamping,
+  });
+
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

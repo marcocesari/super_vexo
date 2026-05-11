@@ -1,0 +1,24 @@
+// Title card shown on load. "Press any key to start" gates the game loop
+// so the player has agency on first frame.
+import { strings } from './strings.js';
+
+export function createTitleCard() {
+  const root = document.createElement('div');
+  root.id = 'title-card';
+  root.innerHTML = `
+    <div class="title-card__inner">
+      <h1 class="title-card__title">${strings.title}</h1>
+      <p class="title-card__prompt">${strings.pressAnyKey}</p>
+    </div>
+  `;
+  document.body.appendChild(root);
+
+  return {
+    /** Hide with a quick fade. */
+    dismiss() {
+      root.classList.add('title-card--hidden');
+      // Remove after the fade so it doesn't intercept events.
+      setTimeout(() => root.remove(), 500);
+    },
+  };
+}
