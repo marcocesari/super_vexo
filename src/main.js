@@ -5,6 +5,11 @@
 import * as THREE from 'three';
 import './style.css';
 
+// Bridge module: monkey-patches `navigator.getGamepads()` IFF we're
+// inside the native iOS wrapper. NO-OP on desktop. Import it before any
+// input code so a connected pad is visible from the first frame.
+import './native-gamepad-bridge.js';
+
 import { createScene, createCamera } from './scene.js';
 import { createShip, updateShip } from './ship.js';
 import { createStarfield, updateStarfield } from './world/starfield.js';
@@ -116,6 +121,11 @@ function frame(now) {
       state = STATE.FLY;
       ship.mesh.visible = true;
       titleCard.dismiss();
+      // First user gesture → safe to ask for gyro permission on iOS.
+      // On desktop this resolves true without prompting and just
+      // attaches a listener (most desktops emit no events; harmless).
+      // We don't await: a denied / pending promise must not block the loop.
+      input.enableGyro().catch(() => {});
     }
     // Starfield + camera still update behind the title card.
   } else {

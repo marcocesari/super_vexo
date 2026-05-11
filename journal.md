@@ -2,6 +2,40 @@
 
 Most recent entries on top.
 
+## 2026-05-11 — M2 close (Native gamepad + gyro bridge)
+
+- **Preconditions met:** Asked the human for the bridge spec; decided to
+  reuse the sibling project's protocol verbatim (`window.__p5NativeHost`
+  / `__nativeGamepadUpdate` / `__nativeGamepadConnection`) so a single
+  wrapper build can host both Vexo and Mario. Documented in `BRIDGE.md`
+  before writing any code (per program.md M2 rule).
+- **Wrapper not yet imported.** Verification is desktop-only via
+  Playwright: simulated `WKUserScriptInjectionTimeAtDocumentStart` by
+  injecting `__p5NativeHost` through `addInitScript()`, then driving
+  `__nativeGamepadUpdate` to push axis values. On-device verification
+  happens after the wrapper team imports.
+- **Gyro path:** standard `DeviceOrientationEvent`, no wrapper channel
+  needed. Permission requested from the title-card keypress (user
+  gesture, as iOS 13+ requires); capability-guarded so desktop never
+  calls a missing API. 20% contribution to fine pitch/yaw, with 1s
+  averaged neutral calibration on the first events.
+- **Bug fix in the copied bridge:** original sibling code tried
+  `new GamepadEvent(name, { gamepad: syntheticPad })`, which Chromium
+  rejects because the `gamepad` member must be a real DOM Gamepad.
+  Switched to a plain `Event` with the synthetic pad attached as a
+  property — consumers re-read state via `navigator.getGamepads()`.
+- **Desktop pad finding:** human's USB pad reports `mapping: ''`
+  (non-standard) with right-stick Y on axis 2 and right-stick X on
+  axis 5. `gamepad.js` assumes the standard layout, which is what
+  the bridge synthesizes on-device — that's the production target.
+  Logs a single `console.info` when a non-standard pad shows up,
+  pointing at the BACKLOG calibration follow-up.
+- All three smokes green: `npm run smoke`, `npm run smoke:m2` (both KB
+  regression and simulated bridge), `npm run smoke:build` (http +
+  file://). Human eyeballed: keyboard unchanged, USB pad partial
+  (non-standard mapping), single info message, no warnings.
+- **STOP — milestone boundary.** Awaiting review before M3.
+
 ## 2026-05-11 — M1 fix: defer the bundled script
 
 - **Bug:** Loading `dist/index.html` in Chrome showed a black page with
