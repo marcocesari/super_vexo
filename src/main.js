@@ -28,6 +28,10 @@ const starfield = createStarfield();
 scene.add(ship.mesh);
 scene.add(starfield);
 
+// Hide the ship during the title state so it doesn't show up behind the
+// title card. It pops in on the first keypress.
+ship.mesh.visible = false;
+
 // --- Input + UI -------------------------------------------------------------
 const input = createInput();
 const hud = createHud();
@@ -110,9 +114,10 @@ function frame(now) {
   if (state === STATE.TITLE) {
     if (input.keyboard.consumeAnyJustPressed()) {
       state = STATE.FLY;
+      ship.mesh.visible = true;
       titleCard.dismiss();
     }
-    // Still render the scene behind the title card so it's not a blank gap.
+    // Starfield + camera still update behind the title card.
   } else {
     // Toggle arcade damping with X.
     if (input.keyboard.consumeJustPressed(['KeyX'])) {

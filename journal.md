@@ -2,6 +2,24 @@
 
 Most recent entries on top.
 
+## 2026-05-11 — M1 close
+
+- M1 implementation landed (commit 6e5449f). All acceptance criteria green.
+- Added `LEARNINGS.md` with M1 educational notes (deltaTime, vectors,
+  quaternions vs Euler, halflife-based smoothing, point-cloud starfield).
+- Added Playwright smoke harness (`tools/smoke.mjs`, `npm run smoke`).
+  It boots a headless browser against `npm run dev`, asserts: title card
+  visible, dismisses on keypress, ship accumulates velocity under W,
+  Tablet HUD ticks, and no console errors/warnings (with a small allow-
+  list for known headless-driver perf notices and Playwright teardown).
+- Polish: hide ship during TITLE state so it doesn't show through the
+  title card; replaced ambient with a hemisphere light so the ship reads
+  as 3D from any angle.
+- Visual note: chase cam looks straight at the cone's base, which reads
+  as a disc. Acceptable per spec ("cube or cone is fine"); already
+  parked in `BACKLOG.md` to swap for a kenney.nl glTF later.
+- **STOP — milestone boundary.** Awaiting human review before M2.
+
 ## 2026-05-11 — M1 kickoff (Earth Training Flight)
 
 - **Plan:** Stand up the real module layout from program.md (`src/scene.js`, `src/ship.js`, `src/hud.js`, `src/input/index.js`, `src/input/keyboard.js`, `src/world/starfield.js`, `src/strings.js`) and replace the M0 cube with the flight scene. Title card on load gated by "press any key", then a 10k+ point starfield, a cone-shaped ship that flies with quaternion-based rotation, a smoothed chase camera, and a DOM-overlay "Tablet" HUD showing velocity / orientation / fps. M0's cube goes away.

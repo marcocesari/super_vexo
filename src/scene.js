@@ -12,12 +12,14 @@ export function createScene() {
   // because of starlight, and pure black hides depth cues.
   scene.background = new THREE.Color(0x02030a);
 
-  // Dim ambient so unlit faces are not pure black.
-  scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+  // A hemisphere light gives a soft "sky vs ground" gradient — a cool
+  // blue from above, a warmer dim from below — so the ship reads as 3D
+  // even when the sun is on its far side. Cheap and great for space.
+  scene.add(new THREE.HemisphereLight(0x6090c0, 0x202030, 0.55));
 
   // A distant directional light stands in for the Sun. Direction matters
   // more than position for directional lights.
-  const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+  const sun = new THREE.DirectionalLight(0xffffff, 1.1);
   sun.position.set(40, 30, 20);
   scene.add(sun);
 
