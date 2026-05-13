@@ -77,10 +77,6 @@ export function createHud() {
   const elDamping = root.querySelector('[data-damping]');
   const elFastTravel = root.querySelector('[data-fast-travel]');
   const elUpgrades = root.querySelector('[data-upgrades]');
-
-  // The Tablet HUD is hidden on load (the M5+ opening cinematic
-  // doesn't want it on top of the storytelling); the TITLE state turns
-  // it on.
   root.style.display = 'none';
   const elResetHint = root.querySelector('[data-reset-hint]');
   const elMission = root.querySelector('[data-mission]');
@@ -114,7 +110,6 @@ export function createHud() {
       elDamping.textContent = dampingOn ? strings.hud.dampingOn : strings.hud.dampingOff;
     },
 
-    /** Reveal the Tablet itself (we hide it during the cinematic). */
     show() {
       root.style.display = '';
     },

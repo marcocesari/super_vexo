@@ -14,6 +14,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { extname } from 'node:path';
+import { withSkipIntro } from './smokeUrl.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
@@ -85,10 +86,7 @@ async function smokePage(url, { canPressKey } = { canPressKey: true }) {
     if (!isNoise(err.message)) errors.push(`pageerror: ${err.message}`);
   });
 
-  // skipIntro=1 jumps past the cinematic. file:// URLs can also carry
-  // a query string in modern Chromium; we tack it on regardless.
-  const finalUrl = url.includes('?') ? `${url}&skipIntro=1` : `${url}?skipIntro=1`;
-  await page.goto(finalUrl, { waitUntil: 'load' });
+  await page.goto(withSkipIntro(url), { waitUntil: 'load' });
 
   // Title card must have rendered → proves the IIFE ran *and* the DOM
   // was ready when it ran (the exact regression we just hit).

@@ -18,7 +18,6 @@ export const strings = {
     ],
   },
 
-
   hud: {
     appName: 'Tablet',
     velocity: 'VEL',

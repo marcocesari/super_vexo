@@ -11,12 +11,9 @@
 //
 // Or:            npm run smoke   (assumes dev server already running)
 import { chromium } from 'playwright';
+import { withSkipIntro } from './smokeUrl.mjs';
 
-// Smoke tests jump straight past the M5+ opening cinematic via the
-// ?skipIntro=1 query param so they don't have to spend 20s waiting it
-// out (a dedicated tools/smoke-cinematic.mjs covers that path).
-const BASE = process.env.SMOKE_URL ?? 'http://127.0.0.1:5173';
-const URL = BASE.includes('?') ? `${BASE}&skipIntro=1` : `${BASE}?skipIntro=1`;
+const URL = withSkipIntro(process.env.SMOKE_URL ?? 'http://127.0.0.1:5173');
 
 const errors = [];
 const warnings = [];

@@ -1,17 +1,6 @@
-// The opening cinematic — Lord Draxos attacks the kingdom of Astra
-// and steals the princess. Six narrative beats, ~20s total, fully
-// skippable with any key.
-//
-// Architecture: a tiny scene-graph parallel to the main game. The
-// cinematic gets its own Three.js scene + camera + lighting; the main
-// game scene is hidden until the cinematic completes. This keeps the
-// two universes clean and lets the cinematic move objects around
-// without interfering with rover spawns / asteroid layout.
-//
-// State machine per beat:
-//   pending → playing (text fading in + 3D animating) → done
-//
-// Easing helpers live at the top so all beats use the same curves.
+// Opening cinematic: a parallel Three.js scene played before the title.
+// Six beats, ~20s total, skippable. Caller observes `cinematic.active`
+// to detect completion.
 
 import * as THREE from 'three';
 import { strings } from './strings.js';
@@ -30,7 +19,7 @@ const easeInOutCubic = (t) => (t < 0.5
 // fn that animates the 3D vignette.
 const BEAT_DURATIONS = [3.5, 3.0, 4.0, 4.0, 3.5, 4.5]; // seconds, sums to 22.5
 
-export function createCinematic({ renderer, onDone }) {
+export function createCinematic({ renderer }) {
   // --- Cinematic scene ---------------------------------------------------
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x010207);
@@ -81,7 +70,6 @@ export function createCinematic({ renderer, onDone }) {
   document.body.appendChild(overlay);
   const elText = overlay.querySelector('[data-text]');
   const elFlash = overlay.querySelector('[data-flash]');
-  const elSkip = overlay.querySelector('[data-skip]');
 
   let beatIndex = 0;
   let beatElapsed = 0; // seconds in current beat
@@ -187,7 +175,14 @@ export function createCinematic({ renderer, onDone }) {
     if (!active) return;
     active = false;
     overlay.remove();
-    if (onDone) onDone();
+    scene.traverse((node) => {
+      if (node.geometry) node.geometry.dispose();
+      const mats = Array.isArray(node.material) ? node.material : (node.material ? [node.material] : []);
+      for (const m of mats) {
+        if (m.map) m.map.dispose();
+        m.dispose();
+      }
+    });
   }
 
   function skip() {
@@ -205,10 +200,7 @@ export function createCinematic({ renderer, onDone }) {
     const local01 = Math.min(1, beatElapsed / BEAT_DURATIONS[beatIndex]);
     updateBeat(beatIndex, local01, dt);
     kingdom.update(dt);
-    // Make Draxos's halo pulse subtly.
-    if (draxos.halo.material.opacity !== undefined) {
-      draxos.halo.material.opacity = 0.7 + 0.25 * Math.sin(totalElapsed * 4);
-    }
+    draxos.halo.material.opacity = 0.7 + 0.25 * Math.sin(totalElapsed * 4);
     updateStarfield(starfield, camera);
 
     if (beatElapsed >= BEAT_DURATIONS[beatIndex]) {

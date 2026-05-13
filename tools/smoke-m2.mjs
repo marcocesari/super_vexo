@@ -12,9 +12,9 @@
 //
 // Run while `npm run dev` is up.
 import { chromium } from 'playwright';
+import { withSkipIntro } from './smokeUrl.mjs';
 
-const BASE = process.env.SMOKE_URL ?? 'http://127.0.0.1:5173';
-const URL = BASE.includes('?') ? `${BASE}&skipIntro=1` : `${BASE}?skipIntro=1`;
+const URL = withSkipIntro(process.env.SMOKE_URL ?? 'http://127.0.0.1:5173');
 const NOISE = [
   /GPU stall due to ReadPixels/i,
   /CONTEXT_LOST_WEBGL/i,

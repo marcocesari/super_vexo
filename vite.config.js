@@ -40,10 +40,8 @@ export default defineConfig({
   plugins: [makeFileUrlSafe()],
   server: {
     port: 5173,
-    // Bind to all loopback interfaces so both `localhost:5173` and
-    // `127.0.0.1:5173` are reachable. Vite's default `localhost` only
-    // binds to one of them (::1 on macOS), which makes the other URL
-    // fail with "site cannot be reached".
+    // Vite's default `localhost` binds to ::1 only on macOS, so
+    // `127.0.0.1:5173` fails. Bind to IPv4 explicitly.
     host: '127.0.0.1',
   },
   build: {

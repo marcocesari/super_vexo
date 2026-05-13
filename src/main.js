@@ -178,60 +178,21 @@ function onResize() {
 window.addEventListener('resize', onResize);
 
 // --- State machine ----------------------------------------------------------
-// Three states: CINEMATIC (opening intro) → TITLE → FLY.
+// CINEMATIC (opening intro) → TITLE → FLY. `?skipIntro=1` skips the cinematic.
 const STATE = { CINEMATIC: 'cinematic', TITLE: 'title', FLY: 'fly' };
 
-// `?skipIntro=1` jumps straight to TITLE without ever building the
-// cinematic. Used by the smoke harness and convenient for dev cycles
-// when you don't want to wait through the intro.
-const skipIntroParam = new URLSearchParams(window.location.search).get('skipIntro');
-const shouldShowCinematic = skipIntroParam !== '1';
+const skipIntro = new URLSearchParams(window.location.search).get('skipIntro') === '1';
+const cinematic = skipIntro ? null : createCinematic({ renderer });
+let state = cinematic ? STATE.CINEMATIC : STATE.TITLE;
 
-let state = shouldShowCinematic ? STATE.CINEMATIC : STATE.TITLE;
+if (cinematic) titleCard.hide();
+else hud.show();
 
-// Build the cinematic only when we plan to show it. When skipped we
-// never construct the second Three.js scene, saving the texture and
-// geometry cost entirely.
-const cinematic = shouldShowCinematic
-  ? createCinematic({
-      renderer,
-      onDone: () => {
-        state = STATE.TITLE;
-        // Bring the title card and the Tablet HUD back from their
-        // pre-cinematic hidden state; drain any leftover keypress so
-        // the same tap that skipped doesn't also start the game on
-        // the next frame.
-        if (titleCardRoot) titleCardRoot.style.opacity = '';
-        hud.show();
-        input.clearJustPressed();
-      },
-    })
-  : null;
-
-// When the cinematic is skipped via ?skipIntro=1 we're already in
-// TITLE — show the HUD immediately so it's visible behind the title
-// card, matching the pre-M5 behavior.
-if (!shouldShowCinematic) hud.show();
-
-// Pressing a key during the cinematic skips it. We also drop the
-// keyboard's `justPressed` queue so that *same* keystroke doesn't then
-// bleed through into the title card's "press any key to start" gate.
-// Without this, one tap skips the cinematic AND immediately starts the
-// game — the player would never see the title.
-function onCinematicSkipKey() {
-  if (state === STATE.CINEMATIC) {
-    cinematic.skip();
-    input.clearJustPressed();
-    window.removeEventListener('keydown', onCinematicSkipKey);
-  }
+function onCinematicDone() {
+  state = STATE.TITLE;
+  titleCard.show();
+  hud.show();
 }
-if (shouldShowCinematic) window.addEventListener('keydown', onCinematicSkipKey);
-
-// Hide the title card while the cinematic is playing so it doesn't
-// stack on top. When we're skipping the intro entirely we leave the
-// title visible from frame zero.
-const titleCardRoot = document.getElementById('title-card');
-if (titleCardRoot && shouldShowCinematic) titleCardRoot.style.opacity = '0';
 
 // --- Game loop --------------------------------------------------------------
 let lastT = performance.now();
@@ -245,8 +206,10 @@ function frame(now) {
   lastT = now;
 
   if (state === STATE.CINEMATIC) {
+    if (input.keyboard.consumeAnyJustPressed()) cinematic.skip();
     cinematic.update(dt);
     cinematic.render();
+    if (!cinematic.active) onCinematicDone();
     requestAnimationFrame(frame);
     return;
   }

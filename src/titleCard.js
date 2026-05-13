@@ -14,6 +14,13 @@ export function createTitleCard() {
   document.body.appendChild(root);
 
   return {
+    /** Instant hide (no fade) — used while the cinematic plays. */
+    hide() {
+      root.style.opacity = '0';
+    },
+    show() {
+      root.style.opacity = '';
+    },
     /** Hide with a quick fade. */
     dismiss() {
       root.classList.add('title-card--hidden');
