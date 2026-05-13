@@ -30,6 +30,7 @@ import { createUpgrades } from './upgrades.js';
 import { createMissionScreens } from './missionScreens.js';
 import { shipConfig, DEFAULTS as shipConfigDefaults, resetShipConfig } from './shipConfig.js';
 import { createCinematic } from './cinematic.js';
+import { BUTTONS } from './input/gamepad.js';
 
 // --- Renderer ---------------------------------------------------------------
 const container = document.getElementById('app');
@@ -206,7 +207,7 @@ function frame(now) {
   lastT = now;
 
   if (state === STATE.CINEMATIC) {
-    if (input.keyboard.consumeAnyJustPressed()) cinematic.skip();
+    if (input.consumeAnyJustPressed()) cinematic.skip();
     cinematic.update(dt);
     cinematic.render();
     if (!cinematic.active) onCinematicDone();
@@ -215,7 +216,7 @@ function frame(now) {
   }
 
   if (state === STATE.TITLE) {
-    if (input.keyboard.consumeAnyJustPressed()) {
+    if (input.consumeAnyJustPressed()) {
       state = STATE.FLY;
       ship.mesh.visible = true;
       titleCard.dismiss();
@@ -230,21 +231,25 @@ function frame(now) {
     }
     // Starfield + camera still update behind the title card.
   } else {
-    // Toggle arcade damping with X.
-    if (input.keyboard.consumeJustPressed(['KeyX'])) {
+    // Toggle arcade damping: X key or pad X-button.
+    if (input.keyboard.consumeJustPressed(['KeyX']) || input.gamepad.consumeJustPressed(BUTTONS.X)) {
       ship.arcadeDamping = !ship.arcadeDamping;
     }
-    // F triggers a warp (same effect as the HUD button).
-    if (input.keyboard.consumeJustPressed(['KeyF'])) {
+    // Warp: F key or pad R1.
+    if (input.keyboard.consumeJustPressed(['KeyF']) || input.gamepad.consumeJustPressed(BUTTONS.R1)) {
       tryBeginWarp();
     }
-    // U toggles the Upgrades screen.
-    if (input.keyboard.consumeJustPressed(['KeyU'])) {
+    // Upgrades: U key or pad Y-button.
+    if (input.keyboard.consumeJustPressed(['KeyU']) || input.gamepad.consumeJustPressed(BUTTONS.Y)) {
       if (missionScreens.isOpen()) missionScreens.hideAll();
       else missionScreens.show('upgrades');
     }
-    // R resets the whole game without reloading the page.
-    if (input.keyboard.consumeJustPressed(['KeyR'])) {
+    // Close menu: B button (no keyboard equivalent — Esc not bound).
+    if (input.gamepad.consumeJustPressed(BUTTONS.B) && missionScreens.isOpen()) {
+      missionScreens.hideAll();
+    }
+    // Reset: R key or pad Start.
+    if (input.keyboard.consumeJustPressed(['KeyR']) || input.gamepad.consumeJustPressed(BUTTONS.Start)) {
       resetGame();
     }
 
@@ -262,8 +267,8 @@ function frame(now) {
       );
     }
 
-    // Mission state: drive hack progress from the H key.
-    const holdHack = input.keyboard.isDown('KeyH');
+    // Mission state: drive hack progress from H key OR pad L1.
+    const holdHack = input.keyboard.isDown('KeyH') || input.gamepad.isButtonDown(BUTTONS.L1);
     mission.update({
       shipPos: ship.mesh.position,
       shipSpeed: ship.velocity.length(),

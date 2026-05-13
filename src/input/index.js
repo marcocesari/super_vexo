@@ -93,5 +93,22 @@ export function createInput() {
     activeSources() {
       return lastSources;
     },
+
+    /**
+     * Consume "any input edge this frame" — used by the title card,
+     * cinematic skip, and any other "press any key" gate. Drains BOTH
+     * the keyboard's justPressed set and the gamepad's justPressed set
+     * so the same gesture can't fire twice on adjacent gates (e.g. the
+     * tap that skips the cinematic must not also dismiss the title).
+     */
+    consumeAnyJustPressed() {
+      const kb = keyboard.consumeAnyJustPressed();
+      // We need to poll the gamepad to refresh its justPressed set
+      // before consuming it. `gamepad.sample()` does the poll; we don't
+      // care about its axes here.
+      gamepad.sample();
+      const gp = gamepad.consumeAnyJustPressed();
+      return kb || gp;
+    },
   };
 }

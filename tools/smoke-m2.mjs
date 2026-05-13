@@ -92,7 +92,7 @@ const r2 = await withPage(initScript, async (page) => {
   await page.keyboard.press('Space');
   await page.waitForSelector('#title-card', { state: 'detached', timeout: 2000 });
 
-  // Connect the synthetic pad and start pushing the right-stick UP
+  // Connect the synthetic pad and start pushing the LEFT-stick UP
   // (negative Y in Web Gamepad axes = stick up = forward throttle).
   await page.evaluate(() => window.__nativeGamepadConnection(true));
   const startVel = parseFloat(await page.locator('[data-velocity]').innerText());
@@ -105,7 +105,7 @@ const r2 = await withPage(initScript, async (page) => {
       function tick() {
         window.__nativeGamepadUpdate({
           buttons: [],
-          axes: [0, 0, 0, -1],   // RX=0, RY=-1 → full throttle
+          axes: [0, -1, 0, 0],   // LX=0, LY=-1 → full forward throttle
         });
         if (performance.now() - start >= ms) resolve();
         else setTimeout(tick, 16);
@@ -123,7 +123,7 @@ const r2 = await withPage(initScript, async (page) => {
   const src = await page.locator('[data-source]').innerText();
   // After releasing the stick, sources will be empty → default to KB.
   // So we need to verify PAD during the push. Re-push briefly and re-read.
-  await page.evaluate(() => window.__nativeGamepadUpdate({ buttons: [], axes: [0, 0, 0, -1] }));
+  await page.evaluate(() => window.__nativeGamepadUpdate({ buttons: [], axes: [0, -1, 0, 0] }));
   await page.waitForTimeout(80);
   const srcDuringPush = await page.locator('[data-source]').innerText();
   check('HUD source shows PAD during stick push',

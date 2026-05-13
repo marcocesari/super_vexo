@@ -5,48 +5,44 @@
 // inside the iOS wrapper; outside the wrapper, this is the standard
 // browser API, which also works for desktop USB / Bluetooth pads.
 //
-// Stick mapping (program.md M2, "standard" Web Gamepad API layout):
-//   axis 0 → LX → yaw       axis 2 → RX → roll
-//   axis 1 → LY → pitch     axis 3 → RY → throttle
+// Stick mapping (twin-stick flight, matches the user's diagram):
+//   axis 0 → LX → yaw          axis 2 → RX → roll
+//   axis 1 → LY → throttle     axis 3 → RY → pitch
 //
-// **Assumption: `pad.mapping === 'standard'`.** This holds for:
-//   - the synthetic gamepad served by `native-gamepad-bridge.js`
-//     (`mapping: 'standard'`, exactly 4 axes — the production target),
-//   - most modern Xbox / DualSense / Switch Pro controllers on Chrome.
+// In words: LEFT stick MOVES the ship (forward/back + turn left/right),
+// RIGHT stick LOOKS (nose up/down + bank left/right). The Web Gamepad
+// convention is "positive Y = stick down", so throttle and pitch use
+// sign -1 to make "stick up = forward / nose up".
 //
-// Non-standard desktop pads (some 8BitDo / GameSir USB modes, certain
-// generic-HID pads) report `mapping: ''` with axis indices in
-// different positions. Those will work partially or not at all here.
-// Calibration UI is parked in BACKLOG.md.
-//
-// Web Gamepad API axis convention: positive Y on a stick = stick pulled
-// **down**. Throttle and pitch invert that so pulling the stick *up*
-// pushes the ship up / forward, which is what a pilot expects.
+// Button mapping uses the standard layout (`pad.mapping === 'standard'`):
+//   0=A, 1=B, 2=X, 3=Y, 4=L1, 5=R1, 6=L2, 7=R2,
+//   8=Select, 9=Start, 10=L3, 11=R3, 12=Up, 13=Down, 14=Left, 15=Right.
+// The bridge fakes this exactly; modern Xbox/DualSense/Switch pads on
+// Chrome also report `standard`.
 
 export const DEAD_ZONE = 0.15;
 
-/**
- * Axis bindings. Each entry says: pull from `axisIndex` of the Web
- * Gamepad's `axes`, multiply by `sign`, and use the result as the
- * named flight axis. Change *here* to remap; nothing else cares.
- *
- * Signs explained: the Web Gamepad API uses positive-Y = stick *down*.
- * Pilots expect "stick up = nose up / throttle forward", so most
- * Y-derived axes have sign -1.
- */
 export const AXIS_BINDINGS = {
-  yaw:      { axisIndex: 0, sign: -1 },  // LX: left → +yaw (turn nose left)
-  pitch:    { axisIndex: 1, sign: -1 },  // LY: up   → +pitch (nose up)
-  roll:     { axisIndex: 2, sign: -1 },  // RX: left → +roll
-  throttle: { axisIndex: 3, sign: -1 },  // RY: up   → forward thrust
+  throttle: { axisIndex: 1, sign: -1 }, // LY: up   → forward thrust
+  yaw:      { axisIndex: 0, sign: -1 }, // LX: left → +yaw (turn nose left)
+  pitch:    { axisIndex: 3, sign: -1 }, // RY: up   → nose up
+  roll:     { axisIndex: 2, sign: -1 }, // RX: left → +roll
 };
 
-/** Apply a radial deadzone to a stick value. */
+// Named button slots used by main.js — these are stable indices, the
+// raw numbers come from the standard mapping above.
+export const BUTTONS = {
+  A: 0, B: 1, X: 2, Y: 3,
+  L1: 4, R1: 5, L2: 6, R2: 7,
+  Select: 8, Start: 9,
+  L3: 10, R3: 11,
+  Up: 12, Down: 13, Left: 14, Right: 15,
+};
+
 function applyDeadzone(value, dz = DEAD_ZONE) {
   const abs = Math.abs(value);
   if (abs < dz) return 0;
-  // Rescale so the value goes 0→1 smoothly outside the deadzone instead
-  // of jumping from 0 to dz.
+  // Rescale so the value goes 0→1 smoothly outside the deadzone.
   return Math.sign(value) * ((abs - dz) / (1 - dz));
 }
 
@@ -55,8 +51,14 @@ function readBound(pad, binding) {
 }
 
 export function createGamepad() {
-  let active = false; // any gamepad axis/button outside deadzone this frame
+  let active = false; // any axis or button outside deadzone this frame
   let warnedNonStandard = false;
+
+  // Button edge detection: track previous-frame pressed state so we can
+  // synthesise "justPressed" events from the polled Gamepad API (which,
+  // unlike keydown, gives us no events).
+  const wasPressed = new Set();
+  const justPressed = new Set();
 
   function findFirstConnected() {
     const pads = typeof navigator.getGamepads === 'function'
@@ -66,8 +68,31 @@ export function createGamepad() {
     return null;
   }
 
+  // Latest button state, updated each sample(). Map from index → pressed.
+  const pressedNow = new Set();
+
+  function refreshButtons(pad) {
+    justPressed.clear();
+    pressedNow.clear();
+    if (!pad.buttons) return;
+    for (let i = 0; i < pad.buttons.length; i++) {
+      const b = pad.buttons[i];
+      const isDown = !!(b && b.pressed);
+      if (isDown) {
+        pressedNow.add(i);
+        if (!wasPressed.has(i)) justPressed.add(i);
+      }
+    }
+    // Buttons that are no longer pressed leave wasPressed; otherwise we
+    // miss the next press-after-release.
+    for (const i of wasPressed) {
+      if (!pressedNow.has(i)) wasPressed.delete(i);
+    }
+    for (const i of pressedNow) wasPressed.add(i);
+  }
+
   return {
-    /** True if a gamepad produced any signal this frame. */
+    /** True if a gamepad produced any signal (stick or button) this frame. */
     get active() { return active; },
 
     /** Read normalized axes from the gamepad. Returns null if none. */
@@ -75,12 +100,12 @@ export function createGamepad() {
       const pad = findFirstConnected();
       if (!pad) {
         active = false;
+        justPressed.clear();
+        pressedNow.clear();
+        wasPressed.clear();
         return null;
       }
 
-      // Warn once per session if a non-standard pad shows up — this
-      // means our axis 0..3 assumption may not hold on desktop. On
-      // device this never fires (the bridge guarantees standard).
       if (!warnedNonStandard && pad.mapping !== 'standard') {
         warnedNonStandard = true;
         console.info(
@@ -90,13 +115,37 @@ export function createGamepad() {
         );
       }
 
+      refreshButtons(pad);
+
       const yaw = readBound(pad, AXIS_BINDINGS.yaw);
       const pitch = readBound(pad, AXIS_BINDINGS.pitch);
       const roll = readBound(pad, AXIS_BINDINGS.roll);
       const throttle = readBound(pad, AXIS_BINDINGS.throttle);
 
-      active = (yaw || pitch || roll || throttle) !== 0;
+      const anyStick = (yaw || pitch || roll || throttle) !== 0;
+      const anyButton = pressedNow.size > 0;
+      active = anyStick || anyButton;
+
       return { throttle, yaw, pitch, roll };
+    },
+
+    /** True if the named/numbered button is currently held. */
+    isButtonDown(index) {
+      return pressedNow.has(index);
+    },
+
+    /** Consume a single edge-press for button `index`. */
+    consumeJustPressed(index) {
+      if (!justPressed.has(index)) return false;
+      justPressed.delete(index);
+      return true;
+    },
+
+    /** Consume any edge-press this frame (used for "press any key" gates). */
+    consumeAnyJustPressed() {
+      if (justPressed.size === 0) return false;
+      justPressed.clear();
+      return true;
     },
   };
 }
