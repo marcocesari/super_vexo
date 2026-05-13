@@ -45,6 +45,10 @@ export default defineConfig({
     host: '127.0.0.1',
   },
   build: {
+    // GitHub Pages' "build from a branch" mode only serves from `/` or
+    // `/docs`. We commit the build output to `docs/` so Pages can serve
+    // it without a CI workflow. Rebuild + commit before each push.
+    outDir: 'docs',
     target: 'es2020',
     modulePreload: { polyfill: false },
     rollupOptions: {
