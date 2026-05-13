@@ -4,10 +4,10 @@
 
 export const strings = {
   title: 'Super Vexo and the Mystery of the System',
-  pressAnyKey: 'Press any key to start',
+  pressAnyKey: 'Press any button to start',
 
   intro: {
-    skip: 'Press any key to skip',
+    skip: 'Press any button to skip',
     beats: [
       'Long ago, in the kingdom of Astra…',
       'The kingdom lived in peace.',
@@ -27,14 +27,14 @@ export const strings = {
     dampingOn: 'damping: ON',
     dampingOff: 'damping: OFF',
     fastTravelButton: 'FAST TRAVEL',
-    fastTravelHint: 'F',
+    fastTravelHint: 'R1 / F',
     fastTravelActive: 'warping…',
 
     rovers: 'ROVERS',
     credits: 'CRED',
-    hackHint: 'Hold H to hack',
+    hackHint: 'Hold L1 / H to hack',
     upgradeButton: 'UPGRADES',
-    upgradeHint: 'U',
+    upgradeHint: 'Y / U',
     upgradeBought: 'OWNED',
     upgradeBuy: 'BUY',
 
@@ -43,6 +43,6 @@ export const strings = {
     missionCompleteCta: 'Open Upgrades',
     missionCompleteClose: 'Continue Flying',
 
-    resetHint: 'R = reset',
+    resetHint: 'Start / R = reset',
   },
 };
