@@ -28,17 +28,16 @@ const COCKPIT_COLOR = 0x1a2a3a; // tinted canopy
 const WING_COLOR    = 0x3a78d8; // arwing blue
 const ACCENT_COLOR  = 0xf5c542; // gold-yellow tips
 
-// Arwing wing — a SHORT, BROAD flat delta panel. Four of these spread
-// out from near the rear of the fuselage in two V-pairs (top-left
-// going up-left, top-right up-right, bottom-left down-left,
-// bottom-right down-right). Each panel is a flat triangle with a
-// slightly clipped tip.
+// Arwing wing — a SHARP TRIANGULAR delta panel. Four of these spread
+// in two V-pairs around the fuselage. Pointed outer tip, swept-back
+// leading edge.
 function makeWingGeometry(side /* +1 right, -1 left */) {
   // Top-down planform. X = outboard, Y = forward (+) / aft (-).
+  // Single triangle: wide at the root, sharp point at the outer-rear
+  // corner, so the wing tapers to a sharp tip just like the reference.
   const shape = new THREE.Shape();
-  shape.moveTo(0,     0.35);   // root, leading edge — near rear of cockpit
-  shape.lineTo(0.85,  0.05);   // tip, leading edge — sweeps back moderately
-  shape.lineTo(0.65, -0.40);   // tip, trailing edge — short chord at tip
+  shape.moveTo(0,     0.40);   // root, leading edge — near cockpit
+  shape.lineTo(1.05, -0.30);   // outer-rear tip — sharp point
   shape.lineTo(0,    -0.35);   // root, trailing edge
   shape.closePath();
 
@@ -52,24 +51,13 @@ function makeWingGeometry(side /* +1 right, -1 left */) {
   return geom;
 }
 
-// Trailing-edge accent on each wing — a thin slab of gold/yellow at
-// the outboard trailing corner so the wing reads as having the
-// iconic yellow tip. Sat *on* the wing's plane, not jutting out.
-function makeTipAccentGeometry(side) {
-  const shape = new THREE.Shape();
-  shape.moveTo(0.65, -0.40);   // matches wing tip-trailing corner
-  shape.lineTo(0.55, -0.40);
-  shape.lineTo(0.40, -0.50);
-  shape.lineTo(0.55, -0.55);
-  shape.closePath();
-  const geom = new THREE.ExtrudeGeometry(shape, {
-    depth: 0.05,
-    bevelEnabled: false,
-  });
-  geom.rotateX(-Math.PI / 2);
-  geom.translate(0, -0.025, 0);
-  if (side === -1) geom.scale(-1, 1, 1);
-  return geom;
+// Iconic gold spike at each wing tip — a sharp cone extending rearward
+// from the wing's pointed tip. Lives in wing-local space so it follows
+// the wing's roll automatically.
+function makeTipConeGeometry() {
+  const g = new THREE.ConeGeometry(0.06, 0.32, 10);
+  g.rotateX(-Math.PI / 2); // apex points -Z (rearward)
+  return g;
 }
 
 export function createShip() {
@@ -132,11 +120,10 @@ export function createShip() {
   cockpit.position.set(0, 0.18, 0.18);
   group.add(cockpit);
 
-  // --- Four wings in two V-pairs. The Arwing reference shows the
-  // wings spreading clamshell-style: each side has an upper wing
-  // angled up-out and a lower wing angled down-out at a moderate
-  // ~32°. Less of an X, more of a "><" pattern.
-  const ROLL = Math.PI * 0.18; // ~32° from horizontal
+  // --- Four wings in two V-pairs. Steeper roll (~40°) matches the
+  // reference frames — upper wings angle up-out, lower wings down-out,
+  // forming the distinctive 4-pointed Arwing silhouette.
+  const ROLL = Math.PI * 0.22; // ~40° from horizontal
   const wingPositions = [
     { side: +1, roll:  ROLL },   // right upper
     { side: +1, roll: -ROLL },   // right lower
@@ -149,10 +136,16 @@ export function createShip() {
     w.rotation.z = roll;
     group.add(w);
 
-    // Yellow trailing-corner accent — on the wing's plane.
-    const tip = new THREE.Mesh(makeTipAccentGeometry(side), accentMat);
-    tip.position.set(0, 0, -0.15);
-    tip.rotation.z = roll;
+    // Sharp gold cone at the wing's outer-rear tip, pointing rearward.
+    // Match the wing's tip coordinates in local space, then apply the
+    // same roll so the cone follows the wing exactly.
+    const tip = new THREE.Mesh(makeTipConeGeometry(), accentMat);
+    // Wing tip local = (side * 1.05, 0, -0.30); cone half-length is 0.16
+    // so place its center 0.10 beyond the tip in -Z.
+    tip.position.set(side * 1.05, 0, -0.45);
+    tip.position.applyEuler(new THREE.Euler(0, 0, roll));
+    tip.position.z += -0.15; // align with the wing's z-offset
+    tip.rotation.z = roll;   // align cone's lateral plane with wing's plane
     group.add(tip);
   }
 
