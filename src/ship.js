@@ -28,38 +28,6 @@ const COCKPIT_COLOR = 0x1a2a3a; // tinted canopy
 const WING_COLOR    = 0x3a78d8; // arwing blue
 const ACCENT_COLOR  = 0xf5c542; // gold-yellow tips
 
-// Arwing wing — a SHARP TRIANGULAR delta panel. Four of these spread
-// in two V-pairs around the fuselage. Pointed outer tip, swept-back
-// leading edge.
-function makeWingGeometry(side /* +1 right, -1 left */) {
-  // Top-down planform. X = outboard, Y = forward (+) / aft (-).
-  // Single triangle: wide at the root, sharp point at the outer-rear
-  // corner, so the wing tapers to a sharp tip just like the reference.
-  const shape = new THREE.Shape();
-  shape.moveTo(0,     0.40);   // root, leading edge — near cockpit
-  shape.lineTo(1.05, -0.30);   // outer-rear tip — sharp point
-  shape.lineTo(0,    -0.35);   // root, trailing edge
-  shape.closePath();
-
-  const geom = new THREE.ExtrudeGeometry(shape, {
-    depth: 0.05,
-    bevelEnabled: false,
-  });
-  geom.rotateX(-Math.PI / 2);
-  geom.translate(0, -0.025, 0);
-  if (side === -1) geom.scale(-1, 1, 1);
-  return geom;
-}
-
-// Iconic gold spike at each wing tip — a sharp cone extending rearward
-// from the wing's pointed tip. Lives in wing-local space so it follows
-// the wing's roll automatically.
-function makeTipConeGeometry() {
-  const g = new THREE.ConeGeometry(0.06, 0.32, 10);
-  g.rotateX(-Math.PI / 2); // apex points -Z (rearward)
-  return g;
-}
-
 export function createShip() {
   const group = new THREE.Group();
 
@@ -67,112 +35,127 @@ export function createShip() {
     color: BODY_COLOR, roughness: 0.4, metalness: 0.35, emissive: 0x0a1018,
   });
   const cockpitMat = new THREE.MeshStandardMaterial({
-    color: COCKPIT_COLOR, roughness: 0.15, metalness: 0.7, emissive: 0x101a28,
+    color: COCKPIT_COLOR, roughness: 0.12, metalness: 0.8, emissive: 0x101a28,
   });
   const wingMat = new THREE.MeshStandardMaterial({
-    color: WING_COLOR, roughness: 0.45, metalness: 0.3,
-    emissive: 0x0b1c44, side: THREE.DoubleSide,
+    color: WING_COLOR, roughness: 0.4, metalness: 0.35, emissive: 0x0b1c44,
   });
   const accentMat = new THREE.MeshStandardMaterial({
     color: ACCENT_COLOR, roughness: 0.3, metalness: 0.5, emissive: 0x2a1d00,
   });
 
-  // --- Fuselage. Two stacked boxes give a faceted "cockpit cowl" look
-  // instead of one flat slab.
-  const fuselage = new THREE.Mesh(
-    new THREE.BoxGeometry(0.22, 0.16, 1.0),
-    bodyMat,
-  );
-  group.add(fuselage);
-  const upperHull = new THREE.Mesh(
-    new THREE.BoxGeometry(0.18, 0.08, 0.75),
-    bodyMat,
-  );
-  upperHull.position.set(0, 0.1, -0.05);
-  group.add(upperHull);
+  // ============================================================
+  // STEP 1 — "Imagine a big cone, with little cones on the sides"
+  // ============================================================
 
-  // --- Long pointed nose.
-  const noseGeom = new THREE.ConeGeometry(0.1, 0.6, 12);
-  noseGeom.rotateX(Math.PI / 2); // apex points +Z forward
-  const nose = new THREE.Mesh(noseGeom, bodyMat);
-  nose.position.z = 0.78;
-  group.add(nose);
+  // --- Big white cone as the body. Apex points forward → sharp nose.
+  const bodyGeom = new THREE.ConeGeometry(0.18, 1.5, 16);
+  bodyGeom.rotateX(Math.PI / 2);            // apex now along +Z (forward)
+  const body = new THREE.Mesh(bodyGeom, bodyMat);
+  body.position.z = 0.25;                   // shift forward so the nose sits at +1.0
+  group.add(body);
 
-  // Small fin on top of the nose (visible on the Arwing's profile).
-  const noseFin = new THREE.Mesh(
-    new THREE.BoxGeometry(0.02, 0.1, 0.22),
-    bodyMat,
-  );
-  noseFin.position.set(0, 0.13, 0.55);
-  group.add(noseFin);
-  const noseFinTip = new THREE.Mesh(
-    new THREE.BoxGeometry(0.02, 0.06, 0.06),
-    accentMat,
-  );
-  noseFinTip.position.set(0, 0.22, 0.55);
-  group.add(noseFinTip);
-
-  // --- Cockpit canopy sitting forward on the upper hull.
-  const cockpit = new THREE.Mesh(
-    new THREE.BoxGeometry(0.14, 0.08, 0.38),
-    cockpitMat,
-  );
-  cockpit.position.set(0, 0.18, 0.18);
-  group.add(cockpit);
-
-  // --- Four wings in two V-pairs. Steeper roll (~40°) matches the
-  // reference frames — upper wings angle up-out, lower wings down-out,
-  // forming the distinctive 4-pointed Arwing silhouette.
-  const ROLL = Math.PI * 0.22; // ~40° from horizontal
+  // --- Four little blue cones on the sides as wings. Two per side,
+  //     one canted slightly up and one slightly down. Apex points
+  //     OUTWARD (away from the body) — they're spikes, not flat panels.
+  const WING_LIFT = Math.PI * 0.10;         // ~18° up/down off horizontal
   const wingPositions = [
-    { side: +1, roll:  ROLL },   // right upper
-    { side: +1, roll: -ROLL },   // right lower
-    { side: -1, roll: -ROLL },   // left upper
-    { side: -1, roll:  ROLL },   // left lower
+    { side: +1, tilt: +WING_LIFT },         // upper right
+    { side: +1, tilt: -WING_LIFT },         // lower right
+    { side: -1, tilt: +WING_LIFT },         // upper left
+    { side: -1, tilt: -WING_LIFT },         // lower left
   ];
-  for (const { side, roll } of wingPositions) {
-    const w = new THREE.Mesh(makeWingGeometry(side), wingMat);
-    w.position.set(0, 0, -0.15);
-    w.rotation.z = roll;
-    group.add(w);
+  for (const { side, tilt } of wingPositions) {
+    const wingGeom = new THREE.ConeGeometry(0.12, 1.0, 14);
+    // Cone apex points +Y by default. Rotate so it points +X (outboard).
+    wingGeom.rotateZ(-Math.PI / 2);
+    const wing = new THREE.Mesh(wingGeom, wingMat);
+    // Anchor at the body and offset outboard by half the cone length so
+    // the wing's BASE meets the fuselage and the APEX (= the spike tip)
+    // is the outer end.
+    wing.position.set(side * 0.55, 0, -0.10);
+    if (side === -1) wing.rotation.z = Math.PI;   // mirror cone to point -X
+    wing.rotation.x = tilt;                       // up/down cant
+    group.add(wing);
 
-    // Sharp gold cone at the wing's outer-rear tip, pointing rearward.
-    // Match the wing's tip coordinates in local space, then apply the
-    // same roll so the cone follows the wing exactly.
-    const tip = new THREE.Mesh(makeTipConeGeometry(), accentMat);
-    // Wing tip local = (side * 1.05, 0, -0.30); cone half-length is 0.16
-    // so place its center 0.10 beyond the tip in -Z.
-    tip.position.set(side * 1.05, 0, -0.45);
-    tip.position.applyEuler(new THREE.Euler(0, 0, roll));
-    tip.position.z += -0.15; // align with the wing's z-offset
-    tip.rotation.z = roll;   // align cone's lateral plane with wing's plane
+    // Gold spike tip at the apex of each blue wing-cone.
+    const tipGeom = new THREE.ConeGeometry(0.05, 0.28, 10);
+    tipGeom.rotateZ(-Math.PI / 2);                // apex along +X
+    const tip = new THREE.Mesh(tipGeom, accentMat);
+    tip.position.set(side * (1.10), 0, -0.10);    // just past the wing apex
+    if (side === -1) tip.rotation.z = Math.PI;
+    tip.rotation.x = tilt;
     group.add(tip);
   }
 
-  // --- Tall vertical tail fin. In the reference it's the most
-  // prominent silhouette element above the body and ends in a yellow
-  // tip pointing forward.
+  // ============================================================
+  // STEP 2 — "Make it like in the video"
+  // ============================================================
+
+  // --- Two little cones on the sides of the body itself — sit next
+  // to the cockpit as side-pod accents (separate from the four wing
+  // spikes above). Apex points outward.
+  for (const side of [+1, -1]) {
+    const podGeom = new THREE.ConeGeometry(0.06, 0.32, 10);
+    podGeom.rotateZ(-Math.PI / 2);              // apex points +X
+    const pod = new THREE.Mesh(podGeom, wingMat);
+    pod.position.set(side * 0.28, 0.02, 0.10);  // hugged against body, near cockpit
+    if (side === -1) pod.rotation.z = Math.PI;  // mirror to point -X
+    group.add(pod);
+  }
+
+  // --- Cabin / cockpit canopy with a clear window-frame pattern.
+  //     A dark cylinder (the glass), with thin white longitudinal bars
+  //     wrapped around it dividing it into visible windows.
+  const canopyGeom = new THREE.CylinderGeometry(0.115, 0.135, 0.38, 8);
+  canopyGeom.rotateX(Math.PI / 2);                // axis along +Z
+  const canopy = new THREE.Mesh(canopyGeom, cockpitMat);
+  canopy.position.set(0, 0.06, 0.22);
+  group.add(canopy);
+  // Window-frame bars — 4 around the canopy at top, bottom, left, right.
+  for (const a of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+    const bar = new THREE.Mesh(
+      new THREE.BoxGeometry(0.018, 0.018, 0.40),
+      bodyMat,
+    );
+    const r = 0.125;
+    bar.position.set(
+      Math.cos(a) * r,
+      0.06 + Math.sin(a) * r,
+      0.22,
+    );
+    group.add(bar);
+  }
+  // Two short circumferential bars at the front + back of the canopy,
+  // selling the "frame around the windows" look.
+  for (const z of [0.40, 0.05]) {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.125, 0.018, 6, 14),
+      bodyMat,
+    );
+    ring.position.set(0, 0.06, z);
+    group.add(ring);
+  }
+
+  // --- Tall vertical tail fin above the back of the body.
   const tailShape = new THREE.Shape();
-  tailShape.moveTo(0,    0.0);     // root, front
-  tailShape.lineTo(0,    0.45);    // top, front
-  tailShape.lineTo(-0.18, 0.45);   // top, back
-  tailShape.lineTo(-0.32, 0.0);    // root, back
+  tailShape.moveTo(0,    0.0);
+  tailShape.lineTo(0,    0.42);
+  tailShape.lineTo(-0.18, 0.42);
+  tailShape.lineTo(-0.32, 0.0);
   tailShape.closePath();
   const tailGeom = new THREE.ExtrudeGeometry(tailShape, {
     depth: 0.04, bevelEnabled: false,
   });
-  // ExtrudeGeometry has the shape in XY and extrudes +Z; we want the
-  // fin in the YZ plane (XY normal). Rotate -90° around Y.
   tailGeom.rotateY(-Math.PI / 2);
-  tailGeom.translate(0, 0.08, -0.2);   // base sits on top of fuselage, just aft of midpoint
+  tailGeom.translate(0, 0.06, -0.25);
   const tail = new THREE.Mesh(tailGeom, bodyMat);
   group.add(tail);
-  // Yellow accent at the top-front corner of the fin.
   const tailTip = new THREE.Mesh(
     new THREE.BoxGeometry(0.04, 0.08, 0.12),
     accentMat,
   );
-  tailTip.position.set(0, 0.49, -0.17);
+  tailTip.position.set(0, 0.46, -0.22);
   group.add(tailTip);
 
   // --- Twin engine exhausts at the rear with a soft additive glow.
@@ -185,15 +168,16 @@ export function createShip() {
   });
   for (const x of [-0.085, 0.085]) {
     const housing = new THREE.Mesh(
-      new THREE.BoxGeometry(0.08, 0.08, 0.22),
+      new THREE.CylinderGeometry(0.05, 0.05, 0.18, 10),
       bodyMat,
     );
-    housing.position.set(x, -0.04, -0.46);
+    housing.rotation.x = Math.PI / 2;
+    housing.position.set(x, -0.03, -0.55);
     group.add(housing);
-    const glowGeom = new THREE.ConeGeometry(0.05, 0.22, 12);
-    glowGeom.rotateX(-Math.PI / 2); // apex points -Z (out the back)
+    const glowGeom = new THREE.ConeGeometry(0.045, 0.2, 12);
+    glowGeom.rotateX(-Math.PI / 2);                 // apex points -Z
     const glow = new THREE.Mesh(glowGeom, engineGlowMat);
-    glow.position.set(x, -0.04, -0.7);
+    glow.position.set(x, -0.03, -0.75);
     group.add(glow);
   }
 
