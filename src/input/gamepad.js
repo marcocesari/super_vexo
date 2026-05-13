@@ -59,6 +59,13 @@ export function createGamepad() {
   // unlike keydown, gives us no events).
   const wasPressed = new Set();
   const justPressed = new Set();
+  // Buttons that must be released before they can fire `justPressed`
+  // again. Used when one state transition (e.g. cinematic skip) "eats"
+  // a button press — if the player is still holding the same button as
+  // the title card appears, we DON'T want that hold to bleed through
+  // and dismiss it. They have to release and press again, which matches
+  // the keyboard's behavior.
+  const suppressUntilReleased = new Set();
 
   function findFirstConnected() {
     const pads = typeof navigator.getGamepads === 'function'
@@ -80,7 +87,12 @@ export function createGamepad() {
       const isDown = !!(b && b.pressed);
       if (isDown) {
         pressedNow.add(i);
-        if (!wasPressed.has(i)) justPressed.add(i);
+        if (!wasPressed.has(i) && !suppressUntilReleased.has(i)) {
+          justPressed.add(i);
+        }
+      } else {
+        // Released → re-arm: the next press of this button can fire again.
+        suppressUntilReleased.delete(i);
       }
     }
     // Buttons that are no longer pressed leave wasPressed; otherwise we
@@ -146,6 +158,16 @@ export function createGamepad() {
       if (justPressed.size === 0) return false;
       justPressed.clear();
       return true;
+    },
+
+    /**
+     * Mark every currently-held button as "must release before firing
+     * again". Call after a state transition that was triggered by a
+     * button press, so the same hold doesn't immediately re-fire on
+     * the next gate (cinematic skip → title card, etc).
+     */
+    suppressCurrentlyPressed() {
+      for (const i of pressedNow) suppressUntilReleased.add(i);
     },
   };
 }

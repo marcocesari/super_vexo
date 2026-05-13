@@ -73,6 +73,73 @@ await page.keyboard.press('Space');
 await page.waitForSelector('#title-card', { state: 'detached', timeout: 2000 });
 console.log('PASS  game starts when player presses key after cinematic skip');
 
+// --- Scenario 3: gamepad button skip + title dismiss -------------------
+// Regression for "I press a button when skipping and the title won't
+// dismiss". Two passes: a quick tap (release between), and a held
+// button (where the title must NOT dismiss until release+repress).
+console.log('--- Scenario 3: pad-button skip ---');
+async function withPadPage() {
+  const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await ctx2.addInitScript(`
+    Object.defineProperty(window, '__p5NativeHost', { value: true, writable: false });
+  `);
+  const p = await ctx2.newPage();
+  await p.goto(URL, { waitUntil: 'load' });
+  await p.waitForSelector('#cinematic');
+  await p.evaluate(() => window.__nativeGamepadConnection(true));
+  return p;
+}
+async function padPress(p, ms = 80) {
+  await p.evaluate(() => window.__nativeGamepadUpdate({
+    buttons: [{ p: true, v: 1 }, ...Array(16).fill({ p: false, v: 0 })],
+    axes: [0, 0, 0, 0],
+  }));
+  await p.waitForTimeout(ms);
+  await p.evaluate(() => window.__nativeGamepadUpdate({
+    buttons: Array(17).fill({ p: false, v: 0 }),
+    axes: [0, 0, 0, 0],
+  }));
+  await p.waitForTimeout(100);
+}
+
+const p1 = await withPadPage();
+await padPress(p1);
+const padTitleVisible = await p1.evaluate(() => {
+  const el = document.getElementById('title-card');
+  return !!el && el.style.opacity !== '0' && !el.classList.contains('title-card--hidden');
+});
+check('pad skip: cinematic gone after A press', await p1.evaluate(() => !document.getElementById('cinematic')));
+check('pad skip: title visible (game did NOT auto-start)', padTitleVisible === true);
+await padPress(p1);
+// titleCard.dismiss() waits 500ms before removing the element so the
+// fade can play out — wait past that.
+await p1.waitForTimeout(700);
+const padDismissed = await p1.evaluate(() => !document.getElementById('title-card'));
+check('pad skip: 2nd A press dismisses the title', padDismissed === true);
+await p1.context().close();
+
+const p2 = await withPadPage();
+// Hold A continuously through the skip — title must NOT dismiss.
+await p2.evaluate(() => new Promise((resolve) => {
+  const t0 = performance.now();
+  const tick = () => {
+    window.__nativeGamepadUpdate({
+      buttons: [{ p: true, v: 1 }, ...Array(16).fill({ p: false, v: 0 })],
+      axes: [0, 0, 0, 0],
+    });
+    if (performance.now() - t0 > 1500) resolve();
+    else setTimeout(tick, 16);
+  };
+  tick();
+}));
+const holdState = await p2.evaluate(() => ({
+  cinGone: !document.getElementById('cinematic'),
+  titleStill: !!document.getElementById('title-card'),
+}));
+check('pad hold: cinematic still gets skipped on edge press', holdState.cinGone === true);
+check('pad hold: held button does NOT bleed-dismiss the title', holdState.titleStill === true);
+await p2.context().close();
+
 // --- Scenario 2: full play-through (opt-in) ----------------------------
 if (FULL) {
   console.log('--- Scenario 2: full play-through ---');

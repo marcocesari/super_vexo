@@ -207,7 +207,12 @@ function frame(now) {
   lastT = now;
 
   if (state === STATE.CINEMATIC) {
-    if (input.consumeAnyJustPressed()) cinematic.skip();
+    if (input.consumeAnyJustPressed()) {
+      cinematic.skip();
+      // Don't let the same hold also dismiss the title card on the
+      // very next frame — require a release + fresh press.
+      input.gamepad.suppressCurrentlyPressed();
+    }
     cinematic.update(dt);
     cinematic.render();
     if (!cinematic.active) onCinematicDone();
