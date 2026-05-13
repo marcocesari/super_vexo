@@ -60,9 +60,10 @@ scene.add(sun.sprite);
 for (const r of roverApi.rovers) scene.add(r.mesh);
 scene.add(repairFx.points);
 
-// Hide the ship during the title state so it doesn't show up behind the
-// title card. It pops in on the first keypress.
-ship.mesh.visible = false;
+// Ship is visible from the title screen onward — the player should
+// always see Vexo's craft from behind. (Cinematic state uses its own
+// scene so the ship isn't rendered there anyway.)
+ship.mesh.visible = true;
 
 // --- Input + UI -------------------------------------------------------------
 const input = createInput();
@@ -128,8 +129,11 @@ function tryBeginWarp() {
 const CAM_OFFSET_LOCAL = new THREE.Vector3(0, 1.4, -5.5); // behind & above
 const CAM_LOOKAHEAD_LOCAL = new THREE.Vector3(0, 0, 4);  // look slightly past the nose
 // "Half-life" of the spring in seconds: lower = snappier, higher = floatier.
-const CAM_POS_HALFLIFE = 0.12;
-const CAM_LOOK_HALFLIFE = 0.10;
+// Tight chase camera: short halflives so the camera tracks the ship's
+// rotation almost instantly. The player should always see the ship
+// from behind, even mid-maneuver.
+const CAM_POS_HALFLIFE = 0.04;
+const CAM_LOOK_HALFLIFE = 0.03;
 
 const _camTargetPos = new THREE.Vector3();
 const _camTargetLook = new THREE.Vector3();
@@ -188,7 +192,8 @@ const cinematic = skipIntro ? null : createCinematic({ renderer });
 let state = cinematic ? STATE.CINEMATIC : STATE.TITLE;
 
 if (cinematic) titleCard.hide();
-else hud.show();
+// Tablet stays hidden until the player explicitly toggles it during
+// FLY (with T or pad "−"). The title card stands alone over the ship.
 
 const debugPad = createDebugPad();
 
@@ -231,7 +236,6 @@ function frame(now) {
   if (state === STATE.TITLE) {
     if (input.consumeAnyJustPressed()) {
       state = STATE.FLY;
-      ship.mesh.visible = true;
       titleCard.dismiss();
       hud.showFastTravel();
       hud.showUpgrades();

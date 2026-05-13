@@ -28,38 +28,48 @@ const COCKPIT_COLOR = 0x1a2a3a; // tinted canopy
 const WING_COLOR    = 0x3a78d8; // arwing blue
 const ACCENT_COLOR  = 0xf5c542; // gold-yellow tips
 
-// One Arwing wing — a long, narrow blade. The Arwing has *four* of these
-// arranged in an X around the fuselage (upper-left, upper-right,
-// lower-left, lower-right), all rooted at the same point on the body.
-// Each one tapers to a point at the outer-trailing corner; we tint the
-// last 25% gold so it reads as the iconic yellow tip without needing a
-// separate cone mesh.
+// Arwing wing — a SHORT, BROAD flat delta panel. Four of these spread
+// out from near the rear of the fuselage in two V-pairs (top-left
+// going up-left, top-right up-right, bottom-left down-left,
+// bottom-right down-right). Each panel is a flat triangle with a
+// slightly clipped tip.
 function makeWingGeometry(side /* +1 right, -1 left */) {
   // Top-down planform. X = outboard, Y = forward (+) / aft (-).
   const shape = new THREE.Shape();
-  shape.moveTo(0,     0.20);   // root, leading edge
-  shape.lineTo(1.05, -0.05);   // mid-span, leading edge — slight sweep
-  shape.lineTo(1.20, -0.55);   // tip — long pointed trailing corner
-  shape.lineTo(0,    -0.30);   // root, trailing edge
+  shape.moveTo(0,     0.35);   // root, leading edge — near rear of cockpit
+  shape.lineTo(0.85,  0.05);   // tip, leading edge — sweeps back moderately
+  shape.lineTo(0.65, -0.40);   // tip, trailing edge — short chord at tip
+  shape.lineTo(0,    -0.35);   // root, trailing edge
   shape.closePath();
 
   const geom = new THREE.ExtrudeGeometry(shape, {
-    depth: 0.04,
+    depth: 0.05,
     bevelEnabled: false,
   });
-  // Extrude is along +Z; rotate so it's the vertical thickness.
   geom.rotateX(-Math.PI / 2);
-  geom.translate(0, -0.02, 0);
+  geom.translate(0, -0.025, 0);
   if (side === -1) geom.scale(-1, 1, 1);
   return geom;
 }
 
-// Slim cone used for the gold tip pointer at the trailing corner of
-// each wing. Apex points rearward (-Z).
-function makeTipConeGeometry() {
-  const g = new THREE.ConeGeometry(0.045, 0.28, 10);
-  g.rotateX(-Math.PI / 2);
-  return g;
+// Trailing-edge accent on each wing — a thin slab of gold/yellow at
+// the outboard trailing corner so the wing reads as having the
+// iconic yellow tip. Sat *on* the wing's plane, not jutting out.
+function makeTipAccentGeometry(side) {
+  const shape = new THREE.Shape();
+  shape.moveTo(0.65, -0.40);   // matches wing tip-trailing corner
+  shape.lineTo(0.55, -0.40);
+  shape.lineTo(0.40, -0.50);
+  shape.lineTo(0.55, -0.55);
+  shape.closePath();
+  const geom = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.05,
+    bevelEnabled: false,
+  });
+  geom.rotateX(-Math.PI / 2);
+  geom.translate(0, -0.025, 0);
+  if (side === -1) geom.scale(-1, 1, 1);
+  return geom;
 }
 
 export function createShip() {
@@ -122,44 +132,54 @@ export function createShip() {
   cockpit.position.set(0, 0.18, 0.18);
   group.add(cockpit);
 
-  // --- Four wings in an X. Each wing roots at the same point on the
-  // fuselage and rotates around the longitudinal axis to its position.
-  // Roll angle is fairly steep (~50°) so the silhouette reads as an X
-  // from front-on, like the real Arwing.
-  const ROLL = Math.PI * 0.28; // ~50 degrees from horizontal
+  // --- Four wings in two V-pairs. The Arwing reference shows the
+  // wings spreading clamshell-style: each side has an upper wing
+  // angled up-out and a lower wing angled down-out at a moderate
+  // ~32°. Less of an X, more of a "><" pattern.
+  const ROLL = Math.PI * 0.18; // ~32° from horizontal
   const wingPositions = [
-    { side: +1, roll: -ROLL },        // right upper
-    { side: +1, roll:  ROLL },        // right lower
-    { side: -1, roll:  ROLL },        // left upper
-    { side: -1, roll: -ROLL },        // left lower
+    { side: +1, roll:  ROLL },   // right upper
+    { side: +1, roll: -ROLL },   // right lower
+    { side: -1, roll: -ROLL },   // left upper
+    { side: -1, roll:  ROLL },   // left lower
   ];
   for (const { side, roll } of wingPositions) {
     const w = new THREE.Mesh(makeWingGeometry(side), wingMat);
-    w.position.set(0, 0, -0.05);
+    w.position.set(0, 0, -0.15);
     w.rotation.z = roll;
     group.add(w);
 
-    // Gold tip pointer riding on the same root + roll as the wing.
-    const tip = new THREE.Mesh(makeTipConeGeometry(), accentMat);
-    tip.position.set(side * (1.2 + 0.05), 0, -0.55);
-    // Apply the same roll so the tip sits exactly at the wing's outer
-    // trailing corner.
-    tip.position.applyEuler(new THREE.Euler(0, 0, roll));
+    // Yellow trailing-corner accent — on the wing's plane.
+    const tip = new THREE.Mesh(makeTipAccentGeometry(side), accentMat);
+    tip.position.set(0, 0, -0.15);
+    tip.rotation.z = roll;
     group.add(tip);
   }
 
-  // --- Vertical tail fin (bigger now to stand out behind the wings).
-  const tail = new THREE.Mesh(
-    new THREE.BoxGeometry(0.03, 0.28, 0.26),
-    bodyMat,
-  );
-  tail.position.set(0, 0.22, -0.42);
+  // --- Tall vertical tail fin. In the reference it's the most
+  // prominent silhouette element above the body and ends in a yellow
+  // tip pointing forward.
+  const tailShape = new THREE.Shape();
+  tailShape.moveTo(0,    0.0);     // root, front
+  tailShape.lineTo(0,    0.45);    // top, front
+  tailShape.lineTo(-0.18, 0.45);   // top, back
+  tailShape.lineTo(-0.32, 0.0);    // root, back
+  tailShape.closePath();
+  const tailGeom = new THREE.ExtrudeGeometry(tailShape, {
+    depth: 0.04, bevelEnabled: false,
+  });
+  // ExtrudeGeometry has the shape in XY and extrudes +Z; we want the
+  // fin in the YZ plane (XY normal). Rotate -90° around Y.
+  tailGeom.rotateY(-Math.PI / 2);
+  tailGeom.translate(0, 0.08, -0.2);   // base sits on top of fuselage, just aft of midpoint
+  const tail = new THREE.Mesh(tailGeom, bodyMat);
   group.add(tail);
+  // Yellow accent at the top-front corner of the fin.
   const tailTip = new THREE.Mesh(
-    new THREE.BoxGeometry(0.03, 0.08, 0.1),
+    new THREE.BoxGeometry(0.04, 0.08, 0.12),
     accentMat,
   );
-  tailTip.position.set(0, 0.4, -0.34);
+  tailTip.position.set(0, 0.49, -0.17);
   group.add(tailTip);
 
   // --- Twin engine exhausts at the rear with a soft additive glow.
