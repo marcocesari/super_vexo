@@ -44,5 +44,7 @@ export const strings = {
     missionCompleteClose: 'Continue Flying',
 
     resetHint: 'Start / R = reset',
+
+    tabletHint: '− / T = Tablet',
   },
 };

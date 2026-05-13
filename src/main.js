@@ -237,6 +237,10 @@ function frame(now) {
       hud.showUpgrades();
       hud.setMissionVisible(true);
       hud.showResetHint();
+      // Start with the Tablet hidden; the hint banner tells the
+      // player how to bring it up. Players who want flight data can
+      // toggle it on with T or the pad's "−" (Select) button.
+      hud.hide();
       // First user gesture → safe to ask for gyro permission on iOS
       // AND to start the audio context (autoplay policy gate).
       input.enableGyro().catch(() => {});
@@ -244,6 +248,10 @@ function frame(now) {
     }
     // Starfield + camera still update behind the title card.
   } else {
+    // Toggle the Tablet: T key or pad "−" (Select).
+    if (input.keyboard.consumeJustPressed(['KeyT']) || input.gamepad.consumeJustPressed(BUTTONS.Select)) {
+      hud.toggle();
+    }
     // Toggle arcade damping: X key or pad X-button.
     if (input.keyboard.consumeJustPressed(['KeyX']) || input.gamepad.consumeJustPressed(BUTTONS.X)) {
       ship.arcadeDamping = !ship.arcadeDamping;

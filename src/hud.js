@@ -70,6 +70,15 @@ export function createHud() {
   `;
   document.body.appendChild(root);
 
+  // Small top-of-screen banner shown WHEN the tablet is hidden, so the
+  // player always knows which button brings it back up. Floats above
+  // the canvas in the top-right corner — out of the play area.
+  const hint = document.createElement('div');
+  hint.id = 'tablet-hint';
+  hint.textContent = strings.hud.tabletHint;
+  hint.hidden = true;
+  document.body.appendChild(hint);
+
   const elVelocity = root.querySelector('[data-velocity]');
   const elOrientation = root.querySelector('[data-orientation]');
   const elFps = root.querySelector('[data-fps]');
@@ -112,6 +121,25 @@ export function createHud() {
 
     show() {
       root.style.display = '';
+      hint.hidden = true;
+    },
+
+    hide() {
+      root.style.display = 'none';
+      hint.hidden = false;
+    },
+
+    /** Toggle the tablet on/off. Returns the new visibility. */
+    toggle() {
+      const willShow = root.style.display === 'none';
+      root.style.display = willShow ? '' : 'none';
+      hint.hidden = willShow;
+      return willShow;
+    },
+
+    /** Force the hint banner to a specific visibility. */
+    setHintVisible(v) {
+      hint.hidden = !v;
     },
 
     /** Show the Fast Travel button (after the title state). */
