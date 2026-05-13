@@ -31,6 +31,7 @@ import { createMissionScreens } from './missionScreens.js';
 import { shipConfig, DEFAULTS as shipConfigDefaults, resetShipConfig } from './shipConfig.js';
 import { createCinematic } from './cinematic.js';
 import { BUTTONS } from './input/gamepad.js';
+import { createDebugPad } from './debugPad.js';
 
 // --- Renderer ---------------------------------------------------------------
 const container = document.getElementById('app');
@@ -189,6 +190,8 @@ let state = cinematic ? STATE.CINEMATIC : STATE.TITLE;
 if (cinematic) titleCard.hide();
 else hud.show();
 
+const debugPad = createDebugPad();
+
 function onCinematicDone() {
   state = STATE.TITLE;
   titleCard.show();
@@ -205,6 +208,11 @@ function frame(now) {
   const rawDt = (now - lastT) / 1000;
   const dt = Math.min(rawDt, 0.1);
   lastT = now;
+
+  // Refresh the diagnostic overlay every frame (no-op when ?debugPad=1
+  // isn't set). Runs before the state branch so cinematic/title also
+  // get live readings.
+  debugPad.update();
 
   if (state === STATE.CINEMATIC) {
     if (input.consumeAnyJustPressed()) {

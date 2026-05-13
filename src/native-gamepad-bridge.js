@@ -61,20 +61,40 @@
     return { pressed: false, touched: false, value: 0 };
   }
 
+  // Tolerant parser for whatever shape Swift sends. The protocol in
+  // BRIDGE.md says `{ p: boolean, v: number }`, but in practice native
+  // hosts have shipped at least four variants: that one, plain numbers
+  // (1/0 or analog 0..1), plain booleans, and the standard DOM shape
+  // `{ pressed: boolean, value: number }`. We accept all four so a
+  // wrapper using any common pattern Just Works.
+  function parseButton(b) {
+    if (b == null) return emptyButton();
+    if (typeof b === 'boolean') {
+      return { pressed: b, touched: b, value: b ? 1 : 0 };
+    }
+    if (typeof b === 'number') {
+      var pressed = b > 0.5;
+      return { pressed: pressed, touched: pressed, value: b };
+    }
+    if (typeof b === 'object') {
+      var p = ('p' in b) ? !!b.p
+            : ('pressed' in b) ? !!b.pressed
+            : false;
+      var v = (typeof b.v === 'number') ? b.v
+            : (typeof b.value === 'number') ? b.value
+            : (p ? 1 : 0);
+      return { pressed: p, touched: p, value: v };
+    }
+    return emptyButton();
+  }
+
   // Build a synthetic Gamepad object matching the Web Gamepad API shape.
   function buildSyntheticGamepad() {
     // 17 buttons: extended standard mapping
     // (A,B,X,Y,L1,R1,L2,R2,Select,Start,L3,R3,Up,Down,Left,Right,Home).
     var buttons = new Array(17);
     for (var i = 0; i < 17; i++) {
-      var b = state.buttons && state.buttons[i];
-      if (b) {
-        var pressed = !!b.p;
-        var value = typeof b.v === 'number' ? b.v : (pressed ? 1 : 0);
-        buttons[i] = { pressed: pressed, touched: pressed, value: value };
-      } else {
-        buttons[i] = emptyButton();
-      }
+      buttons[i] = parseButton(state.buttons && state.buttons[i]);
     }
 
     // 4 axes = left stick X/Y + right stick X/Y. If the native side sends
@@ -102,6 +122,11 @@
 
   // --- APIs called by Swift ------------------------------------------------
 
+  // Most-recently-received raw payload, for the ?debugPad=1 overlay.
+  // Stays `null` until the wrapper calls __nativeGamepadUpdate once.
+  window.__nativeGamepadLastRaw = null;
+  window.__nativeGamepadUpdateCount = 0;
+
   window.__nativeGamepadUpdate = function (incoming) {
     if (!incoming) return;
     state.buttons = Array.isArray(incoming.buttons) ? incoming.buttons : [];
@@ -110,6 +135,8 @@
     state.timestamp = (typeof performance !== 'undefined' && performance.now)
       ? performance.now()
       : Date.now();
+    window.__nativeGamepadLastRaw = incoming;
+    window.__nativeGamepadUpdateCount++;
   };
 
   window.__nativeGamepadConnection = function (connected) {
