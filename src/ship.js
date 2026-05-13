@@ -28,28 +28,38 @@ const COCKPIT_COLOR = 0x1a2a3a; // tinted canopy
 const WING_COLOR    = 0x3a78d8; // arwing blue
 const ACCENT_COLOR  = 0xf5c542; // gold-yellow tips
 
+// One Arwing wing — a long, narrow blade. The Arwing has *four* of these
+// arranged in an X around the fuselage (upper-left, upper-right,
+// lower-left, lower-right), all rooted at the same point on the body.
+// Each one tapers to a point at the outer-trailing corner; we tint the
+// last 25% gold so it reads as the iconic yellow tip without needing a
+// separate cone mesh.
 function makeWingGeometry(side /* +1 right, -1 left */) {
-  // Top-down planform of one wing. X is outboard, Y is forward (+) / aft (-).
-  // The shape sweeps the leading edge back as it goes outboard, like the
-  // Arwing's silhouette in profile.
+  // Top-down planform. X = outboard, Y = forward (+) / aft (-).
   const shape = new THREE.Shape();
-  shape.moveTo(0,    0.25);    // root, leading edge (near nose-side of wing)
-  shape.lineTo(0.95, -0.05);   // tip, leading edge — swept back & out
-  shape.lineTo(0.90, -0.40);   // tip, trailing edge
-  shape.lineTo(0,   -0.35);    // root, trailing edge
+  shape.moveTo(0,     0.20);   // root, leading edge
+  shape.lineTo(1.05, -0.05);   // mid-span, leading edge — slight sweep
+  shape.lineTo(1.20, -0.55);   // tip — long pointed trailing corner
+  shape.lineTo(0,    -0.30);   // root, trailing edge
   shape.closePath();
 
   const geom = new THREE.ExtrudeGeometry(shape, {
     depth: 0.04,
     bevelEnabled: false,
   });
-  // ExtrudeGeometry takes a 2D shape in XY and extrudes along +Z. We want a
-  // wing that's flat in the XZ plane with a small vertical thickness — so
-  // rotate it so the extruded axis becomes +Y.
+  // Extrude is along +Z; rotate so it's the vertical thickness.
   geom.rotateX(-Math.PI / 2);
-  geom.translate(0, -0.02, 0);    // center the slim thickness on y=0
-  if (side === -1) geom.scale(-1, 1, 1); // mirror for left wing
+  geom.translate(0, -0.02, 0);
+  if (side === -1) geom.scale(-1, 1, 1);
   return geom;
+}
+
+// Slim cone used for the gold tip pointer at the trailing corner of
+// each wing. Apex points rearward (-Z).
+function makeTipConeGeometry() {
+  const g = new THREE.ConeGeometry(0.045, 0.28, 10);
+  g.rotateX(-Math.PI / 2);
+  return g;
 }
 
 export function createShip() {
@@ -69,66 +79,110 @@ export function createShip() {
     color: ACCENT_COLOR, roughness: 0.3, metalness: 0.5, emissive: 0x2a1d00,
   });
 
-  // Fuselage: slim elongated box.
+  // --- Fuselage. Two stacked boxes give a faceted "cockpit cowl" look
+  // instead of one flat slab.
   const fuselage = new THREE.Mesh(
-    new THREE.BoxGeometry(0.22, 0.18, 1.0),
+    new THREE.BoxGeometry(0.22, 0.16, 1.0),
     bodyMat,
   );
   group.add(fuselage);
-
-  // Nose: cone tapering to the front.
-  const noseGeom = new THREE.ConeGeometry(0.11, 0.45, 12);
-  noseGeom.rotateX(Math.PI / 2); // apex now points +Z (forward)
-  const nose = new THREE.Mesh(noseGeom, bodyMat);
-  nose.position.z = 0.7;
-  group.add(nose);
-
-  // Cockpit canopy sitting on top of the forward fuselage.
-  const cockpit = new THREE.Mesh(
-    new THREE.BoxGeometry(0.14, 0.1, 0.34),
-    cockpitMat,
-  );
-  cockpit.position.set(0, 0.13, 0.18);
-  group.add(cockpit);
-
-  // Wings — slightly canted up at the tips for an X-shape silhouette.
-  const wingR = new THREE.Mesh(makeWingGeometry(+1), wingMat);
-  wingR.position.set(0.08, 0, -0.05);
-  wingR.rotation.z = -0.12;
-  group.add(wingR);
-  const wingL = new THREE.Mesh(makeWingGeometry(-1), wingMat);
-  wingL.position.set(-0.08, 0, -0.05);
-  wingL.rotation.z = 0.12;
-  group.add(wingL);
-
-  // Wing-tip cones: gold pointers at the trailing-outer corners.
-  function makeTipCone() {
-    const g = new THREE.ConeGeometry(0.06, 0.22, 10);
-    g.rotateX(-Math.PI / 2); // apex points -Z (rearward)
-    return g;
-  }
-  const tipR = new THREE.Mesh(makeTipCone(), accentMat);
-  // tip Z roughly matches the wing trailing edge + dihedral lift.
-  tipR.position.set(0.95 + 0.08, 0.11, -0.5);
-  group.add(tipR);
-  const tipL = new THREE.Mesh(makeTipCone(), accentMat);
-  tipL.position.set(-0.95 - 0.08, 0.11, -0.5);
-  group.add(tipL);
-
-  // Tail fin: small vertical blade on top-rear.
-  const tail = new THREE.Mesh(
-    new THREE.BoxGeometry(0.03, 0.22, 0.22),
+  const upperHull = new THREE.Mesh(
+    new THREE.BoxGeometry(0.18, 0.08, 0.75),
     bodyMat,
   );
-  tail.position.set(0, 0.2, -0.4);
-  group.add(tail);
-  // Yellow accent at the fin's tip.
-  const tailTip = new THREE.Mesh(
-    new THREE.BoxGeometry(0.03, 0.06, 0.08),
+  upperHull.position.set(0, 0.1, -0.05);
+  group.add(upperHull);
+
+  // --- Long pointed nose.
+  const noseGeom = new THREE.ConeGeometry(0.1, 0.6, 12);
+  noseGeom.rotateX(Math.PI / 2); // apex points +Z forward
+  const nose = new THREE.Mesh(noseGeom, bodyMat);
+  nose.position.z = 0.78;
+  group.add(nose);
+
+  // Small fin on top of the nose (visible on the Arwing's profile).
+  const noseFin = new THREE.Mesh(
+    new THREE.BoxGeometry(0.02, 0.1, 0.22),
+    bodyMat,
+  );
+  noseFin.position.set(0, 0.13, 0.55);
+  group.add(noseFin);
+  const noseFinTip = new THREE.Mesh(
+    new THREE.BoxGeometry(0.02, 0.06, 0.06),
     accentMat,
   );
-  tailTip.position.set(0, 0.34, -0.32);
+  noseFinTip.position.set(0, 0.22, 0.55);
+  group.add(noseFinTip);
+
+  // --- Cockpit canopy sitting forward on the upper hull.
+  const cockpit = new THREE.Mesh(
+    new THREE.BoxGeometry(0.14, 0.08, 0.38),
+    cockpitMat,
+  );
+  cockpit.position.set(0, 0.18, 0.18);
+  group.add(cockpit);
+
+  // --- Four wings in an X. Each wing roots at the same point on the
+  // fuselage and rotates around the longitudinal axis to its position.
+  // Roll angle is fairly steep (~50°) so the silhouette reads as an X
+  // from front-on, like the real Arwing.
+  const ROLL = Math.PI * 0.28; // ~50 degrees from horizontal
+  const wingPositions = [
+    { side: +1, roll: -ROLL },        // right upper
+    { side: +1, roll:  ROLL },        // right lower
+    { side: -1, roll:  ROLL },        // left upper
+    { side: -1, roll: -ROLL },        // left lower
+  ];
+  for (const { side, roll } of wingPositions) {
+    const w = new THREE.Mesh(makeWingGeometry(side), wingMat);
+    w.position.set(0, 0, -0.05);
+    w.rotation.z = roll;
+    group.add(w);
+
+    // Gold tip pointer riding on the same root + roll as the wing.
+    const tip = new THREE.Mesh(makeTipConeGeometry(), accentMat);
+    tip.position.set(side * (1.2 + 0.05), 0, -0.55);
+    // Apply the same roll so the tip sits exactly at the wing's outer
+    // trailing corner.
+    tip.position.applyEuler(new THREE.Euler(0, 0, roll));
+    group.add(tip);
+  }
+
+  // --- Vertical tail fin (bigger now to stand out behind the wings).
+  const tail = new THREE.Mesh(
+    new THREE.BoxGeometry(0.03, 0.28, 0.26),
+    bodyMat,
+  );
+  tail.position.set(0, 0.22, -0.42);
+  group.add(tail);
+  const tailTip = new THREE.Mesh(
+    new THREE.BoxGeometry(0.03, 0.08, 0.1),
+    accentMat,
+  );
+  tailTip.position.set(0, 0.4, -0.34);
   group.add(tailTip);
+
+  // --- Twin engine exhausts at the rear with a soft additive glow.
+  const engineGlowMat = new THREE.MeshBasicMaterial({
+    color: 0x6ec1ff,
+    transparent: true,
+    opacity: 0.85,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  for (const x of [-0.085, 0.085]) {
+    const housing = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.08, 0.22),
+      bodyMat,
+    );
+    housing.position.set(x, -0.04, -0.46);
+    group.add(housing);
+    const glowGeom = new THREE.ConeGeometry(0.05, 0.22, 12);
+    glowGeom.rotateX(-Math.PI / 2); // apex points -Z (out the back)
+    const glow = new THREE.Mesh(glowGeom, engineGlowMat);
+    glow.position.set(x, -0.04, -0.7);
+    group.add(glow);
+  }
 
   return {
     mesh: group,
