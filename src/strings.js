@@ -6,6 +6,19 @@ export const strings = {
   title: 'Super Vexo and the Mystery of the System',
   pressAnyKey: 'Press any key to start',
 
+  intro: {
+    skip: 'Press any key to skip',
+    beats: [
+      'Long ago, in the kingdom of Astra…',
+      'The kingdom lived in peace.',
+      'Until Lord Draxos came.',
+      'He kidnapped Princess Astra.',
+      'And vanished into deep space.',
+      'The Scientists handed Vexo the Super Mega Tablet.\n\nCan you save her?',
+    ],
+  },
+
+
   hud: {
     appName: 'Tablet',
     velocity: 'VEL',

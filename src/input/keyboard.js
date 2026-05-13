@@ -66,6 +66,13 @@ export function createKeyboard() {
       }
       return false;
     },
+    /** Drop everything in `justPressed` without observing it. Useful
+     *  when one keypress logically belongs to a UI step that's already
+     *  consumed it (e.g. "skip cinematic"); we don't want the next
+     *  game-loop frame to also see that same key as "just pressed". */
+    clearJustPressed() {
+      justPressed.clear();
+    },
     dispose() {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);

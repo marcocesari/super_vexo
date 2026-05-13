@@ -2,6 +2,40 @@
 
 Most recent entries on top.
 
+## 2026-05-11 — M5+ pick: Opening Cinematic
+
+- Picked the opening castle-attack intro from program.md's M5+ menu —
+  Marco's "polish pass before showing friends" option.
+- **Plan:** 5–6 short scenes, ~20s total, fully skippable with any
+  key. Mostly text-on-stylized-background with simple 3D vignettes
+  for visual punch. State machine adds a new `CINEMATIC` state
+  before `TITLE`.
+- **Scenes:**
+  1. "Long ago, in the kingdom of Astra…" — peaceful blue-green
+     planet rotating in a dark starfield.
+  2. "The kingdom lived in peace." — soft ambient particles.
+  3. "Until Lord Draxos came." — dark angular ship enters from off
+     screen, ominous red glow.
+  4. "He kidnapped Princess Astra." — abduction beam from ship to
+     planet.
+  5. "And vanished into deep space." — warp-flash, both vanish.
+  6. "The Scientists handed Vexo the Super Mega Tablet. Can you
+     save her?" — Tablet shape in foreground, transitions into the
+     normal title card.
+- **Procedural assets:** new `world/kingdomPlanet.js` (green-blue
+  earth-like sphere via canvas texture) and `world/draxosShip.js`
+  (stretched octahedron + glowing red core). No asset files.
+- **Audio:** dramatic stings via the existing `audio.chirp()` and
+  `audio.fanfare()`. Two new helpers for low rumbles. Audio context
+  starts on the first user gesture inside the cinematic (a
+  "Press any key" skip prompt) just like M2's title-card behavior.
+- **Educational note:** scene/state management + ease functions
+  (cubic, smoothstep). Goes into LEARNINGS.
+- **Test:** Playwright smoke verifies pressing Space during the
+  cinematic skips it and arrives at the existing title card; no
+  console errors.
+- **Stop at boundary.** No commit until human confirms.
+
 ## 2026-05-11 — M4 close (approved by human)
 
 - All M4 minimum criteria green, smoke passes 17/17 (M4 + reset), and

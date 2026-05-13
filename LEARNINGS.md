@@ -5,6 +5,71 @@ Marco — read top to bottom.
 
 ---
 
+## M5+ — Opening cinematic
+
+### 1. Easing functions
+
+A linear animation feels mechanical. Easing functions take a "raw
+progress" number `t ∈ [0, 1]` and bend it into a curve so motion
+**accelerates and decelerates** like real physical things.
+
+We use two in `cinematic.js`:
+
+    smoothstep(t)       = t² (3 - 2t)
+    easeInOutCubic(t)   = t < .5 ? 4t³ : 1 - (-2t + 2)³ / 2
+
+Both start slow, speed up in the middle, and end slow. The difference
+is shape — cubic is more aggressive in the middle. Try graphing them
+on a calculator if you want to see the curves.
+
+When you use them is straightforward:
+
+    const start = 200;
+    const end = 70;
+    ship.x = start + (end - start) * smoothstep(local01);
+
+`local01` is "how far into this scene we are, 0 to 1". The easing
+function makes the ship enter the frame with a satisfying decelerating
+arc rather than a constant drift.
+
+### 2. A second Three.js scene
+
+The cinematic doesn't share the game's scene — it builds its own,
+with its own camera, its own lights, its own starfield. Both scenes
+exist in memory at once; the game loop renders **whichever one the
+state machine asks for**. When the cinematic finishes, the renderer
+switches to the game scene and the cinematic scene is just left there
+(it's small; garbage-collecting it doesn't earn anything).
+
+Why this matters: a renderer can render any scene any frame. They're
+just bags of objects + a camera. Once you internalize that, things
+like "split screen" or "picture in picture" or "minimap" stop feeling
+mysterious — they're just multiple `renderer.render(...)` calls per
+frame.
+
+### 3. One keystroke, two effects — the "consume" pattern
+
+When the player presses Space during the cinematic, two things could
+react:
+- The cinematic's skip handler (skip the intro).
+- The keyboard wrapper's `justPressed` queue (which the title-card
+  step reads to start the game).
+
+If we did nothing, ONE Space would skip the cinematic AND immediately
+start the game — the player would never see the title.
+
+Fix: after the skip handler runs, call `input.clearJustPressed()`.
+This drains the queue so the next title-card frame sees an empty
+buffer and waits for a fresh press.
+
+This is the **consume** pattern in event-driven UIs everywhere:
+whoever handles an event removes it from any shared queue so no other
+handler reacts to the same event. The same pattern is why M1's
+`consumeJustPressed(['KeyX'])` is named "consume" — it both reads the
+press and removes it so later code in the frame can't double-fire.
+
+---
+
 ## M4 — The Mars Rover Mission
 
 ### 1. State machines

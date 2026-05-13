@@ -93,5 +93,10 @@ export function createInput() {
     activeSources() {
       return lastSources;
     },
+
+    /** Forward the keyboard's clear so callers don't reach two layers in. */
+    clearJustPressed() {
+      keyboard.clearJustPressed();
+    },
   };
 }
