@@ -143,6 +143,7 @@ export function createShip() {
     color: 0x6ec1ff, transparent: true, opacity: 0.85,
     blending: THREE.AdditiveBlending, depthWrite: false,
   });
+  const glows = [];
   for (const x of [-0.085, 0.085]) {
     const housing = new THREE.Mesh(
       new THREE.BoxGeometry(0.08, 0.08, 0.22), bodyMat,
@@ -153,6 +154,8 @@ export function createShip() {
     glowGeom.rotateX(-Math.PI / 2);
     const glow = new THREE.Mesh(glowGeom, engineGlowMat);
     glow.position.set(x, -0.04, -0.7);
+    glow.visible = false;        // unlit until thrust starts
+    glows.push(glow);
     group.add(glow);
   }
 
@@ -160,6 +163,11 @@ export function createShip() {
     mesh: group,
     velocity: new THREE.Vector3(),
     arcadeDamping: false,
+    // Engine flame: meshes + shared material so updateShip can drive
+    // them, and `flame` — the eased 0..1 intensity (0 = no flame).
+    glows,
+    glowMat: engineGlowMat,
+    flame: 0,
   };
 }
 
@@ -185,6 +193,9 @@ export function updateShip(ship, input, dt) {
   applyLocalRotation(ship.mesh.quaternion, _localAxis.set(0, 1, 0), input.yaw * shipConfig.yawRate * dt);
   applyLocalRotation(ship.mesh.quaternion, _localAxis.set(0, 0, 1), input.roll * shipConfig.rollRate * dt);
   ship.mesh.quaternion.normalize();
+
+  // --- Engine flame: builds up while thrusting, dies out when braking.
+  updateFlame(ship, input.throttle, dt);
 
   // --- Translation: throttle pushes along the ship's local forward (+Z).
   // The joystick must be pushed forward to fly. The moment it isn't
@@ -213,6 +224,29 @@ export function updateShip(ship, input, dt) {
 
   // position += velocity * dt
   ship.mesh.position.addScaledVector(ship.velocity, dt);
+}
+
+// Drive the twin engine flames. `ship.flame` eases toward the throttle:
+// it ramps UP fast when thrusting and dies DOWN fast when braking, like
+// real exhaust catching and going out. The eased level then sets the
+// cones' length (scale) and brightness (opacity), with a small flicker
+// so a lit flame never looks frozen.
+function updateFlame(ship, throttle, dt) {
+  const target = throttle > 0 ? throttle : 0;
+  // Exponential approach — quicker to ignite than to extinguish.
+  const rate = target > ship.flame ? 18 : 11;
+  ship.flame += (target - ship.flame) * Math.min(1, rate * dt);
+  if (ship.flame < 0.002) ship.flame = 0;
+
+  const lit = ship.flame > 0;
+  // Flicker only while actually burning.
+  const flicker = lit ? 0.85 + 0.15 * Math.sin(performance.now() * 0.05) : 1;
+  ship.glowMat.opacity = 0.85 * ship.flame * flicker;
+  for (const glow of ship.glows) {
+    glow.visible = lit;
+    // Stretch the cone back as thrust climbs; flicker its length too.
+    glow.scale.set(ship.flame, ship.flame, (0.4 + ship.flame) * flicker);
+  }
 }
 
 // Multiply `q` on the right by a rotation of `angle` around the local
