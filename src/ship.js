@@ -168,6 +168,9 @@ export function createShip() {
     glows,
     glowMat: engineGlowMat,
     flame: 0,
+    // True while the stick isn't pushed forward — main.js uses it to
+    // keep velocity zeroed after collision resolution.
+    braking: true,
   };
 }
 
@@ -175,6 +178,11 @@ export function createShip() {
 const _localAxis = new THREE.Vector3();
 const _deltaQ = new THREE.Quaternion();
 const _forward = new THREE.Vector3();
+
+// Minimum forward throttle that counts as "stick pushed forward". Below
+// it the ship brakes and the flames go out — keeps stick drift from
+// nudging the ship or leaving the engines lit.
+const FORWARD_THRESHOLD = 0.25;
 
 /**
  * Apply one frame's input to the ship.
@@ -194,16 +202,24 @@ export function updateShip(ship, input, dt) {
   applyLocalRotation(ship.mesh.quaternion, _localAxis.set(0, 0, 1), input.roll * shipConfig.rollRate * dt);
   ship.mesh.quaternion.normalize();
 
-  // --- Engine flame: builds up while thrusting, dies out when braking.
-  updateFlame(ship, input.throttle, dt);
+  // The ship only flies when the stick is pushed CLEARLY forward. A
+  // throttle below this counts as "not forward" — that covers a centred
+  // stick, a pulled-back stick, and small analog drift that would
+  // otherwise creep the ship along and keep the flames lit.
+  const thrusting = input.throttle >= FORWARD_THRESHOLD;
+
+  // --- Engine flame: builds up while thrusting, dies out otherwise.
+  updateFlame(ship, thrusting ? input.throttle : 0, dt);
 
   // --- Translation: throttle pushes along the ship's local forward (+Z).
-  // The joystick must be pushed forward to fly. The moment it isn't
-  // (centered or pulled back) the ship stops dead — no coasting.
-  if (input.throttle <= 0) {
+  // Not pushed forward → stop dead this frame. `braking` tells main.js to
+  // re-zero velocity after collision resolution so nothing creeps back.
+  if (!thrusting) {
     ship.velocity.set(0, 0, 0);
+    ship.braking = true;
     return;
   }
+  ship.braking = false;
 
   _forward.set(0, 0, 1).applyQuaternion(ship.mesh.quaternion);
 

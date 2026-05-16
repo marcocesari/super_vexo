@@ -293,7 +293,7 @@ function frame(now) {
       // Definitive brake: with the stick not pushed forward the ship is
       // fully stopped — re-zero velocity so a collision bounce this frame
       // can't give it any residual motion.
-      if (axes.throttle <= 0) ship.velocity.set(0, 0, 0);
+      if (ship.braking) ship.velocity.set(0, 0, 0);
     }
 
     // Mission state: drive hack progress from H key OR pad L1.
