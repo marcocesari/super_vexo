@@ -23,9 +23,12 @@ import { shipConfig } from './shipConfig.js';
 // primitives so it stays in the procedural-assets style the rest of the
 // project uses — no external model files.
 //
-// Modelled on the Star Fox Arwing: a white faceted hull with bold blue
-// trim, a deep-blue bubble canopy, wings raised at a strong dihedral
-// with wingtip laser cannons, and glowing blue G-diffuser pods.
+// Modelled on the Star Fox Arwing. The defining shapes: a slim angular
+// white hull with a long sharp nose, near-horizontal swept wings (only a
+// gentle dihedral), and a big swept VERTICAL FIN at each wingtip that
+// extends both above and below the wing — that wingtip fin is the
+// silhouette people recognise. Blue trim, a tinted bubble canopy, and
+// glowing blue G-diffuser pods finish it.
 
 const HULL_COLOR    = 0xeef1f5; // bright white hull + wings
 const PANEL_COLOR   = 0x7c8896; // darker grey belly / mechanical panels
@@ -36,40 +39,58 @@ const GLOW_BLUE     = 0x49abff; // glowing blue (G-diffuser pods + rings)
 
 // Wing planform, built for the RIGHT wing (+X outboard). The wing is two
 // coplanar panels sharing an edge: a blue leading-edge wedge ('stripe')
-// and the white main panel ('main'). Shape coords: X = outboard,
-// Y = forward(+) / aft(-).
+// and the white main panel ('main'). It is a swept TRAPEZOID — wide root,
+// narrower-but-still-square tip — not a sharp delta. Shape coords:
+// X = outboard, Y = forward(+) / aft(-).
 function makeWingPanel(part) {
   const s = new THREE.Shape();
   if (part === 'stripe') {
-    s.moveTo(0.13,  0.44);   // root, leading edge
-    s.lineTo(1.20,  0.04);   // tip, leading edge — swept back
-    s.lineTo(1.17, -0.12);   // tip, inner edge of the stripe
-    s.lineTo(0.13,  0.22);   // root, inner edge of the stripe
+    s.moveTo(0.15,  0.34);   // root, leading edge
+    s.lineTo(1.06,  0.06);   // tip, leading edge — modest sweep
+    s.lineTo(1.06, -0.05);   // tip, inner edge of the stripe
+    s.lineTo(0.15,  0.17);   // root, inner edge of the stripe
   } else {
-    s.moveTo(0.13,  0.22);   // root, shared edge with the stripe
-    s.lineTo(1.17, -0.12);   // tip, shared edge
-    s.lineTo(1.18, -0.48);   // tip, trailing edge
-    s.lineTo(0.13, -0.56);   // root, trailing edge
+    s.moveTo(0.15,  0.17);   // root, shared edge with the stripe
+    s.lineTo(1.06, -0.05);   // tip, shared edge
+    s.lineTo(1.06, -0.38);   // tip, trailing edge
+    s.lineTo(0.15, -0.48);   // root, trailing edge
   }
   s.closePath();
-  const g = new THREE.ExtrudeGeometry(s, { depth: 0.05, bevelEnabled: false });
-  g.rotateX(Math.PI / 2);    // lie flat — shape Y → world Z (forward)
-  g.translate(0, 0.025, 0);  // centre the extruded thickness on Y = 0
+  const g = new THREE.ExtrudeGeometry(s, { depth: 0.045, bevelEnabled: false });
+  g.rotateX(Math.PI / 2);     // lie flat — shape Y → world Z (forward)
+  g.translate(0, 0.0225, 0);  // centre the extruded thickness on Y = 0
   return g;
 }
 
-// Vertical wingtip fin that carries the laser cannon. Side-profile
-// triangle (coords: X = forward(+) / aft(-), Y = up) extruded thin, then
-// turned so the thin axis runs along X.
-function makeWingletGeometry() {
+// The Arwing's signature wingtip fin: a swept vertical blade that
+// extends both ABOVE and BELOW the wing. Side-profile pentagon
+// (X = forward(+) / aft(-), Y = up) extruded thin, then turned so the
+// thin axis runs along X.
+function makeWingtipFinGeometry() {
   const s = new THREE.Shape();
-  s.moveTo( 0.22,  0.00);    // leading, at wing level
-  s.lineTo( 0.14,  0.36);    // top
-  s.lineTo(-0.26,  0.00);    // trailing, swept back
+  s.moveTo( 0.26,  0.02);    // leading point
+  s.lineTo(-0.06,  0.48);    // top
+  s.lineTo(-0.38,  0.12);    // upper trailing
+  s.lineTo(-0.34, -0.12);    // lower trailing
+  s.lineTo(-0.08, -0.32);    // bottom
   s.closePath();
   const g = new THREE.ExtrudeGeometry(s, { depth: 0.05, bevelEnabled: false });
   g.rotateY(-Math.PI / 2);   // thin extrusion now runs along X
   g.translate(0.025, 0, 0);  // centre the thickness on X = 0
+  return g;
+}
+
+// A swept fin from a side-profile triangle (X = forward/aft, Y = up),
+// extruded thin along X. Used for the central dorsal tail fin.
+function makeSweptFinGeometry(len, height) {
+  const s = new THREE.Shape();
+  s.moveTo( 0.00, 0.00);
+  s.lineTo(-0.06, height);
+  s.lineTo(-len,  0.00);
+  s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth: 0.035, bevelEnabled: false });
+  g.rotateY(-Math.PI / 2);
+  g.translate(0.0175, 0, 0);
   return g;
 }
 
@@ -105,54 +126,50 @@ export function createShip() {
     emissive: GLOW_BLUE, emissiveIntensity: 1.4, side: THREE.DoubleSide,
   });
 
-  // --- Fuselage: a faceted hexagonal hull, flattened so it reads wider
-  // than tall — the sleek Arwing profile.
-  const bodyGeom = new THREE.CylinderGeometry(0.17, 0.17, 1.0, 6);
+  // --- Fuselage: a slim faceted hexagonal hull, flattened so it reads
+  // wider than tall, tapering slightly toward the engine.
+  const bodyGeom = new THREE.CylinderGeometry(0.155, 0.13, 0.95, 6);
   bodyGeom.rotateX(Math.PI / 2);            // hex axis now along Z
   const body = new THREE.Mesh(bodyGeom, hullMat);
-  body.scale.set(1.3, 0.74, 1);             // flatten: wide + low
+  body.scale.set(1.3, 0.66, 1);             // flatten: wide + low
   body.position.z = -0.05;
   group.add(body);
 
-  // --- Sharp faceted nose cone, same flattened cross-section.
-  const noseGeom = new THREE.ConeGeometry(0.17, 0.7, 6);
+  // --- Long, sharp faceted nose cone — the slim Arwing snout.
+  const noseGeom = new THREE.ConeGeometry(0.155, 0.86, 6);
   noseGeom.rotateX(Math.PI / 2);            // apex points +Z (forward)
   const nose = new THREE.Mesh(noseGeom, hullMat);
-  nose.scale.set(1.3, 0.74, 1);
-  nose.position.z = 0.80;                   // base meets the body front
+  nose.scale.set(1.3, 0.66, 1);
+  nose.position.z = 0.85;                   // base meets the body front
   group.add(nose);
 
   // Belly panel — a darker slab under the hull for contrast.
   const belly = new THREE.Mesh(
-    new THREE.BoxGeometry(0.34, 0.08, 0.86), panelMat,
+    new THREE.BoxGeometry(0.3, 0.07, 0.82), panelMat,
   );
-  belly.position.set(0, -0.13, -0.04);
+  belly.position.set(0, -0.115, -0.05);
   group.add(belly);
 
-  // --- Bubble canopy: a tinted-glass teardrop on the forward hull.
+  // --- Bubble canopy: a low tinted-glass teardrop on the forward hull.
   const canopy = new THREE.Mesh(
-    new THREE.SphereGeometry(0.16, 18, 12), cockpitMat,
+    new THREE.SphereGeometry(0.14, 18, 12), cockpitMat,
   );
-  canopy.scale.set(0.9, 0.66, 1.6);
-  canopy.position.set(0, 0.13, 0.16);
+  canopy.scale.set(0.86, 0.6, 1.7);
+  canopy.position.set(0, 0.1, 0.2);
   group.add(canopy);
 
-  // Small swept dorsal fin behind the canopy. Side-profile triangle
-  // (X = forward/aft, Y = up) extruded thin along X.
-  const dorsalShape = new THREE.Shape();
-  dorsalShape.moveTo( 0.00, 0.00);
-  dorsalShape.lineTo(-0.03, 0.24);
-  dorsalShape.lineTo(-0.30, 0.00);
-  dorsalShape.closePath();
-  const dorsalGeom = new THREE.ExtrudeGeometry(dorsalShape, {
-    depth: 0.035, bevelEnabled: false,
-  });
-  dorsalGeom.rotateY(-Math.PI / 2);
-  dorsalGeom.translate(0.0175, 0.12, -0.16);
-  group.add(new THREE.Mesh(dorsalGeom, hullMat));
+  // --- Central dorsal tail fin near the rear of the hull.
+  const tailFin = new THREE.Mesh(makeSweptFinGeometry(0.4, 0.32), hullMat);
+  tailFin.position.set(0, 0.08, -0.18);
+  group.add(tailFin);
+  const tailFinTip = new THREE.Mesh(
+    new THREE.BoxGeometry(0.035, 0.07, 0.12), accentMat,
+  );
+  tailFinTip.position.set(0, 0.39, -0.26);
+  group.add(tailFinTip);
 
-  // --- Wings: one per side, each its own group so the panels, wingtip
-  // fin, laser cannon and G-diffuser all share the wing's upward
+  // --- Wings: one per side, each its own group so the panel, wingtip
+  // fin, laser cannon and G-diffuser all share the wing's gentle
   // dihedral. The left wing is an X-mirror of the right.
   for (const side of [+1, -1]) {
     const wing = new THREE.Group();
@@ -160,36 +177,43 @@ export function createShip() {
     wing.add(new THREE.Mesh(makeWingPanel('main'),   hullMat));
     wing.add(new THREE.Mesh(makeWingPanel('stripe'), stripeMat));
 
-    // Vertical wingtip fin.
-    const winglet = new THREE.Mesh(makeWingletGeometry(), panelMat);
-    winglet.position.set(1.16, -0.01, -0.12);
-    wing.add(winglet);
+    // Big swept wingtip fin — extends above and below the wing.
+    const fin = new THREE.Mesh(makeWingtipFinGeometry(), hullMat);
+    fin.position.set(1.05, 0, -0.08);
+    wing.add(fin);
+    // Blue accent strip up the fin's leading edge.
+    const finStripe = new THREE.Mesh(
+      new THREE.BoxGeometry(0.06, 0.5, 0.05), stripeMat,
+    );
+    finStripe.position.set(1.05, 0.08, 0.12);
+    finStripe.rotation.x = -0.5;
+    wing.add(finStripe);
 
     // Laser cannon: a slim barrel on the wingtip, gold-tipped, aimed
     // forward past the wing's leading edge.
-    const barrelGeom = new THREE.CylinderGeometry(0.03, 0.045, 0.62, 10);
+    const barrelGeom = new THREE.CylinderGeometry(0.028, 0.04, 0.56, 10);
     barrelGeom.rotateX(Math.PI / 2);          // lie along Z
     const barrel = new THREE.Mesh(barrelGeom, panelMat);
-    barrel.position.set(1.16, 0.01, 0.30);
+    barrel.position.set(1.05, 0.0, 0.3);
     wing.add(barrel);
     const barrelTip = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.032, 0.022, 0.16, 10), accentMat,
+      new THREE.CylinderGeometry(0.03, 0.02, 0.15, 10), accentMat,
     );
     barrelTip.rotation.x = Math.PI / 2;
-    barrelTip.position.set(1.16, 0.01, 0.64);
+    barrelTip.position.set(1.05, 0.0, 0.62);
     wing.add(barrelTip);
 
     // Glowing blue G-diffuser pod at the wing root.
     const gdiff = new THREE.Mesh(
-      new THREE.BoxGeometry(0.15, 0.12, 0.4), gdiffMat,
+      new THREE.BoxGeometry(0.14, 0.11, 0.38), gdiffMat,
     );
-    gdiff.position.set(0.22, -0.02, -0.3);
+    gdiff.position.set(0.21, -0.02, -0.28);
     wing.add(gdiff);
 
-    // Mount the wing and give it a strong upward dihedral.
-    wing.position.set(side * 0.13, 0.04, -0.08);
+    // Mount the wing nearly horizontal — only a gentle upward dihedral.
+    wing.position.set(side * 0.12, 0.0, -0.05);
     if (side === -1) wing.scale.x = -1;
-    wing.rotation.z = side * 0.4;             // ~23° up
+    wing.rotation.z = side * 0.14;             // ~8° up
     group.add(wing);
   }
 
@@ -199,25 +223,25 @@ export function createShip() {
     blending: THREE.AdditiveBlending, depthWrite: false,
   });
   const glows = [];
-  for (const x of [-0.12, 0.12]) {
-    const nacelleGeom = new THREE.CylinderGeometry(0.105, 0.085, 0.34, 8);
+  for (const x of [-0.09, 0.09]) {
+    const nacelleGeom = new THREE.CylinderGeometry(0.095, 0.075, 0.32, 8);
     nacelleGeom.rotateX(Math.PI / 2);
     const nacelle = new THREE.Mesh(nacelleGeom, panelMat);
-    nacelle.position.set(x, -0.02, -0.62);
+    nacelle.position.set(x, -0.02, -0.6);
     group.add(nacelle);
 
     // Glowing exhaust ring inside the nacelle mouth.
-    const ringGeom = new THREE.CylinderGeometry(0.072, 0.072, 0.06, 8);
+    const ringGeom = new THREE.CylinderGeometry(0.065, 0.065, 0.06, 8);
     ringGeom.rotateX(Math.PI / 2);
     const ring = new THREE.Mesh(ringGeom, gdiffMat);
-    ring.position.set(x, -0.02, -0.77);
+    ring.position.set(x, -0.02, -0.74);
     group.add(ring);
 
     // The flame cone itself — driven by updateFlame().
-    const glowGeom = new THREE.ConeGeometry(0.07, 0.36, 14);
+    const glowGeom = new THREE.ConeGeometry(0.065, 0.34, 14);
     glowGeom.rotateX(-Math.PI / 2);           // apex points -Z (aft)
     const glow = new THREE.Mesh(glowGeom, engineGlowMat);
-    glow.position.set(x, -0.02, -0.98);
+    glow.position.set(x, -0.02, -0.94);
     glow.visible = false;                     // unlit until thrust starts
     glows.push(glow);
     group.add(glow);
