@@ -46,13 +46,13 @@ function makeWingPanel(part) {
   const s = new THREE.Shape();
   if (part === 'stripe') {
     s.moveTo(0.15,  0.34);   // root, leading edge
-    s.lineTo(1.06,  0.06);   // tip, leading edge — modest sweep
-    s.lineTo(1.06, -0.05);   // tip, inner edge of the stripe
+    s.lineTo(0.70,  0.13);   // tip, leading edge — modest sweep
+    s.lineTo(0.70,  0.02);   // tip, inner edge of the stripe
     s.lineTo(0.15,  0.17);   // root, inner edge of the stripe
   } else {
     s.moveTo(0.15,  0.17);   // root, shared edge with the stripe
-    s.lineTo(1.06, -0.05);   // tip, shared edge
-    s.lineTo(1.06, -0.38);   // tip, trailing edge
+    s.lineTo(0.70,  0.02);   // tip, shared edge
+    s.lineTo(0.70, -0.32);   // tip, trailing edge
     s.lineTo(0.15, -0.48);   // root, trailing edge
   }
   s.closePath();
@@ -128,44 +128,44 @@ export function createShip() {
 
   // --- Fuselage: a slim faceted hexagonal hull, flattened so it reads
   // wider than tall, tapering slightly toward the engine.
-  const bodyGeom = new THREE.CylinderGeometry(0.155, 0.13, 0.95, 6);
+  const bodyGeom = new THREE.CylinderGeometry(0.22, 0.18, 1.05, 6);
   bodyGeom.rotateX(Math.PI / 2);            // hex axis now along Z
   const body = new THREE.Mesh(bodyGeom, hullMat);
-  body.scale.set(1.3, 0.66, 1);             // flatten: wide + low
+  body.scale.set(1.3, 0.7, 1);              // flatten: wide + low
   body.position.z = -0.05;
   group.add(body);
 
   // --- Long, sharp faceted nose cone — the slim Arwing snout.
-  const noseGeom = new THREE.ConeGeometry(0.155, 0.86, 6);
+  const noseGeom = new THREE.ConeGeometry(0.22, 0.92, 6);
   noseGeom.rotateX(Math.PI / 2);            // apex points +Z (forward)
   const nose = new THREE.Mesh(noseGeom, hullMat);
-  nose.scale.set(1.3, 0.66, 1);
-  nose.position.z = 0.85;                   // base meets the body front
+  nose.scale.set(1.3, 0.7, 1);
+  nose.position.z = 0.935;                  // base meets the body front
   group.add(nose);
 
   // Belly panel — a darker slab under the hull for contrast.
   const belly = new THREE.Mesh(
-    new THREE.BoxGeometry(0.3, 0.07, 0.82), panelMat,
+    new THREE.BoxGeometry(0.42, 0.09, 0.92), panelMat,
   );
-  belly.position.set(0, -0.115, -0.05);
+  belly.position.set(0, -0.16, -0.05);
   group.add(belly);
 
   // --- Bubble canopy: a low tinted-glass teardrop on the forward hull.
   const canopy = new THREE.Mesh(
-    new THREE.SphereGeometry(0.14, 18, 12), cockpitMat,
+    new THREE.SphereGeometry(0.19, 18, 12), cockpitMat,
   );
   canopy.scale.set(0.86, 0.6, 1.7);
-  canopy.position.set(0, 0.1, 0.2);
+  canopy.position.set(0, 0.13, 0.22);
   group.add(canopy);
 
   // --- Central dorsal tail fin near the rear of the hull.
-  const tailFin = new THREE.Mesh(makeSweptFinGeometry(0.4, 0.32), hullMat);
-  tailFin.position.set(0, 0.08, -0.18);
+  const tailFin = new THREE.Mesh(makeSweptFinGeometry(0.46, 0.36), hullMat);
+  tailFin.position.set(0, 0.12, -0.2);
   group.add(tailFin);
   const tailFinTip = new THREE.Mesh(
-    new THREE.BoxGeometry(0.035, 0.07, 0.12), accentMat,
+    new THREE.BoxGeometry(0.04, 0.08, 0.13), accentMat,
   );
-  tailFinTip.position.set(0, 0.39, -0.26);
+  tailFinTip.position.set(0, 0.47, -0.29);
   group.add(tailFinTip);
 
   // --- Wings: one per side, each its own group so the panel, wingtip
@@ -179,13 +179,13 @@ export function createShip() {
 
     // Big swept wingtip fin — extends above and below the wing.
     const fin = new THREE.Mesh(makeWingtipFinGeometry(), hullMat);
-    fin.position.set(1.05, 0, -0.08);
+    fin.position.set(0.69, 0, -0.08);
     wing.add(fin);
     // Blue accent strip up the fin's leading edge.
     const finStripe = new THREE.Mesh(
       new THREE.BoxGeometry(0.06, 0.5, 0.05), stripeMat,
     );
-    finStripe.position.set(1.05, 0.08, 0.12);
+    finStripe.position.set(0.69, 0.08, 0.12);
     finStripe.rotation.x = -0.5;
     wing.add(finStripe);
 
@@ -194,24 +194,24 @@ export function createShip() {
     const barrelGeom = new THREE.CylinderGeometry(0.028, 0.04, 0.56, 10);
     barrelGeom.rotateX(Math.PI / 2);          // lie along Z
     const barrel = new THREE.Mesh(barrelGeom, panelMat);
-    barrel.position.set(1.05, 0.0, 0.3);
+    barrel.position.set(0.69, 0.0, 0.3);
     wing.add(barrel);
     const barrelTip = new THREE.Mesh(
       new THREE.CylinderGeometry(0.03, 0.02, 0.15, 10), accentMat,
     );
     barrelTip.rotation.x = Math.PI / 2;
-    barrelTip.position.set(1.05, 0.0, 0.62);
+    barrelTip.position.set(0.69, 0.0, 0.62);
     wing.add(barrelTip);
 
     // Glowing blue G-diffuser pod at the wing root.
     const gdiff = new THREE.Mesh(
-      new THREE.BoxGeometry(0.14, 0.11, 0.38), gdiffMat,
+      new THREE.BoxGeometry(0.16, 0.13, 0.4), gdiffMat,
     );
-    gdiff.position.set(0.21, -0.02, -0.28);
+    gdiff.position.set(0.28, -0.02, -0.28);
     wing.add(gdiff);
 
     // Mount the wing nearly horizontal — only a gentle upward dihedral.
-    wing.position.set(side * 0.12, 0.0, -0.05);
+    wing.position.set(side * 0.16, 0.0, -0.05);
     if (side === -1) wing.scale.x = -1;
     wing.rotation.z = side * 0.14;             // ~8° up
     group.add(wing);
@@ -223,25 +223,25 @@ export function createShip() {
     blending: THREE.AdditiveBlending, depthWrite: false,
   });
   const glows = [];
-  for (const x of [-0.09, 0.09]) {
-    const nacelleGeom = new THREE.CylinderGeometry(0.095, 0.075, 0.32, 8);
+  for (const x of [-0.12, 0.12]) {
+    const nacelleGeom = new THREE.CylinderGeometry(0.12, 0.095, 0.36, 8);
     nacelleGeom.rotateX(Math.PI / 2);
     const nacelle = new THREE.Mesh(nacelleGeom, panelMat);
-    nacelle.position.set(x, -0.02, -0.6);
+    nacelle.position.set(x, -0.03, -0.66);
     group.add(nacelle);
 
     // Glowing exhaust ring inside the nacelle mouth.
-    const ringGeom = new THREE.CylinderGeometry(0.065, 0.065, 0.06, 8);
+    const ringGeom = new THREE.CylinderGeometry(0.082, 0.082, 0.07, 8);
     ringGeom.rotateX(Math.PI / 2);
     const ring = new THREE.Mesh(ringGeom, gdiffMat);
-    ring.position.set(x, -0.02, -0.74);
+    ring.position.set(x, -0.03, -0.82);
     group.add(ring);
 
     // The flame cone itself — driven by updateFlame().
-    const glowGeom = new THREE.ConeGeometry(0.065, 0.34, 14);
+    const glowGeom = new THREE.ConeGeometry(0.08, 0.38, 14);
     glowGeom.rotateX(-Math.PI / 2);           // apex points -Z (aft)
     const glow = new THREE.Mesh(glowGeom, engineGlowMat);
-    glow.position.set(x, -0.02, -0.94);
+    glow.position.set(x, -0.03, -1.04);
     glow.visible = false;                     // unlit until thrust starts
     glows.push(glow);
     group.add(glow);
