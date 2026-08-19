@@ -189,7 +189,11 @@ const MENU_SCROLL_SPEED = 900;
 // CINEMATIC (opening intro) → TITLE → FLY. `?skipIntro=1` skips the cinematic.
 const STATE = { CINEMATIC: 'cinematic', TITLE: 'title', FLY: 'fly' };
 
-const skipIntro = new URLSearchParams(window.location.search).get('skipIntro') === '1';
+const params = new URLSearchParams(window.location.search);
+const skipIntro = params.get('skipIntro') === '1';
+// `?land=1` starts the game already parked over Via Giuseppe Impastato,
+// for showing the place off without flying out to Earth first.
+const startLanded = params.get('land') === '1';
 const cinematic = skipIntro ? null : createCinematic({ renderer });
 let state = cinematic ? STATE.CINEMATIC : STATE.TITLE;
 
@@ -254,6 +258,7 @@ function frame(now) {
       // AND to start the audio context (autoplay policy gate).
       input.enableGyro().catch(() => {});
       audio.start();
+      if (startLanded) surface.enter(ship);
     }
     // Starfield + camera still update behind the title card.
   } else {

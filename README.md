@@ -66,6 +66,14 @@ on a real street: **Via Giuseppe Impastato, Castel Maggiore (Bologna)**, built
 life-size at one game unit per metre. The blue ring and beacon mark number 28.
 Climb back above 620 m and you're in orbit again.
 
+There's no button to press: touching the atmosphere lands you. The blue glow
+around the planet is the atmosphere shell at 116 units, and the landing fires
+at 134 — so if you ever fly *through* Earth and see blue, you're running a
+build without this feature.
+
+To go straight there without the flight out, add `?land=1` to the URL
+(`http://localhost:5173/?skipIntro=1&land=1`).
+
 The street layout and building footprints come from OpenStreetMap; heights,
 colours and materials were matched to what Street View shows on the ground.
 Re-scan the same place (or a different one) with:
