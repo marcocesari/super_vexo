@@ -35,8 +35,17 @@ function makeFileUrlSafe() {
   };
 }
 
+// Stamped into the title card so the build on screen can always be
+// identified. Three separate sessions were spent debugging behaviour
+// that turned out to be a stale bundle on a phone; a date in the corner
+// settles that question in one glance.
+const BUILD_ID = new Date().toISOString().slice(0, 16).replace('T', ' ');
+
 export default defineConfig({
   base: './',
+  define: {
+    __BUILD_ID__: JSON.stringify(BUILD_ID),
+  },
   plugins: [makeFileUrlSafe()],
   server: {
     port: 5173,

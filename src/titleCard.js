@@ -6,10 +6,16 @@ import { isTouchDevice } from './input/touch.js';
 export function createTitleCard() {
   const root = document.createElement('div');
   root.id = 'title-card';
+  // `__BUILD_ID__` is replaced by Vite at build time with the moment the
+  // bundle was built (see vite.config.js); in `npm run dev` it isn't
+  // defined at all, hence the guard. Shown small under the prompt so a
+  // phone can always be checked against what was last deployed.
+  const build = typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : 'dev';
   root.innerHTML = `
     <div class="title-card__inner">
       <h1 class="title-card__title">${strings.title}</h1>
       <p class="title-card__prompt">${isTouchDevice ? strings.tapToStart : strings.pressAnyKey}</p>
+      <p class="title-card__build">build ${build}</p>
     </div>
   `;
   document.body.appendChild(root);
