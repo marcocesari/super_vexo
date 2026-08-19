@@ -33,13 +33,17 @@ import { shipConfig, DEFAULTS as shipConfigDefaults, resetShipConfig } from './s
 import { createCinematic } from './cinematic.js';
 import { BUTTONS } from './input/gamepad.js';
 import { createDebugPad } from './debugPad.js';
+import { createViewport } from './viewport.js';
+import { createChaseCamera } from './chaseCamera.js';
+import { createSurface } from './surface.js';
 
 // --- Renderer ---------------------------------------------------------------
 const container = document.getElementById('app');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
 container.appendChild(renderer.domElement);
+// The canvas is stretched over the whole screen by CSS; `viewport.js`
+// watches that element and tells us its real size. Sizing is applied in
+// `applyViewportSize` below, once every consumer of it exists.
 
 // --- World ------------------------------------------------------------------
 const scene = createScene();
@@ -68,15 +72,41 @@ scene.add(repairFx.points);
 // scene so the ship isn't rendered there anyway.)
 ship.mesh.visible = true;
 
+// Landing site. Fly into Earth and the game swaps space for the real
+// streets of Castel Maggiore; everything in `spaceObjects` is hidden
+// while you're down there. See src/surface.js for why it's a teleport.
+const surface = createSurface(
+  scene,
+  [
+    starfield, asteroids.mesh, mars.mesh, earth.mesh, sun.sprite,
+    repairFx.points, ...roverApi.rovers.map((r) => r.mesh),
+  ],
+  // Landing and taking off move the ship 20 km in one frame; without
+  // this the camera would spend the next few seconds flying there.
+  () => chaseCamera.reset(),
+);
+
 // --- Input + UI -------------------------------------------------------------
 const input = createInput();
 const hud = createHud();
+// A phone screen is too small to show the title card and the Tablet at
+// the same time without them colliding, so on small screens the Tablet
+// stays out of the way until the player starts flying.
+const smallScreen = window.matchMedia('(max-height: 480px), (max-width: 480px)');
+if (smallScreen.matches) {
+  hud.hide();
+  hud.setHintVisible(false);
+}
 const titleCard = createTitleCard();
 const fastTravel = createFastTravel(document.body);
 const audio = createAudio();
 const upgrades = createUpgrades();
 const mission = createMission(roverApi);
-const missionScreens = createMissionScreens({ upgrades, mission, audio });
+const missionScreens = createMissionScreens({
+  upgrades, mission, audio,
+  // Closing a screen from its own button lands back on the Tablet.
+  onClose: () => hud.show(),
+});
 
 mission.setOnRepaired((rover) => {
   repairFx.fire(rover.mesh.position);
@@ -103,6 +133,10 @@ hud.onUpgradesClick(() => { missionScreens.show('upgrades'); });
  * across resets.
  */
 function resetGame() {
+  // Take off first: leaving the surface repositions the ship, so it has
+  // to happen BEFORE we put the ship back at the origin.
+  surface.reset(ship);
+
   ship.mesh.position.set(0, 0, 0);
   ship.velocity.set(0, 0, 0);
   ship.mesh.quaternion.identity();
@@ -114,10 +148,13 @@ function resetGame() {
   resetShipConfig();
 
   missionScreens.hideAll();
+  chaseCamera.reset();
 }
 
 function tryBeginWarp() {
   if (fastTravel.active) return;
+  // No warping while landed — the rails run straight through the houses.
+  if (surface.active) return;
   hud.setFastTravelActive(true);
   fastTravel.begin(ship, {
     onDone: () => hud.setFastTravelActive(false),
@@ -125,66 +162,28 @@ function tryBeginWarp() {
 }
 
 // --- Chase camera -----------------------------------------------------------
-// The camera trails the ship from a fixed offset in the ship's local frame:
-// behind and slightly above. We lerp toward the target each frame so the
-// camera has a little "spring" — it lags briefly when the ship turns, which
-// reads as motion and feels more cinematic than a rigid mount.
-const CAM_OFFSET_LOCAL = new THREE.Vector3(0, 1.4, -5.5); // behind & above
-const CAM_LOOKAHEAD_LOCAL = new THREE.Vector3(0, 0, 4);  // look slightly past the nose
-// "Half-life" of the spring in seconds: lower = snappier, higher = floatier.
-// Tight chase camera: short halflives so the camera tracks the ship's
-// rotation almost instantly. The player should always see the ship
-// from behind, even mid-maneuver.
-const CAM_POS_HALFLIFE = 0.04;
-const CAM_LOOK_HALFLIFE = 0.03;
-
-const _camTargetPos = new THREE.Vector3();
-const _camTargetLook = new THREE.Vector3();
-const _camCurrentLook = new THREE.Vector3();
-let camLookInitialized = false;
-
-function updateChaseCamera(dt) {
-  // Target position in world space = ship position + ship-rotated offset.
-  _camTargetPos.copy(CAM_OFFSET_LOCAL)
-    .applyQuaternion(ship.mesh.quaternion)
-    .add(ship.mesh.position);
-
-  _camTargetLook.copy(CAM_LOOKAHEAD_LOCAL)
-    .applyQuaternion(ship.mesh.quaternion)
-    .add(ship.mesh.position);
-
-  if (!camLookInitialized) {
-    camera.position.copy(_camTargetPos);
-    _camCurrentLook.copy(_camTargetLook);
-    camLookInitialized = true;
-  } else {
-    // Frame-rate-independent exponential smoothing.
-    // alpha = 1 - 2^(-dt / halflife) means after `halflife` seconds we have
-    // closed exactly half the remaining distance, regardless of dt.
-    const aPos = 1 - Math.pow(2, -dt / CAM_POS_HALFLIFE);
-    const aLook = 1 - Math.pow(2, -dt / CAM_LOOK_HALFLIFE);
-    camera.position.lerp(_camTargetPos, aPos);
-    _camCurrentLook.lerp(_camTargetLook, aLook);
-  }
-
-  camera.lookAt(_camCurrentLook);
-  // Roll the camera with the ship so banked turns feel right.
-  // (lookAt resets up; reapply ship up so we get the roll.)
-  const shipUp = new THREE.Vector3(0, 1, 0).applyQuaternion(ship.mesh.quaternion);
-  camera.up.copy(shipUp);
-  camera.lookAt(_camCurrentLook);
-}
+// Lives in `chaseCamera.js`: it trails the ship, keeps it dead-centre in
+// frame, and lets the right stick swing the view around it.
+const chaseCamera = createChaseCamera(camera);
+// Right-stick look for this frame. Only the FLY state writes it; the
+// cinematic and title card leave the camera parked behind the tail.
+const look = { x: 0, y: 0 };
 
 // --- Resize -----------------------------------------------------------------
-function onResize() {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  camera.aspect = w / h;
+// One place that reacts to the window changing shape — a phone rotating,
+// a desktop window dragged, the iOS URL bar sliding away. We only resize
+// the *drawing buffer* (`setSize(w, h, false)`); the canvas's on-screen
+// size is CSS's job, so the two can never drift apart mid-rotation.
+function applyViewportSize({ width, height, pixelRatio }) {
+  renderer.setPixelRatio(pixelRatio);
+  renderer.setSize(width, height, false);
+  camera.aspect = width / height;
   camera.updateProjectionMatrix();
-  renderer.setSize(w, h);
-  if (cinematic) cinematic.onResize();
+  if (cinematic) cinematic.onResize(width, height);
 }
-window.addEventListener('resize', onResize);
+
+// How fast the stick/D-pad scrolls an open menu, in pixels per second.
+const MENU_SCROLL_SPEED = 900;
 
 // --- State machine ----------------------------------------------------------
 // CINEMATIC (opening intro) → TITLE → FLY. `?skipIntro=1` skips the cinematic.
@@ -200,10 +199,13 @@ if (cinematic) titleCard.hide();
 
 const debugPad = createDebugPad();
 
+// Size everything now that the cinematic exists, and keep it sized.
+createViewport(renderer.domElement, applyViewportSize);
+
 function onCinematicDone() {
   state = STATE.TITLE;
   titleCard.show();
-  hud.show();
+  if (!smallScreen.matches) hud.show();
 }
 
 // --- Game loop --------------------------------------------------------------
@@ -255,6 +257,20 @@ function frame(now) {
     }
     // Starfield + camera still update behind the title card.
   } else {
+    // Poll every input source once per frame — *including* while a menu
+    // is open. The gamepad is polled, not event-driven: skip the poll
+    // and its "just pressed" edges are never refreshed, which used to
+    // leave every pad button dead inside the Upgrades screen (B could
+    // not close what B was supposed to close). The axes are read here
+    // but only applied to the ship further down, when flight input is
+    // actually allowed.
+    const axes = input.sample();
+    // The camera gimbal is live whenever flight is: not on warp rails,
+    // not behind a menu.
+    const canLook = !fastTravel.suppressInput && !missionScreens.isOpen();
+    look.x = canLook ? axes.lookX : 0;
+    look.y = canLook ? axes.lookY : 0;
+
     // Toggle the Tablet: T key or pad "−" (Select).
     if (input.keyboard.consumeJustPressed(['KeyT']) || input.gamepad.consumeJustPressed(BUTTONS.Select)) {
       hud.toggle();
@@ -269,12 +285,33 @@ function frame(now) {
     }
     // Upgrades: U key or pad Y-button.
     if (input.keyboard.consumeJustPressed(['KeyU']) || input.gamepad.consumeJustPressed(BUTTONS.Y)) {
-      if (missionScreens.isOpen()) missionScreens.hideAll();
-      else missionScreens.show('upgrades');
+      if (missionScreens.isOpen()) {
+        missionScreens.hideAll();
+        hud.show();
+      } else {
+        missionScreens.show('upgrades');
+      }
     }
-    // Close menu: B button (no keyboard equivalent — Esc not bound).
-    if (input.gamepad.consumeJustPressed(BUTTONS.B) && missionScreens.isOpen()) {
+    // Close a menu: B button, or Esc on the keyboard. Closing drops the
+    // player back on the Tablet, which is where they opened it from.
+    if (missionScreens.isOpen()
+        && (input.gamepad.consumeJustPressed(BUTTONS.B)
+            || input.keyboard.consumeJustPressed(['Escape']))) {
       missionScreens.hideAll();
+      hud.show();
+    }
+
+    // Scroll the open screen: left stick or D-pad. The Upgrades list is
+    // taller than a phone in landscape, so without this the bottom of
+    // the list is unreachable with a pad. (Touch and the mouse wheel
+    // scroll it natively.)
+    if (missionScreens.isOpen()) {
+      const dpad = (input.gamepad.isButtonDown(BUTTONS.Down) ? 1 : 0)
+                 - (input.gamepad.isButtonDown(BUTTONS.Up) ? 1 : 0);
+      // `throttle` is the left stick's Y axis, positive when pushed up.
+      const stick = -axes.throttle;
+      const dir = stick || dpad;
+      if (dir) missionScreens.scrollBy(dir * MENU_SCROLL_SPEED * dt);
     }
     // Reset: R key or pad Start.
     if (input.keyboard.consumeJustPressed(['KeyR']) || input.gamepad.consumeJustPressed(BUTTONS.Start)) {
@@ -285,9 +322,10 @@ function frame(now) {
       // Ship on rails (warp) or player is in a menu → ignore flight input.
       audio.setThrottle(0);
     } else {
-      const axes = input.sample();
       updateShip(ship, axes, dt);
       audio.setThrottle(axes.throttle);
+      // Landing / take-off, and the ground itself while we're down.
+      surface.update(ship, dt);
       // Resolve collisions AFTER moving the ship this frame.
       resolveAsteroidCollisions(
         { position: ship.mesh.position, velocity: ship.velocity },
@@ -304,7 +342,8 @@ function frame(now) {
     mission.update({
       shipPos: ship.mesh.position,
       shipSpeed: ship.velocity.length(),
-      holdActive: holdHack && !missionScreens.isOpen() && !fastTravel.suppressInput,
+      holdActive: holdHack && !missionScreens.isOpen() && !fastTravel.suppressInput
+        && !surface.active,
       dt,
     });
   }
@@ -318,7 +357,7 @@ function frame(now) {
   roverApi.update(dt);
   repairFx.update(dt);
   updateStarfield(starfield, camera);
-  updateChaseCamera(dt);
+  chaseCamera.update(ship, look, dt);
 
   renderer.render(scene, camera);
 
@@ -358,7 +397,8 @@ requestAnimationFrame(frame);
 if (import.meta.env.DEV) {
   window.__superVexo = {
     ship, asteroids, audio, fastTravel, physics,
-    rovers: roverApi, mission, upgrades, missionScreens,
+    renderer, camera,
+    rovers: roverApi, mission, upgrades, missionScreens, surface,
     shipConfig, shipConfigDefaults,
     resetGame,
   };

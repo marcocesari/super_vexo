@@ -4,6 +4,7 @@
 
 import * as THREE from 'three';
 import { strings } from './strings.js';
+import { isTouchDevice } from './input/touch.js';
 import { createKingdomPlanet } from './world/kingdomPlanet.js';
 import { createDraxosShip } from './world/draxosShip.js';
 import { createStarfield, updateStarfield } from './world/starfield.js';
@@ -63,7 +64,7 @@ export function createCinematic({ renderer }) {
   const overlay = document.createElement('div');
   overlay.id = 'cinematic';
   overlay.innerHTML = `
-    <div class="cinematic__skip" data-skip>${strings.intro.skip}</div>
+    <div class="cinematic__skip" data-skip>${isTouchDevice ? strings.intro.tapToSkip : strings.intro.skip}</div>
     <div class="cinematic__text" data-text></div>
     <div class="cinematic__flash" data-flash></div>
   `;
@@ -213,8 +214,10 @@ export function createCinematic({ renderer }) {
     renderer.render(scene, camera);
   }
 
-  function onResize() {
-    camera.aspect = window.innerWidth / window.innerHeight;
+  // Driven by main.js's viewport watcher, which measures the canvas
+  // itself — see viewport.js for why we don't read window.innerWidth.
+  function onResize(width = window.innerWidth, height = window.innerHeight) {
+    camera.aspect = width / height;
     camera.updateProjectionMatrix();
   }
 

@@ -5,14 +5,20 @@
 // inside the iOS wrapper; outside the wrapper, this is the standard
 // browser API, which also works for desktop USB / Bluetooth pads.
 //
-// Stick mapping (twin-stick flight, matches the user's diagram):
-//   axis 0 → LX → yaw          axis 2 → RX → roll
-//   axis 1 → LY → throttle     axis 3 → RY → pitch
+// Stick mapping (twin-stick: fly with the left, look with the right):
+//   axis 0 → LX → yaw          axis 2 → RX → camera orbit (look left/right)
+//   axis 1 → LY → throttle     axis 3 → RY → camera orbit (look up/down)
 //
-// In words: LEFT stick MOVES the ship (forward/back + turn left/right),
-// RIGHT stick LOOKS (nose up/down + bank left/right). The Web Gamepad
-// convention is "positive Y = stick down", so throttle and pitch use
-// sign -1 to make "stick up = forward / nose up".
+// In words: LEFT stick FLIES the ship (forward thrust + turn left/right),
+// RIGHT stick is the CAMERA GIMBAL — it swings the chase camera around
+// the ship without touching the ship's heading, and the camera keeps the
+// ship centred in frame the whole time (see `src/chaseCamera.js`).
+// The Web Gamepad convention is "positive Y = stick down", so throttle
+// and look-up use sign -1 to make "stick up = forward / look up".
+//
+// That leaves pitch and roll off the sticks, so they live on the D-pad:
+// Up/Down pitch the nose, Left/Right bank. (The D-pad only doubles as a
+// menu scroller, and flight input is ignored while a menu is open.)
 //
 // Button mapping uses the standard layout (`pad.mapping === 'standard'`):
 //   0=A, 1=B, 2=X, 3=Y, 4=L1, 5=R1, 6=L2, 7=R2,
@@ -23,10 +29,10 @@
 export const DEAD_ZONE = 0.15;
 
 export const AXIS_BINDINGS = {
-  throttle: { axisIndex: 1, sign: -1 }, // LY: up   → forward thrust
-  yaw:      { axisIndex: 0, sign: -1 }, // LX: left → +yaw (turn nose left)
-  pitch:    { axisIndex: 3, sign: -1 }, // RY: up   → nose up
-  roll:     { axisIndex: 2, sign: -1 }, // RX: left → +roll
+  throttle: { axisIndex: 1, sign: -1 }, // LY: up    → forward thrust
+  yaw:      { axisIndex: 0, sign: -1 }, // LX: left  → +yaw (turn nose left)
+  lookX:    { axisIndex: 2, sign: 1 },  // RX: right → swing the view right
+  lookY:    { axisIndex: 3, sign: -1 }, // RY: up    → swing the view up
 };
 
 // Named button slots used by main.js — these are stable indices, the
@@ -122,7 +128,7 @@ export function createGamepad() {
         warnedNonStandard = true;
         console.info(
           '[input/gamepad] Connected pad reports non-standard mapping',
-          `(id="${pad.id}"). Throttle/roll may not be on axes 2/3 as expected.`,
+          `(id="${pad.id}"). Throttle/look may not be on axes 1/2/3 as expected.`,
           'See BACKLOG.md for the calibration follow-up.',
         );
       }
@@ -130,15 +136,21 @@ export function createGamepad() {
       refreshButtons(pad);
 
       const yaw = readBound(pad, AXIS_BINDINGS.yaw);
-      const pitch = readBound(pad, AXIS_BINDINGS.pitch);
-      const roll = readBound(pad, AXIS_BINDINGS.roll);
       const throttle = readBound(pad, AXIS_BINDINGS.throttle);
+      const lookX = readBound(pad, AXIS_BINDINGS.lookX);
+      const lookY = readBound(pad, AXIS_BINDINGS.lookY);
 
-      const anyStick = (yaw || pitch || roll || throttle) !== 0;
+      // Pitch and roll moved off the right stick when it became the
+      // camera gimbal, so the D-pad flies them: Up/Down = nose, Left/
+      // Right = bank. Digital, so they read as full deflection.
+      const pitch = (pressedNow.has(BUTTONS.Up) ? 1 : 0) - (pressedNow.has(BUTTONS.Down) ? 1 : 0);
+      const roll = (pressedNow.has(BUTTONS.Left) ? 1 : 0) - (pressedNow.has(BUTTONS.Right) ? 1 : 0);
+
+      const anyStick = (yaw || pitch || roll || throttle || lookX || lookY) !== 0;
       const anyButton = pressedNow.size > 0;
       active = anyStick || anyButton;
 
-      return { throttle, yaw, pitch, roll };
+      return { throttle, yaw, pitch, roll, lookX, lookY };
     },
 
     /** True if the named/numbered button is currently held. */

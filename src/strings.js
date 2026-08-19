@@ -5,9 +5,13 @@
 export const strings = {
   title: 'Super Vexo and the Mystery of the System',
   pressAnyKey: 'Press any button to start',
+  // Shown instead of the above on phones and tablets, where there may
+  // be no gamepad or keyboard attached at all.
+  tapToStart: 'Tap to start',
 
   intro: {
     skip: 'Press any button to skip',
+    tapToSkip: 'Tap to skip',
     beats: [
       'Long ago, in the kingdom of Astra…',
       'The kingdom lived in peace.',
@@ -16,6 +20,14 @@ export const strings = {
       'And vanished into deep space.',
       'The Scientists handed Vexo the Super Mega Tablet.\n\nCan you save her?',
     ],
+  },
+
+  // Shown when the ship drops through Earth's atmosphere and lands on
+  // the real streets of Castel Maggiore (see src/surface.js).
+  surface: {
+    town: 'CASTEL MAGGIORE · BOLOGNA',
+    street: 'Via Giuseppe Impastato',
+    leaveHint: 'Climb to leave the atmosphere',
   },
 
   hud: {
@@ -37,6 +49,9 @@ export const strings = {
     upgradeHint: 'Y / U',
     upgradeBought: 'OWNED',
     upgradeBuy: 'BUY',
+    upgradeClose: 'Close',
+    // Shown at the foot of an open screen so the controls are learnable.
+    screenHint: 'Stick / swipe = scroll · B / Esc = back to Tablet',
 
     missionCompleteTitle: 'MISSION COMPLETE',
     missionCompleteBody: 'All rovers repaired. Earth Command transfers a bonus to your account.',

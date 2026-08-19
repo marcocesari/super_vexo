@@ -61,10 +61,13 @@ const r1 = await withPage(null, async (page) => {
 
   await page.keyboard.down('KeyW');
   await page.waitForTimeout(1000);
+  // Sample the speed while W is still DOWN: letting go stops the ship
+  // dead (the "clear forward push to fly" rule), so a reading taken
+  // after keyup is always 0.
+  const v = parseFloat(await page.locator('[data-velocity]').innerText());
   await page.keyboard.up('KeyW');
   await page.waitForTimeout(50);
 
-  const v = parseFloat(await page.locator('[data-velocity]').innerText());
   check('KB velocity rises with W held', v > 0.5, `vel=${v}`);
   const src = await page.locator('[data-source]').innerText();
   check('HUD source includes KB', src.includes('KB'), `src=${src}`);
@@ -114,11 +117,14 @@ const r2 = await withPage(initScript, async (page) => {
     });
   }, pushDuration);
 
+  // Same as the keyboard case: read the speed before releasing the
+  // stick, because a centred stick brakes the ship to a stop.
+  const v = parseFloat(await page.locator('[data-velocity]').innerText());
+
   // Stop pushing.
   await page.evaluate(() => window.__nativeGamepadUpdate({ buttons: [], axes: [0, 0, 0, 0] }));
   await page.waitForTimeout(50);
 
-  const v = parseFloat(await page.locator('[data-velocity]').innerText());
   check('PAD throttle raises velocity', v > startVel + 1, `start=${startVel} end=${v}`);
   const src = await page.locator('[data-source]').innerText();
   // After releasing the stick, sources will be empty → default to KB.

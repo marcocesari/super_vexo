@@ -8,7 +8,12 @@
 // player can keep flying behind them.
 import { strings } from './strings.js';
 
-export function createMissionScreens({ upgrades, mission, audio }) {
+/**
+ * @param onClose called whenever a screen is dismissed from its own
+ *   buttons, so the caller can put the Tablet back up — closing a
+ *   screen should return the player where they opened it from.
+ */
+export function createMissionScreens({ upgrades, mission, audio, onClose }) {
   const root = document.createElement('div');
   root.id = 'mission-screens';
   root.innerHTML = `
@@ -32,9 +37,10 @@ export function createMissionScreens({ upgrades, mission, audio }) {
         <div class="screen-card__row">
           <span class="screen-card__credits"><span class="screen-card__credits-label">CREDITS:</span> <span data-upgrades-credits>0</span></span>
         </div>
+        <p class="screen-card__hint">${strings.hud.screenHint}</p>
         <ul class="upgrade-list" data-upgrade-list></ul>
         <div class="screen-card__actions">
-          <button class="screen-btn" data-action="close-upgrades">Close</button>
+          <button class="screen-btn" data-action="close-upgrades">${strings.hud.upgradeClose}</button>
         </div>
       </div>
     </div>
@@ -86,6 +92,24 @@ export function createMissionScreens({ upgrades, mission, audio }) {
     return !elComplete.hidden || !elUpgrades.hidden;
   }
 
+  /** The card of whichever screen is currently open, or null. */
+  function openCard() {
+    if (!elUpgrades.hidden) return elUpgrades.querySelector('.screen-card');
+    if (!elComplete.hidden) return elComplete.querySelector('.screen-card');
+    return null;
+  }
+
+  /**
+   * Scroll the open screen by `dy` pixels (negative = up). Used by the
+   * gamepad, which has no scroll wheel and no finger; touch and the
+   * mouse wheel scroll the card natively.
+   */
+  function scrollBy(dy) {
+    const card = openCard();
+    if (!card) return;
+    card.scrollTop += dy;
+  }
+
   // Wire actions.
   root.addEventListener('click', (e) => {
     const t = e.target;
@@ -97,8 +121,8 @@ export function createMissionScreens({ upgrades, mission, audio }) {
       show('upgrades');
       return;
     }
-    if (action === 'close-complete') { hide('complete'); return; }
-    if (action === 'close-upgrades') { hide('upgrades'); return; }
+    if (action === 'close-complete') { hide('complete'); onClose?.(); return; }
+    if (action === 'close-upgrades') { hide('upgrades'); onClose?.(); return; }
 
     const buyId = t.getAttribute('data-buy');
     if (buyId) {
@@ -109,5 +133,5 @@ export function createMissionScreens({ upgrades, mission, audio }) {
     }
   });
 
-  return { show, hide, hideAll, isOpen };
+  return { show, hide, hideAll, isOpen, scrollBy };
 }

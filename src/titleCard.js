@@ -1,6 +1,7 @@
 // Title card shown on load. "Press any key to start" gates the game loop
 // so the player has agency on first frame.
 import { strings } from './strings.js';
+import { isTouchDevice } from './input/touch.js';
 
 export function createTitleCard() {
   const root = document.createElement('div');
@@ -8,7 +9,7 @@ export function createTitleCard() {
   root.innerHTML = `
     <div class="title-card__inner">
       <h1 class="title-card__title">${strings.title}</h1>
-      <p class="title-card__prompt">${strings.pressAnyKey}</p>
+      <p class="title-card__prompt">${isTouchDevice ? strings.tapToStart : strings.pressAnyKey}</p>
     </div>
   `;
   document.body.appendChild(root);

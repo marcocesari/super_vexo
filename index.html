@@ -2,7 +2,22 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- viewport-fit=cover  → the page extends under the notch/home bar
+                               (CSS uses env(safe-area-inset-*) to stay clear).
+         user-scalable=no    → no double-tap zoom or pinch-zoom over the game.
+         maximum-scale=1     → iOS honours this even when it ignores the above. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+
+    <!-- Served from GitHub Pages, which caches hard. Without this a phone
+         happily keeps showing yesterday's build after a reload. -->
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+
+    <!-- Add-to-Home-Screen: launches fullscreen with no browser chrome. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#02030a" />
+
     <title>Super Vexo and the Mystery of the System</title>
   </head>
   <body>

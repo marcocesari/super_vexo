@@ -66,14 +66,17 @@ const rafCount = await page.evaluate(() => new Promise((resolve) => {
   }
   requestAnimationFrame(tick);
 }));
+// Read the speed while W is still DOWN: releasing the throttle now
+// stops the ship dead (the "clear forward push to fly" rule), so a
+// reading taken after keyup would always be 0.
+const velocity = await page.locator('[data-velocity]').innerText();
 await page.keyboard.up('KeyW');
 const elapsedMs = Date.now() - before;
 const fps = Math.round((rafCount / elapsedMs) * 1000);
 console.log(`OK: ${rafCount} frames in ${elapsedMs}ms → ${fps} fps`);
 
-const velocity = await page.locator('[data-velocity]').innerText();
-console.log(`HUD velocity after throttle hold: ${velocity}`);
-if (parseFloat(velocity) <= 0) throw new Error('expected velocity > 0 after throttle hold');
+console.log(`HUD velocity during throttle hold: ${velocity}`);
+if (parseFloat(velocity) <= 0) throw new Error('expected velocity > 0 during throttle hold');
 
 // Check HUD shows KB.
 const source = await page.locator('[data-source]').innerText();

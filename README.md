@@ -48,4 +48,31 @@ Then open http://localhost:5173.
 - **↑ / ↓** — pitch up / down
 - **Q / E** — roll left / right
 
-**Gamepad + gyroscope** are supported when the game runs inside the native iOS wrapper.
+**Gamepad controls** (USB / Bluetooth pad on desktop, or the native iOS wrapper):
+- **Left stick** — fly the ship: push up to thrust, left / right to turn
+- **Right stick** — swing the camera around the ship. It's a gimbal, not a
+  turn: the ship keeps its heading, stays dead-centre in frame, and the view
+  drops back behind the tail the moment you let go. It goes the whole way
+  round — hard over to either side puts you on the nose, looking the ship in
+  the face — so you can see it from any angle
+- **D-pad** — pitch (up / down) and roll (left / right)
+
+**Gyroscope** adds a little fine pitch / yaw on a phone, on top of the sticks.
+
+## Landing on Earth
+
+Turn around at the spawn point, fly into the planet, and the game puts you down
+on a real street: **Via Giuseppe Impastato, Castel Maggiore (Bologna)**, built
+life-size at one game unit per metre. The blue ring and beacon mark number 28.
+Climb back above 620 m and you're in orbit again.
+
+The street layout and building footprints come from OpenStreetMap; heights,
+colours and materials were matched to what Street View shows on the ground.
+Re-scan the same place (or a different one) with:
+
+```bash
+node tools/fetch-osm.mjs --lat 44.5691968 --lon 11.3524384 \
+  --radius 300 --slug castel-maggiore --name "Via Giuseppe Impastato"
+```
+
+Map data © OpenStreetMap contributors, [ODbL](https://osm.org/copyright).

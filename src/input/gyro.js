@@ -22,6 +22,17 @@ const CALIBRATION_MS = 1000;          // hold neutral 1s
 const PITCH_FULL_DEG = 35;
 const YAW_FULL_DEG = 35;
 
+/**
+ * How far the screen is rotated away from the phone's natural (portrait)
+ * orientation, in radians. `beta` and `gamma` are measured against the
+ * *device*, not the screen, so in landscape they swap roles — this is
+ * what we rotate them by to get back to screen-relative pitch and yaw.
+ */
+function screenAngleRad() {
+  const deg = screen.orientation?.angle ?? window.orientation ?? 0;
+  return (deg * Math.PI) / 180;
+}
+
 export function createGyro() {
   let listening = false;
   let permissionGranted = false;
@@ -63,9 +74,24 @@ export function createGyro() {
     }
   }
 
+  /**
+   * Throw away the neutral pose so the next second of samples
+   * re-captures it. Called when the phone is rotated: "flat and level"
+   * reads as completely different beta/gamma values in landscape than
+   * it did in portrait, so the old neutral would leave the stick
+   * jammed over to one side.
+   */
+  function recalibrate() {
+    neutral = null;
+    calibrationStart = 0;
+    calibrationSum = { alpha: 0, beta: 0, gamma: 0, n: 0 };
+  }
+
   function attach() {
     if (listening) return;
     window.addEventListener('deviceorientation', onEvent);
+    screen.orientation?.addEventListener('change', recalibrate);
+    window.addEventListener('orientationchange', recalibrate);
     listening = true;
   }
 
@@ -122,14 +148,25 @@ export function createGyro() {
     sample() {
       if (!lastEvent || !neutral) return null;
       const dBeta = lastEvent.beta - neutral.beta;
-      // Use gamma for yaw on phones held in portrait, alpha-delta is
-      // tricky because it's a compass (mod 360°). For a kid playing on
-      // a phone, gamma (left/right tilt) makes a better yaw signal than
-      // alpha and matches what they'd intuit.
+      // We use beta/gamma (front-back and left-right tilt) rather than
+      // alpha, which is a compass heading and wraps at 360°.
       const dGamma = lastEvent.gamma - neutral.gamma;
 
-      let pitch = clamp(dBeta / PITCH_FULL_DEG, -1, 1);
-      let yaw = clamp(dGamma / YAW_FULL_DEG, -1, 1);
+      // Rotate the tilt into *screen* space. Hold the phone in
+      // landscape and the gesture that pitches the nose up is a tilt
+      // about the phone's long axis — that shows up in gamma, not beta.
+      // Rotating the (beta, gamma) pair by the screen angle handles all
+      // four orientations with one bit of trigonometry: at 0° it's the
+      // identity, at 180° it flips both, and the two landscapes swap
+      // the axes with opposite signs.
+      const angle = screenAngleRad();
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const pitchDeg = dBeta * cos - dGamma * sin;
+      const yawDeg = dBeta * sin + dGamma * cos;
+
+      let pitch = clamp(pitchDeg / PITCH_FULL_DEG, -1, 1);
+      let yaw = clamp(yawDeg / YAW_FULL_DEG, -1, 1);
 
       // Sign convention: tilt phone forward (beta decreases) → pitch nose
       // down → negative pitch. beta increases when phone tilts back.

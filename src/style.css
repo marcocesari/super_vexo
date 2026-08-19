@@ -2,17 +2,43 @@
 html, body {
   margin: 0;
   padding: 0;
+  width: 100%;
   height: 100%;
+  /* dvh = "dynamic viewport height": tracks the iOS URL bar sliding in
+     and out, where plain 100vh does not. Declared second so browsers
+     that don't know dvh keep the 100% above. */
+  height: 100dvh;
   background: #000;
   overflow: hidden;
+  /* No pull-to-refresh or rubber-band scroll of the page itself.
+     (The "don't pan/zoom" rule lives on the canvas, not here, so that
+     overlays like Upgrades can still scroll under a finger.) */
+  overscroll-behavior: none;
+  /* Stop iOS from inflating our text when the phone turns landscape. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color: #d6f0ff;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
-#app { width: 100%; height: 100%; }
-canvas { display: block; }
+/* Pinning the body stops iOS from scrolling the page under the game. */
+body { position: fixed; inset: 0; }
+#app { position: fixed; inset: 0; }
+/* The canvas always covers the screen. Its drawing-buffer resolution is
+   set from JS (see viewport.js), but its *size* is decided here, so a
+   rotation can never leave the picture the wrong shape.
+   `touch-action: none` over the game itself kills double-tap zoom and
+   drag-to-pan; overlays opt back in where they need to scroll. */
+canvas {
+  display: block;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
 
 /* --- Cinematic overlay --- */
 #cinematic {
@@ -25,8 +51,8 @@ canvas { display: block; }
 }
 .cinematic__skip {
   position: absolute;
-  top: 1rem;
-  right: 1.25rem;
+  top: calc(1rem + env(safe-area-inset-top));
+  right: calc(1.25rem + env(safe-area-inset-right));
   font-size: 11px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -97,8 +123,10 @@ canvas { display: block; }
    player can always see which button brings it back up. */
 #tablet-hint {
   position: fixed;
-  top: 1rem;
-  right: 1rem;
+  /* env(safe-area-inset-*) keeps the badge clear of the notch and the
+     rounded corners in landscape. Zero on devices without them. */
+  top: calc(1rem + env(safe-area-inset-top));
+  right: calc(1rem + env(safe-area-inset-right));
   z-index: 5;
   padding: 4px 10px;
   background: rgba(10, 20, 30, 0.7);
@@ -115,8 +143,8 @@ canvas { display: block; }
 /* --- Tablet HUD --- */
 #tablet {
   position: fixed;
-  top: 1rem;
-  right: 1rem;
+  top: calc(1rem + env(safe-area-inset-top));
+  right: calc(1rem + env(safe-area-inset-right));
   z-index: 5;
   pointer-events: none; /* HUD never eats clicks */
 }
@@ -271,6 +299,15 @@ canvas { display: block; }
 .screen-overlay[hidden] { display: none; }
 .screen-card {
   max-width: 460px;
+  /* The card scrolls when it's taller than the window — the Upgrades
+     list outgrows a phone in landscape. `pan-y` lets a finger scroll it
+     even though the game canvas swallows every other gesture, and
+     `contain` stops that scroll chaining out to the page. */
+  max-height: 84vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
   padding: 1.6rem 1.8rem;
   background: linear-gradient(160deg, #0e1e30, #050a14);
   border: 1px solid rgba(120, 180, 240, 0.3);
@@ -280,6 +317,15 @@ canvas { display: block; }
   text-align: center;
 }
 .screen-card--wide { max-width: 520px; text-align: left; }
+/* A slim in-theme scrollbar, so a card with more content below actually
+   looks scrollable instead of just looking cut off. */
+.screen-card { scrollbar-width: thin; scrollbar-color: rgba(120, 180, 240, 0.4) transparent; }
+.screen-card::-webkit-scrollbar { width: 6px; }
+.screen-card::-webkit-scrollbar-track { background: transparent; }
+.screen-card::-webkit-scrollbar-thumb {
+  background: rgba(120, 180, 240, 0.4);
+  border-radius: 3px;
+}
 .screen-card__title {
   margin: 0 0 0.5rem 0;
   font-size: clamp(1.2rem, 2.2vw, 1.8rem);
@@ -288,6 +334,19 @@ canvas { display: block; }
 }
 .screen-card__body { color: #9fc6e7; font-size: 0.95rem; line-height: 1.5; }
 .screen-card__row { margin: 0.8rem 0; }
+.screen-card__hint {
+  /* Sits at the top of the card, above the scrolling list, so the
+     player sees how to scroll and how to get out before they need to. */
+  margin: 0 0 0.8rem 0;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid rgba(80, 140, 200, 0.15);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6aa3d1;
+  opacity: 0.75;
+  text-align: center;
+}
 .screen-card__credits { font-size: 1.1rem; font-weight: 700; color: #ffdf80; }
 .screen-card__credits-label { font-size: 0.7rem; letter-spacing: 0.15em; color: #6aa3d1; margin-right: 6px; font-weight: 400; }
 .screen-card__actions {
@@ -336,4 +395,77 @@ canvas { display: block; }
   opacity: 0;
   z-index: 6;
   transition: none; /* opacity is driven by JS, not CSS */
+}
+
+/* --- Small screens (phones) ------------------------------------------------
+   A phone in landscape is *short* (roughly 390px tall), so the overlays
+   sized for a desktop window overlap each other and spill off the top
+   and bottom. These two queries shrink the big text and the Tablet so
+   everything fits on a handset in either orientation. */
+
+/* Landscape phone: short and wide. */
+@media (max-height: 480px) {
+  /* Keep the title inside the middle of the screen so it can't run
+     under the Tablet panel in the top-right corner. */
+  .title-card__inner { padding: 1rem 1.5rem; max-width: 62vw; }
+  .title-card__title { font-size: clamp(1rem, 2.6vw, 1.6rem); margin-bottom: 0.9rem; }
+  .title-card__prompt { font-size: 0.85rem; }
+  .cinematic__text { bottom: 8%; }
+  .cinematic__text p { font-size: 1rem; line-height: 1.35; }
+  .tablet-screen { width: 180px; font-size: 11px; }
+  .screen-overlay { padding: 1rem; }
+  .screen-card { padding: 1rem 1.2rem; max-height: 88vh; }
+  .screen-card__title { font-size: 1.1rem; }
+  .upgrade-item { padding: 8px 10px; margin-bottom: 6px; }
+}
+
+/* Portrait phone: narrow. The Tablet is a fixed 220px, which eats more
+   than half the width of a 390px screen. */
+@media (max-width: 480px) {
+  .tablet-screen { width: min(58vw, 220px); }
+  .title-card__inner { padding: 1.5rem 1rem; }
+}
+
+/* --- Landing banner ---------------------------------------------------------
+   Named plate that appears when the ship touches down on Earth. Sits at
+   the bottom so it never fights the Tablet in the top-right corner. */
+#landing-banner {
+  position: fixed;
+  left: 50%;
+  bottom: calc(2.2rem + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 0.7rem 1.5rem;
+  text-align: center;
+  background: rgba(6, 16, 26, 0.55);
+  border: 1px solid rgba(120, 180, 240, 0.28);
+  border-radius: 6px;
+  backdrop-filter: blur(3px);
+  pointer-events: none;
+  transition: opacity 1.2s ease;
+}
+#landing-banner[hidden] { display: none; }
+.landing-banner--fading { opacity: 0; }
+.landing-banner__town {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: #6aa3d1;
+}
+.landing-banner__street {
+  margin-top: 2px;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  color: #eaf4ff;
+}
+.landing-banner__hint {
+  margin-top: 6px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8fb8d8;
+  opacity: 0.8;
+}
+@media (max-height: 480px) {
+  #landing-banner { bottom: calc(1rem + env(safe-area-inset-bottom)); padding: 0.5rem 1.1rem; }
+  .landing-banner__street { font-size: 0.9rem; }
 }

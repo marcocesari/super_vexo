@@ -3,6 +3,8 @@
 //   - gamepad           (Web Gamepad API; bridged on iOS by the native
 //                        wrapper, plain on desktop)
 //   - gyro              (DeviceOrientationEvent, gated by permission)
+//   - touch             (taps only — stands in for "press any button"
+//                        so a phone without a pad can start the game)
 //
 // Fusion rule per program.md M2:
 //   - Gamepad sticks set the primary axes.
@@ -11,11 +13,16 @@
 //   - Gyro contributes a small fraction (20% default) to pitch and yaw,
 //     additive on top of the primary source.
 //
+// The sample also carries `lookX` / `lookY` — the right stick, which
+// aims the chase camera rather than the ship. Only the gamepad produces
+// it today; every other source reports 0.
+//
 // `activeSources()` reports which sources produced signal this frame
 // for the HUD — values are joined with `+` (e.g. `KB`, `PAD+GYRO`).
 import { createKeyboard } from './keyboard.js';
 import { createGamepad } from './gamepad.js';
 import { createGyro } from './gyro.js';
+import { createTouch, isTouchDevice } from './touch.js';
 import { isBridgeAvailable } from '../bridge.js';
 
 function clamp1(v) { return v < -1 ? -1 : (v > 1 ? 1 : v); }
@@ -24,6 +31,7 @@ export function createInput() {
   const keyboard = createKeyboard();
   const gamepad = createGamepad();
   const gyro = createGyro();
+  const touch = createTouch();
 
   let lastSources = ['KB'];
 
@@ -31,6 +39,10 @@ export function createInput() {
     keyboard,
     gamepad,
     gyro,
+    touch,
+
+    /** True when running on a touchscreen (phone/tablet). */
+    isTouchDevice,
 
     /** True if running inside the iOS wrapper. */
     bridgeAvailable: isBridgeAvailable,
@@ -83,11 +95,17 @@ export function createInput() {
         sources.push('GYRO');
       }
 
+      // Right stick → camera gimbal. It never mixes with the flight
+      // axes, so it just passes straight through from the pad.
+      const lookX = pad ? pad.lookX : 0;
+      const lookY = pad ? pad.lookY : 0;
+      if ((lookX || lookY) && !sources.includes('PAD')) sources.push('PAD');
+
       // Always at least show 'KB' so the HUD has something — matches M1.
       if (sources.length === 0) sources.push('KB');
       lastSources = sources;
 
-      return { throttle, yaw, pitch, roll };
+      return { throttle, yaw, pitch, roll, lookX, lookY };
     },
 
     activeSources() {
@@ -108,7 +126,8 @@ export function createInput() {
       // care about its axes here.
       gamepad.sample();
       const gp = gamepad.consumeAnyJustPressed();
-      return kb || gp;
+      const tp = touch.consumeJustPressed();
+      return kb || gp || tp;
     },
   };
 }

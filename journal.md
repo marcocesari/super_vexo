@@ -2,6 +2,90 @@
 
 Most recent entries on top.
 
+## 2026-08-19 — Landing on Earth: Via Giuseppe Impastato, Castel Maggiore
+
+- **Marco's ask:** scan a real place with Street View's pegman and put
+  it into the game's Earth. Starting address: Via Giuseppe Impastato 28,
+  Castel Maggiore (Bologna) — geocoded to 44.5691968, 11.3524384.
+- **Where the data comes from:** footprints, streets, paths and green
+  space from OpenStreetMap via Overpass (`tools/fetch-osm.mjs` →
+  `src/world/places/castel-maggiore.json`, 300 m radius: 29 buildings,
+  83 ways, Parco Lupicchio, Centro Commerciale Le Piazze). Coordinates
+  are converted to local metres on a tangent plane, so 1 game unit = 1
+  real metre. OSM has NO height tags here, and no tree nodes.
+- **What Street View added** (the pegman pass, panorama
+  `j2boMPBS-6smZchdqWzqBQ`, imagery Jul 2026): the north side of the
+  street is four-storey red-brick condos with grey balcony slabs on
+  every floor and round brick stair towers; the south side is
+  two-storey brick townhouses with shallow tiled roofs, garden walls
+  and hedges; the street is lined with young broadleaf saplings on
+  grass verges with brick-paved footpaths. That's where the heights
+  (`heightFor()` by footprint area), the brick palette, the balcony
+  band in the wall texture and the scattered trees come from — none of
+  it is in OSM. No Street View imagery is copied into the game; it was
+  reference only.
+- **How it's in the game** (`src/surface.js` + `src/world/neighborhood.js`):
+  the town is life-size and 1.5 km across, but the game Earth is only
+  112 units of radius — they can't share a scale. So the town lives at
+  y = -20000, past the camera's far plane, and flying within 22 units
+  of Earth's surface teleports the ship down to it (sky colour, fog,
+  daylight rig, space objects hidden). Climb above 620 m and you're
+  put back just outside the atmosphere. A soft floor at 2.5 m stops
+  the ship instead of crashing it.
+- **Two bugs worth remembering.** (1) A DirectionalLight aims at its
+  *target*, which defaults to the world origin — 20 km straight up from
+  the town, so the whole place was lit from underneath until the target
+  was moved. (2) A 20 km teleport is not something a spring-follow
+  camera should chase: it spent seconds flying down. Both landings and
+  take-offs now call `chaseCamera.reset()` through an `onTeleport` hook.
+- **Test:** `tools/smoke-landing.mjs` (`npm run smoke:landing`), 18
+  checks — the town builds, the marker lands on the address (12 m), the
+  round trip in and out of the atmosphere, the ground floor, the camera
+  cut, and reset-from-the-surface.
+
+## 2026-08-18 — Twin-stick rework: left stick flies, right stick looks
+
+- **Marco's call:** left stick moves the ship, right stick is a
+  "gyroscope" for the view, and *the ship must always be visible in the
+  centre*. This overrides program.md M2's line "left stick = yaw +
+  pitch, right stick = roll + throttle".
+- **New mapping** (`src/input/gamepad.js`): LY throttle, LX yaw,
+  RX/RY → `lookX`/`lookY`, which never touch the ship. Pitch and roll
+  had to go somewhere, so they moved to the D-pad (Up/Down = nose,
+  Left/Right = bank) — the D-pad's only other job is scrolling menus,
+  and flight input is ignored while a menu is open.
+- **New module `src/chaseCamera.js`**, lifted out of main.js. The look
+  stick is an ANGLE, not a rate: full deflection = 150° of yaw / 65° of
+  pitch around the ship, smoothed with the usual half-life spring, so
+  releasing the stick always drifts the view back behind the tail with
+  no re-centre button. The camera looks at the ship's origin every
+  frame with NO smoothing on the look target — that's what keeps the
+  ship exactly centred (the old lookahead point sat past the nose, so
+  the ship rode below centre).
+- **Test:** `tools/smoke-camera.mjs` (`npm run smoke:camera`), plain
+  Node + three, no browser. Asserts the stick separation (left never
+  moves the camera, right never rotates the ship), that the ship
+  projects to NDC (0,0) at every look angle, constant orbit radius,
+  the angle limits, and hands-off recentring. Eyeballed in the browser
+  too (behind / left / right / up / down screenshots).
+- **Follow-up the same day:** Marco reported the ship sliding off to
+  one side during a 360° turn — but that was the stale `docs/` build
+  (11:58) still running the *old* camera, which aimed at a point 4
+  units past the nose and smoothed that aim point on its own clock.
+  Rebuilt `docs/`. Also widened the gimbal to a full circle: yaw ±180°
+  (stick hard over = nose-on view) and pitch ±85°, so every angle of
+  the ship is reachable. The smoke now sweeps the stick side to side
+  and separately spins the ship through a full 360°, asserting the
+  ship never leaves NDC (0,0) in either.
+- **Pre-existing red tests fixed while here** (broken by b5a10a7's
+  "stop dead unless the stick is pushed forward", not by this work):
+  `smoke.mjs` and `smoke-m2.mjs` read the HUD speed *after* releasing
+  the throttle, which is now always 0 — they now read it while it's
+  held. And `physics.js`'s degenerate "centres exactly coincide" branch
+  picked a contact normal but never pushed the ship out; with the ship
+  no longer drifting, it stayed stuck inside the rock forever
+  (`smoke-m3.mjs`).
+
 ## 2026-05-11 — M5+ pick: Opening Cinematic
 
 - Picked the opening castle-attack intro from program.md's M5+ menu —

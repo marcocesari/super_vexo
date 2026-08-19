@@ -11,6 +11,11 @@
     "smoke:m2": "node tools/smoke-m2.mjs",
     "smoke:m3": "node tools/smoke-m3.mjs",
     "smoke:m4": "node tools/smoke-m4.mjs",
+    "smoke:mobile": "node tools/smoke-mobile.mjs",
+    "smoke:upgrades": "node tools/smoke-upgrades.mjs",
+    "smoke:gyro": "node tools/smoke-gyro.mjs",
+    "smoke:camera": "node tools/smoke-camera.mjs",
+    "smoke:landing": "node tools/smoke-landing.mjs",
     "smoke:cinematic": "node tools/smoke-cinematic.mjs",
     "smoke:build": "node tools/smoke-build.mjs"
   },

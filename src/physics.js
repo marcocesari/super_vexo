@@ -34,9 +34,13 @@ export function resolveAsteroidCollisions(ship, asteroids) {
     const distSq = _delta.lengthSq();
     if (distSq >= minDist * minDist) continue;
     if (distSq < 1e-8) {
-      // Exactly overlapping centers (degenerate) — pick an arbitrary
-      // normal so we can push out.
+      // Exactly overlapping centers (degenerate) — there's no contact
+      // normal to compute, so pick an arbitrary one and push out by the
+      // full separation distance. (Without the push the ship can sit
+      // inside the rock forever now that a centred stick holds it
+      // still instead of drifting it back out.)
       _normal.set(0, 1, 0);
+      ship.position.addScaledVector(_normal, minDist);
     } else {
       const dist = Math.sqrt(distSq);
       _normal.copy(_delta).divideScalar(dist);
