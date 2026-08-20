@@ -174,6 +174,32 @@ function ribbonGeometry(pts, width, y) {
   return geom;
 }
 
+/**
+ * Material for a surface lying flat on the ground.
+ *
+ * Two things every one of these needs:
+ *
+ *  - **A polygon offset.** Roads, car parks, lawns and the ground plane
+ *    are all coplanar to within a few centimetres, which is far below
+ *    what the depth buffer can resolve at this distance. `polygonOffset`
+ *    biases each layer in the rasteriser itself — the standard fix for
+ *    decals — so the order is decided, not fought over. Higher `layer`
+ *    wins.
+ *
+ *  - **Lambert shading, not standard.** These surfaces cover most of
+ *    the screen when you fly low, and they're matte, flat and untextured
+ *    (bar the ground). Full PBR shading per pixel buys nothing here and
+ *    costs the most where there's the most to fill.
+ */
+function flatMaterial(params, layer) {
+  return new THREE.MeshLambertMaterial({
+    ...params,
+    polygonOffset: true,
+    polygonOffsetFactor: -layer,
+    polygonOffsetUnits: -layer * 2,
+  });
+}
+
 /** A filled polygon lying flat on the ground (parks, lawns, car parks). */
 function areaGeometry(pts, y) {
   const geom = new THREE.ShapeGeometry(footprintShape(pts));
@@ -302,12 +328,7 @@ export function createNeighborhood() {
   const groundSize = place.radiusM * 5;
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(groundSize, groundSize),
-    new THREE.MeshStandardMaterial({
-      color: COLORS.ground,
-      map: makeGroundTexture(),
-      roughness: 1,
-      metalness: 0,
-    }),
+    flatMaterial({ color: COLORS.ground, map: makeGroundTexture() }, 0),
   );
   ground.rotation.x = -Math.PI / 2;
   group.add(ground);
@@ -328,10 +349,7 @@ export function createNeighborhood() {
     areaBuckets.get(color).push(areaGeometry(a.pts, 0.02 + areaBuckets.get(color).length * 0.001));
   }
   for (const [color, geoms] of areaBuckets) {
-    const mesh = new THREE.Mesh(
-      mergeGeometries(geoms),
-      new THREE.MeshStandardMaterial({ color, roughness: 1, metalness: 0 }),
-    );
+    const mesh = new THREE.Mesh(mergeGeometries(geoms), flatMaterial({ color }, 1));
     group.add(mesh);
   }
 
@@ -346,16 +364,10 @@ export function createNeighborhood() {
     if (geom) (softSurface ? paved : asphalt).push(geom);
   }
   if (asphalt.length) {
-    group.add(new THREE.Mesh(
-      mergeGeometries(asphalt),
-      new THREE.MeshStandardMaterial({ color: COLORS.asphalt, roughness: 0.95, metalness: 0 }),
-    ));
+    group.add(new THREE.Mesh(mergeGeometries(asphalt), flatMaterial({ color: COLORS.asphalt }, 2)));
   }
   if (paved.length) {
-    group.add(new THREE.Mesh(
-      mergeGeometries(paved),
-      new THREE.MeshStandardMaterial({ color: COLORS.paving, roughness: 0.95, metalness: 0 }),
-    ));
+    group.add(new THREE.Mesh(mergeGeometries(paved), flatMaterial({ color: COLORS.paving }, 3)));
   }
 
   // --- Buildings ------------------------------------------------------------
@@ -414,16 +426,14 @@ export function createNeighborhood() {
       homeTop = height;
     }
   }
-  const wallMat = new THREE.MeshStandardMaterial({
+  const wallMat = new THREE.MeshLambertMaterial({
     map: makeWallTexture(),
     vertexColors: true,
-    roughness: 0.92,
-    metalness: 0,
   });
   group.add(new THREE.Mesh(mergeGeometries(wallGeoms), wallMat));
   group.add(new THREE.Mesh(
     mergeGeometries(roofGeoms),
-    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 }),
+    new THREE.MeshLambertMaterial({ vertexColors: true }),
   ));
 
   // --- Trees ----------------------------------------------------------------
@@ -498,11 +508,11 @@ export function createNeighborhood() {
   if (trunks.length) {
     group.add(new THREE.Mesh(
       mergeGeometries(trunks),
-      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 }),
+      new THREE.MeshLambertMaterial({ vertexColors: true }),
     ));
     group.add(new THREE.Mesh(
       mergeGeometries(leaves),
-      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, flatShading: true }),
+      new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }),
     ));
   }
 

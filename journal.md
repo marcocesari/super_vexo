@@ -2,6 +2,36 @@
 
 Most recent entries on top.
 
+## 2026-08-20 — The "lag" over Le Piazze was z-fighting, not frame rate
+
+- Marco reported the grey retail area and Parco Lupicchio lagging while
+  flying over them. Flew there and looked: the flat surfaces were
+  covered in stippled speckle along every edge — classic depth
+  fighting. It shimmers frame to frame as the camera moves, which is
+  what reads as "lag" even when the frame rate is fine.
+- **Why it was so bad here.** Every flat layer — ground, lawns, car
+  parks, roads, footpaths — sits within a few centimetres of the
+  others, and depth-buffer precision is governed by the RATIO far/near.
+  At near = 0.1 and far = 5000 that ratio was 50,000:1, leaving almost
+  no precision out where the ground is. Two fixes:
+    1. `NEAR` 0.1 → 0.5 (ratio now 10,000:1). Nothing is ever drawn
+       closer: the ship is 2.6 m long and the camera rides 5.5 m back.
+    2. `polygonOffset` on every flat layer, biasing them in the
+       rasteriser in a fixed order (ground 0, areas 1, roads 2, paths
+       3) rather than letting them fight.
+- **And a real cost cut while in there.** Those areas are exactly where
+  the screen is filled by matte, flat, mostly untextured surfaces, so
+  the whole town moved from `MeshStandardMaterial` to
+  `MeshLambertMaterial`. Full PBR per pixel bought nothing on a car
+  park. Parco Lupicchio went from needing render scale 0.5 to holding
+  0.75; Le Piazze still asks for 0.5 in headless, which is software
+  rasterisation, not a phone GPU.
+- Worth remembering as a pattern: two of the three performance
+  complaints in this project so far were not throughput at all. One was
+  shader recompilation from a changed #define, this one was depth
+  precision. Measure before optimising; the town has never been more
+  than 39 draw calls.
+
 ## 2026-08-20 — Castel Maggiore fixes: the mall, the stutter, the trees
 
 Three things Marco found while flying it.

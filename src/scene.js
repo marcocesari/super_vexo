@@ -3,7 +3,14 @@
 import * as THREE from 'three';
 
 export const FOV_DEG = 60;
-export const NEAR = 0.1;
+// The near plane is what sets depth-buffer precision: what matters is
+// the RATIO far/near, and 0.1 gave 50,000:1, which left almost no
+// precision out where the ground is. Flat surfaces two centimetres
+// apart — a car park over grass, a road over a car park — then fought
+// for pixels and shimmered as the ship moved. At 0.5 the ratio is
+// 10,000:1. Nothing is ever drawn closer than that anyway: the ship is
+// 2.6m long and the camera rides 5.5m behind it.
+export const NEAR = 0.5;
 export const FAR = 5000;
 
 // Where space's fog sits: beyond anything the game can draw, so it
