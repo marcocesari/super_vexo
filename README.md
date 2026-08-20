@@ -80,7 +80,10 @@ Re-scan the same place (or a different one) with:
 
 ```bash
 node tools/fetch-osm.mjs --lat 44.5691968 --lon 11.3524384 \
-  --radius 300 --slug castel-maggiore --name "Via Giuseppe Impastato"
+  --radius 500 --slug castel-maggiore --name "Via Giuseppe Impastato"
 ```
+
+Keep the radius generous: at 300 m the scan cut Centro Commerciale Le Piazze
+in half and most of the mall was missing from the game.
 
 Map data © OpenStreetMap contributors, [ODbL](https://osm.org/copyright).

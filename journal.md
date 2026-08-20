@@ -2,6 +2,59 @@
 
 Most recent entries on top.
 
+## 2026-08-20 — Castel Maggiore fixes: the mall, the stutter, the trees
+
+Three things Marco found while flying it.
+
+- **Missing buildings at Le Piazze.** The scan radius was 300 m and the
+  shopping centre sits 330 m out, so Overpass returned only the two
+  units with a node inside the circle — the other eight were simply
+  absent. Re-scanned at 500 m: 29 → 55 buildings. The mall units were
+  then rendered as four-storey red-brick condos, because the height
+  rule sorts by footprint area and a retail unit of 800–2300 m² is
+  exactly the size of a block of flats. Fixed by classifying anything
+  standing inside a `landuse=retail` polygon as retail regardless of
+  size — the land it sits on, not how big it is.
+
+- **The stutter.** Measured, not guessed: the first landing cost a
+  **2517 ms frame**. Two causes, both the same shape — a state that
+  Three.js bakes into shaders as a #define, changed at runtime, which
+  recompiles EVERY material in the scene:
+    1. `scene.fog` was created on landing. Fog now exists from the
+       first frame, parked at near = 1e6 where it can't tint anything,
+       and landing only changes its colour and distances (uniforms,
+       free). This fixed the take-off hitch outright.
+    2. The surface lights were toggled with `.visible`. The NUMBER of
+       lights is also a #define, so this recompiled everything again.
+       They're permanent now at zero intensity and landing turns them
+       up.
+  A third cost was the driver deferring its real work until a program
+  is used in a draw call. `surface.prewarm()` now renders the town once
+  at load — and it must render to the CANVAS, not an offscreen target,
+  because the canvas is multisampled and an 8×8 plain target
+  specialises the wrong framebuffer format (tried it; the stall came
+  straight back). Worst frame: 2517 ms → 432 ms, and that remainder is
+  SwiftShader's software rasteriser in headless, not a real GPU.
+  Take-off and every landing after the first are clean.
+  Also dropped `backdrop-filter` from the landing banner: a backdrop
+  blur over a WebGL canvas forces a compositor readback, which is
+  expensive on mobile Safari.
+
+- **Sustained slowness** is now handled by `src/perf.js`: a frame
+  watchdog that trims the render scale (never the detail) when the
+  median frame time says the device is below ~26 fps, and restores it
+  above ~52 fps. Verified end to end — it saw 20 fps on the surface in
+  headless, dropped to 0.75, and the frame rate recovered without
+  oscillating. Geometry was never the problem: the whole town is 39
+  draw calls and 18k triangles.
+
+- **Trees in the road.** They were offset from the road they were
+  scattered along, but nothing stopped them landing on a *different*
+  one at junctions and driveways. Now every candidate is tested
+  against every road segment and every building wall, and the verge
+  offset went from 2.6 m to 6.5 m. 198 trees, closest 2.8 m from a
+  kerb, asserted in `smoke-landing.mjs`.
+
 ## 2026-08-19 — Landing on Earth: Via Giuseppe Impastato, Castel Maggiore
 
 - **Marco's ask:** scan a real place with Street View's pegman and put

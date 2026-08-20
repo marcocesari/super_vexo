@@ -54,6 +54,42 @@ check('home block sits on the address', town.homeFromAddress <= 30,
   `${town.homeFromAddress}m from Via Giuseppe Impastato 28`);
 check('home block is a four-storey condo', town.homeHeight >= 12 && town.homeHeight <= 14,
   `${town.homeHeight}m`);
+// The first scan was 300m and clipped Centro Commerciale Le Piazze in
+// half — most of the mall's units fell outside it and simply weren't
+// there. The radius is 500m now; this is the guard against shrinking it.
+check('the whole neighbourhood is in range', town.buildings >= 50,
+  `${town.buildings} buildings`);
+
+// --- Trees stand on the verge, not in the road -------------------------------
+// They're scattered procedurally along the streets, so the only thing
+// keeping them out of the carriageway is the clearance test in
+// neighborhood.js. Check every single one against every road.
+const trees = await page.evaluate(() => {
+  const t = window.__superVexo.surface.town;
+  return { count: t.trees.length, sample: t.trees.slice(0, 400) };
+});
+const place = JSON.parse(
+  await (await fetch(`${URL}/src/world/places/castel-maggiore.json`)).text(),
+);
+function distToSegment(px, pz, x1, z1, x2, z2) {
+  const dx = x2 - x1; const dz = z2 - z1;
+  const lenSq = dx * dx + dz * dz;
+  if (lenSq < 1e-9) return Math.hypot(px - x1, pz - z1);
+  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (pz - z1) * dz) / lenSq));
+  return Math.hypot(px - (x1 + t * dx), pz - (z1 + t * dz));
+}
+let worstTree = Infinity;
+for (const [x, z] of trees.sample) {
+  for (const r of place.roads) {
+    for (let i = 0; i < r.pts.length - 1; i++) {
+      const d = distToSegment(x, z, r.pts[i][0], r.pts[i][1], r.pts[i + 1][0], r.pts[i + 1][1]);
+      worstTree = Math.min(worstTree, d - r.w / 2);
+    }
+  }
+}
+check('the town has street trees', trees.count > 40, `${trees.count} trees`);
+check('no tree stands in a road', worstTree > 1.5,
+  `closest tree is ${worstTree.toFixed(1)}m from the nearest kerb`);
 
 // --- Flying into Earth lands you ---------------------------------------------
 const landed = await page.evaluate(async () => {

@@ -16,8 +16,10 @@
 //   - two-storey brick townhouses opposite, shallow tiled roofs with
 //     deep eaves, garden walls and hedges;
 // plus the big flat retail sheds of Centro Commerciale Le Piazze off
-// to the south-west. The height rule below sorts them by footprint
-// area, which separates those three groups cleanly.
+// to the south-west. Housing is sorted into those groups by footprint
+// area; the mall is recognised by the land it stands on, because its
+// units are the same size as a block of flats and area alone put
+// four-storey brick balconies on a supermarket.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import place from './places/castel-maggiore.json';
@@ -76,6 +78,19 @@ function polygonCentre(pts) {
   let x = 0; let z = 0;
   for (const p of pts) { x += p[0]; z += p[1]; }
   return [x / pts.length, z / pts.length];
+}
+
+/** Shortest distance from a point to a line segment, on the ground plane. */
+function distanceToSegment(px, pz, x1, z1, x2, z2) {
+  const dx = x2 - x1;
+  const dz = z2 - z1;
+  const lenSq = dx * dx + dz * dz;
+  // Degenerate segment (a repeated node) — fall back to point distance.
+  if (lenSq < 1e-9) return Math.hypot(px - x1, pz - z1);
+  // How far along the segment the nearest point lies, clamped to its ends.
+  let t = ((px - x1) * dx + (pz - z1) * dz) / lenSq;
+  t = t < 0 ? 0 : (t > 1 ? 1 : t);
+  return Math.hypot(px - (x1 + t * dx), pz - (z1 + t * dz));
 }
 
 /** Ray-casting point-in-polygon, used to keep trees out of houses. */
@@ -351,11 +366,25 @@ export function createNeighborhood() {
   let homeArea = 0;
   let homeTop = 0;
 
+  // Everything standing inside a retail landuse polygon is part of a
+  // shopping centre — here, Centro Commerciale Le Piazze. Judging by
+  // footprint size alone got this wrong: the mall is a row of units of
+  // 800–2300 m² each, the same size as a block of flats, so they all
+  // came out as four-storey red-brick condos. The land they sit on is
+  // what actually distinguishes them.
+  const retailAreas = place.areas.filter(
+    (a) => a.kind === 'retail' || a.kind === 'commercial' || a.kind === 'industrial',
+  );
+
   for (const b of place.buildings) {
     if (b.pts.length < 4) continue;
     const area = polygonArea(b.pts);
-    const height = b.h && b.h !== 6.5 ? b.h : heightFor(area);
-    const retail = area > 2500;
+    const [bcx, bcz] = polygonCentre(b.pts);
+    const retail = area > 2500
+      || retailAreas.some((a) => pointInPolygon(bcx, bcz, a.pts));
+    const height = b.h && b.h !== 6.5
+      ? b.h
+      : (retail ? 8.5 : heightFor(area));
     const shape = footprintShape(b.pts);
 
     const walls = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
@@ -398,29 +427,71 @@ export function createNeighborhood() {
   ));
 
   // --- Trees ----------------------------------------------------------------
-  // OSM has no tree nodes here, but the street is lined with them, so
-  // they're scattered along the verges instead: every ~13 m beside a
-  // road, skipped wherever a building already stands.
+  // OSM has almost no tree nodes here, but the street is lined with
+  // them, so they're scattered along the verges instead: spaced out
+  // beside a road, set back from the kerb, and thrown away wherever
+  // they'd land on tarmac or in somebody's living room.
+  //
+  // Offsetting from one road isn't enough on its own — junctions,
+  // driveways and the footpaths running behind the verge mean a tree
+  // placed a polite distance from ITS road can still land squarely on
+  // another. So every candidate is checked against every road in the
+  // place, and against every building wall.
+  const roadSegments = [];
+  for (const r of place.roads) {
+    for (let i = 0; i < r.pts.length - 1; i++) {
+      roadSegments.push({
+        x1: r.pts[i][0], z1: r.pts[i][1],
+        x2: r.pts[i + 1][0], z2: r.pts[i + 1][1],
+        // Keep a tree's trunk this far from the centreline of any road:
+        // half its width (the kerb) plus room for the canopy.
+        clear: r.w / 2 + 2.8,
+      });
+    }
+  }
+  const wallSegments = [];
+  for (const f of footprints) {
+    for (let i = 0; i < f.length - 1; i++) {
+      wallSegments.push({
+        x1: f[i][0], z1: f[i][1], x2: f[i + 1][0], z2: f[i + 1][1], clear: 2.2,
+      });
+    }
+  }
+
+  function clearOf(segments, x, z) {
+    for (const s of segments) {
+      if (distanceToSegment(x, z, s.x1, s.z1, s.x2, s.z2) < s.clear) return false;
+    }
+    return true;
+  }
+
   const trunks = [];
   const leaves = [];
+  // Kept for the smoke test, which checks that none of them ended up
+  // standing in the road.
+  const treePositions = [];
   for (const r of place.roads) {
     if (r.kind === 'service' || r.kind === 'pedestrian') continue;
-    const verge = r.w / 2 + 2.6;
+    // Well back from the kerb, on the grass — where they actually are.
+    const verge = r.w / 2 + 6.5;
     for (let i = 0; i < r.pts.length - 1; i++) {
       const [x1, z1] = r.pts[i];
       const [x2, z2] = r.pts[i + 1];
       const len = Math.hypot(x2 - x1, z2 - z1);
       const ux = (x2 - x1) / len;
       const uz = (z2 - z1) / len;
-      for (let t = 6; t < len - 4; t += 13) {
-        if (rnd() < 0.35) continue;              // gaps, not an avenue
+      for (let t = 8; t < len - 6; t += 17) {
+        if (rnd() < 0.4) continue;               // gaps, not an avenue
         const side = rnd() < 0.5 ? 1 : -1;
         const x = x1 + ux * t - uz * verge * side;
         const z = z1 + uz * t + ux * verge * side;
         if (footprints.some((f) => pointInPolygon(x, z, f))) continue;
+        if (!clearOf(roadSegments, x, z)) continue;
+        if (!clearOf(wallSegments, x, z)) continue;
         const { trunk, leaf } = treeGeometries(x, z, 0.75 + rnd() * 0.7, rnd);
         trunks.push(trunk);
         leaves.push(leaf);
+        treePositions.push([x, z]);
       }
     }
   }
@@ -482,6 +553,7 @@ export function createNeighborhood() {
   return {
     group,
     update,
+    trees: treePositions,
     home: new THREE.Vector3(home.x, homeTop, home.z),
     spawn,
     heading: -Math.PI / 2, // facing west

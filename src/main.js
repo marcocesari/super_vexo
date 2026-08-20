@@ -36,6 +36,7 @@ import { createDebugPad } from './debugPad.js';
 import { createViewport } from './viewport.js';
 import { createChaseCamera } from './chaseCamera.js';
 import { createSurface } from './surface.js';
+import { createFrameScaler } from './perf.js';
 
 // --- Renderer ---------------------------------------------------------------
 const container = document.getElementById('app');
@@ -174,13 +175,23 @@ const look = { x: 0, y: 0 };
 // a desktop window dragged, the iOS URL bar sliding away. We only resize
 // the *drawing buffer* (`setSize(w, h, false)`); the canvas's on-screen
 // size is CSS's job, so the two can never drift apart mid-rotation.
-function applyViewportSize({ width, height, pixelRatio }) {
-  renderer.setPixelRatio(pixelRatio);
+let lastViewport = null;
+function applyViewportSize(size) {
+  lastViewport = size;
+  const { width, height, pixelRatio } = size;
+  // `frameScaler` trims the pixel ratio when the device can't keep up
+  // (see perf.js). At full speed its scale is 1 and this is a no-op.
+  renderer.setPixelRatio(pixelRatio * frameScaler.scale);
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
   if (cinematic) cinematic.onResize(width, height);
 }
+
+// Re-applies the current viewport at a new render scale.
+const frameScaler = createFrameScaler(() => {
+  if (lastViewport) applyViewportSize(lastViewport);
+});
 
 // How fast the stick/D-pad scrolls an open menu, in pixels per second.
 const MENU_SCROLL_SPEED = 900;
@@ -206,6 +217,10 @@ const debugPad = createDebugPad();
 // Size everything now that the cinematic exists, and keep it sized.
 createViewport(renderer.domElement, applyViewportSize);
 
+// Compile the landing site's shaders before anyone can fly there, so
+// the first landing doesn't stutter while it builds them.
+surface.prewarm(renderer, camera);
+
 function onCinematicDone() {
   state = STATE.TITLE;
   titleCard.show();
@@ -222,6 +237,11 @@ function frame(now) {
   const rawDt = (now - lastT) / 1000;
   const dt = Math.min(rawDt, 0.1);
   lastT = now;
+
+  // Frame-rate watchdog: drops the render resolution if the device is
+  // struggling, restores it when it isn't.
+  frameScaler.sample(rawDt);
+  frameScaler.update(dt);
 
   // Refresh the diagnostic overlay every frame (no-op when ?debugPad=1
   // isn't set). Runs before the state branch so cinematic/title also
@@ -403,7 +423,7 @@ if (import.meta.env.DEV) {
   window.__superVexo = {
     ship, asteroids, audio, fastTravel, physics,
     renderer, camera,
-    rovers: roverApi, mission, upgrades, missionScreens, surface,
+    rovers: roverApi, mission, upgrades, missionScreens, surface, frameScaler,
     shipConfig, shipConfigDefaults,
     resetGame,
   };

@@ -6,6 +6,11 @@ export const FOV_DEG = 60;
 export const NEAR = 0.1;
 export const FAR = 5000;
 
+// Where space's fog sits: beyond anything the game can draw, so it
+// never tints a star or a planet. See createScene() for why it's there.
+export const SPACE_FOG_NEAR = 1e6;
+export const SPACE_FOG_FAR = 2e6;
+
 export function createScene() {
   const scene = new THREE.Scene();
   // Near-black with a hint of blue. We never see "true" black in space
@@ -16,6 +21,15 @@ export function createScene() {
   // blue from above, a warmer dim from below — so the ship reads as 3D
   // even when the sun is on its far side. Cheap and great for space.
   scene.add(new THREE.HemisphereLight(0x6090c0, 0x202030, 0.55));
+
+  // Fog exists from the very first frame, pushed so far away it can
+  // have no visible effect out here. This is not decoration: whether a
+  // scene has fog is a #define inside every shader, so ADDING fog later
+  // forces Three.js to recompile every material in the scene at once —
+  // measured at a 2.5 second freeze the first time the ship landed on
+  // Earth. Landing now only changes the fog's colour and distances,
+  // which are plain uniforms and cost nothing.
+  scene.fog = new THREE.Fog(0x02030a, SPACE_FOG_NEAR, SPACE_FOG_FAR);
 
   // A distant directional light stands in for the Sun. Direction matters
   // more than position for directional lights.
