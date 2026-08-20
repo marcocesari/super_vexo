@@ -33,6 +33,15 @@ What is the **Mystery of the System**? You'll have to play to find out.
 A project by Marco (age 12).
 Built in JavaScript with [Three.js](https://threejs.org).
 
+## Vexo himself
+
+`?character=1` swaps the game for a turntable of the character — drag to spin
+him, arrow keys to tilt. He's built from primitives in `src/world/vexo.js`
+(1.8 m tall, feet at y = 0, so he can stand in the town at its real scale)
+from the concept art in `vexo_character.jpg`.
+
+`npm run character-sheet` renders a full revolution as one contact sheet.
+
 ## Running the game
 
 ```bash

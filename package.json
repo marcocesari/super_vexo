@@ -16,8 +16,10 @@
     "smoke:gyro": "node tools/smoke-gyro.mjs",
     "smoke:camera": "node tools/smoke-camera.mjs",
     "smoke:landing": "node tools/smoke-landing.mjs",
+    "smoke:character": "node tools/smoke-character.mjs",
     "smoke:cinematic": "node tools/smoke-cinematic.mjs",
-    "smoke:build": "node tools/smoke-build.mjs"
+    "smoke:build": "node tools/smoke-build.mjs",
+    "character-sheet": "node tools/character-sheet.mjs"
   },
   "dependencies": {
     "three": "^0.169.0"

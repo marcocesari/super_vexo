@@ -2,6 +2,43 @@
 
 Most recent entries on top.
 
+## 2026-08-20 — Vexo in 3D: a turntable first
+
+- Marco dropped `vexo_character.jpg` into the repo and asked for it in
+  3D, starting with a 360° view. From the art: young pilot, dark
+  gunmetal powered armour laced with green circuit traces, green visor
+  with a headset and mic boom, messy brown hair, heavy plates on
+  shoulders / chest / thighs / shins, cyan light rings in the soles.
+- **`src/world/vexo.js`** builds him from primitives like everything
+  else here — 63 pieces, 1.8 m tall, feet at y = 0 so he can stand in
+  the town later at its 1-unit-per-metre scale. Two tricks carry the
+  look: a canvas CIRCUIT TEXTURE used as an emissive map (modelling
+  those traces as geometry would have cost hundreds of slivers), and
+  armour PLATES laid over simple tapered limbs, which is where the
+  silhouette comes from.
+- **`src/characterViewer.js`** is the 360° view: `?character=1` swaps
+  the game for a turntable on a lit pedestal — drag to spin, arrows to
+  tilt. It borrows the renderer the same way the opening cinematic
+  does, so nothing in the game had to learn about it.
+- **`tools/character-sheet.mjs`** (`npm run character-sheet`) renders
+  one revolution as a labelled contact sheet, captured from the live
+  viewer so the sheet can't drift from what the game draws.
+- **Three things the first renders exposed**, none of which I would
+  have caught by reading the code:
+    1. `metalness: 0.75` with no environment map renders as *black*. He
+       looked like a man made of green light with a void for a body.
+       Metals reflect their surroundings; with nothing to reflect there
+       is nothing to see. Dropped to 0.35.
+    2. Emissive intensity was roughly triple what it should be — the
+       circuits drowned the armour they're supposed to decorate.
+    3. His boots were buried in the pedestal: the leg chain hanging off
+       a 0.8 m hip added up to more than 0.8 m. Now budgeted so the
+       soles land exactly on y = 0, and `smoke-character.mjs` measures
+       it.
+- Next, when Marco wants it: put him somewhere in the game — standing
+  on the street in Castel Maggiore, or in the cockpit on the title
+  card.
+
 ## 2026-08-20 — The long blocks stand on hills
 
 - Marco's call: the long buildings that aren't Le Piazze should sit on a

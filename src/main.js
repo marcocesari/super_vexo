@@ -37,6 +37,19 @@ import { createViewport } from './viewport.js';
 import { createChaseCamera } from './chaseCamera.js';
 import { createSurface } from './surface.js';
 import { createFrameScaler } from './perf.js';
+import { createCharacterViewer } from './characterViewer.js';
+
+// --- URL switches -----------------------------------------------------------
+// Read before anything is built, because half the setup below branches
+// on them.
+//   ?skipIntro=1   jump past the opening cinematic
+//   ?land=1        start parked over Via Giuseppe Impastato, Castel Maggiore
+//   ?character=1   show the Vexo turntable instead of the game
+//   ?debugPad=1    on-screen gamepad diagnostics
+const params = new URLSearchParams(window.location.search);
+const skipIntro = params.get('skipIntro') === '1';
+const startLanded = params.get('land') === '1';
+const characterMode = params.get('character') === '1';
 
 // --- Renderer ---------------------------------------------------------------
 const container = document.getElementById('app');
@@ -99,6 +112,11 @@ if (smallScreen.matches) {
   hud.setHintVisible(false);
 }
 const titleCard = createTitleCard();
+if (characterMode) {
+  titleCard.hide();
+  hud.hide();
+  hud.setHintVisible(false);
+}
 const fastTravel = createFastTravel(document.body);
 const audio = createAudio();
 const upgrades = createUpgrades();
@@ -186,6 +204,7 @@ function applyViewportSize(size) {
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
   if (cinematic) cinematic.onResize(width, height);
+  if (characterViewer) characterViewer.onResize(width, height);
 }
 
 // Re-applies the current viewport at a new render scale.
@@ -200,12 +219,8 @@ const MENU_SCROLL_SPEED = 900;
 // CINEMATIC (opening intro) → TITLE → FLY. `?skipIntro=1` skips the cinematic.
 const STATE = { CINEMATIC: 'cinematic', TITLE: 'title', FLY: 'fly' };
 
-const params = new URLSearchParams(window.location.search);
-const skipIntro = params.get('skipIntro') === '1';
-// `?land=1` starts the game already parked over Via Giuseppe Impastato,
-// for showing the place off without flying out to Earth first.
-const startLanded = params.get('land') === '1';
-const cinematic = skipIntro ? null : createCinematic({ renderer });
+const characterViewer = characterMode ? createCharacterViewer({ renderer }) : null;
+const cinematic = (skipIntro || characterMode) ? null : createCinematic({ renderer });
 let state = cinematic ? STATE.CINEMATIC : STATE.TITLE;
 
 if (cinematic) titleCard.hide();
@@ -242,6 +257,14 @@ function frame(now) {
   // struggling, restores it when it isn't.
   frameScaler.sample(rawDt);
   frameScaler.update(dt);
+
+  // Character turntable takes over the whole frame — no ship, no world.
+  if (characterViewer) {
+    characterViewer.update(dt);
+    characterViewer.render();
+    requestAnimationFrame(frame);
+    return;
+  }
 
   // Refresh the diagnostic overlay every frame (no-op when ?debugPad=1
   // isn't set). Runs before the state branch so cinematic/title also
@@ -424,6 +447,7 @@ if (import.meta.env.DEV) {
     ship, asteroids, audio, fastTravel, physics,
     renderer, camera,
     rovers: roverApi, mission, upgrades, missionScreens, surface, frameScaler,
+    characterViewer,
     shipConfig, shipConfigDefaults,
     resetGame,
   };
