@@ -2,6 +2,39 @@
 
 Most recent entries on top.
 
+## 2026-08-20 — The long blocks stand on hills
+
+- Marco's call: the long buildings that aren't Le Piazze should sit on a
+  small hill. Seven qualify — non-retail, spanning 40 m or more end to
+  end, which is exactly the row of four-storey terraces including his
+  own block.
+- **Terrain, not decoration.** Each hill is a flat cap over the
+  footprint plus 3.5 m, falling through a 12 m skirt (about 23°) to the
+  flat. `groundHeightAt(x, z)` is the single source of truth for the
+  shape, and everything that stands on the ground reads it: buildings
+  start at their hill's height, trees stand on the slope, the home
+  marker rides up with its block, and the ship's floor in surface.js
+  follows the terrain so a five-metre rise stops the ship instead of
+  being flown through.
+- **Roads climb the hills.** The first design trimmed each hill's skirt
+  so it stopped short of the nearest kerb — and the smoke test I wrote
+  for that invariant immediately failed. Measuring the data explained
+  why: six of the seven long blocks have a service road or footpath
+  within a metre of the wall, so there is no hill here that a road
+  doesn't touch. Roads now drape over the terrain instead — polylines
+  resampled to 4 m so a ribbon tracks a slope rather than bridging it —
+  which is what the access road does in life anyway.
+- **A pure ordering bug worth remembering:** roads were still flat after
+  the drape went in, because the pass that FILLS the hills array ran
+  after the roads were built, so `groundHeightAt` returned 0 for all of
+  them. The terrain now exists before anything is laid over it.
+- Areas (lawns, the park) stay flat and are simply buried where a hill
+  rises through them. They're green, the hills are green, and nothing
+  reads as wrong.
+- Tests: hills exist, home stands on one, no road vertex ends up buried
+  under the terrain (13,036 checked), the ship rests on the hilltop
+  rather than inside it.
+
 ## 2026-08-20 — The "lag" over Le Piazze was z-fighting, not frame rate
 
 - Marco reported the grey retail area and Parco Lupicchio lagging while

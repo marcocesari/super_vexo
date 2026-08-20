@@ -214,11 +214,17 @@ export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
 
       town.update(dt);
 
-      // Soft floor: skim the rooftops all you like, but the street
-      // itself stops you. No crash — this is a kid's flight sim.
+      // Soft floor: skim the rooftops all you like, but the ground
+      // itself stops you. No crash — this is a kid's flight sim. The
+      // floor follows the terrain, so the hills under the long blocks
+      // hold the ship up rather than letting it fly through them.
       const alt = altitude(ship);
-      if (alt < FLOOR_ALTITUDE) {
-        ship.mesh.position.y = SURFACE_ORIGIN.y + FLOOR_ALTITUDE;
+      const terrain = town.groundHeightAt(
+        ship.mesh.position.x - SURFACE_ORIGIN.x,
+        ship.mesh.position.z - SURFACE_ORIGIN.z,
+      );
+      if (alt < terrain + FLOOR_ALTITUDE) {
+        ship.mesh.position.y = SURFACE_ORIGIN.y + terrain + FLOOR_ALTITUDE;
         if (ship.velocity.y < 0) ship.velocity.y = 0;
       }
 

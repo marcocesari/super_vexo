@@ -34,6 +34,14 @@ function heightFor(areaM2) {
   return 2 * STOREY_M + 1.2;                // townhouse + roof pitch
 }
 
+// Hills. Marco wants the long residential blocks — the four-storey
+// terraces, not the shopping centre — standing on their own ground.
+// A building qualifies if it spans this far end to end and isn't retail.
+const LONG_SPAN_M = 40;
+const HILL_HEIGHT = 5;    // a small rise, not a mountain
+const HILL_MARGIN = 3.5;  // flat ground around the walls before it falls away
+const HILL_SKIRT = 12;    // metres of slope down to the flat — about 23°
+
 // Brick, in the range Street View shows: orange-red through to the
 // darker red-brown of the stair towers. One is picked per building so
 // the row reads as separate houses, not one long wall.
@@ -93,6 +101,53 @@ function distanceToSegment(px, pz, x1, z1, x2, z2) {
   return Math.hypot(px - (x1 + t * dx), pz - (z1 + t * dz));
 }
 
+/** Longest distance between any two vertices — how "long" a block is. */
+function longestSpan(pts) {
+  let best = 0;
+  for (let i = 0; i < pts.length; i++) {
+    for (let j = i + 1; j < pts.length; j++) {
+      const d = Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]);
+      if (d > best) best = d;
+    }
+  }
+  return best;
+}
+
+/** Distance from a point to the nearest edge of a polygon. */
+function distanceToPolygon(x, z, pts) {
+  let best = Infinity;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const d = distanceToSegment(x, z, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+/**
+ * Push every vertex of a ring outward from the centre by `margin`
+ * metres — a cheap stand-in for a proper polygon offset.
+ *
+ * Pushing along each vertex's own radial direction (rather than scaling
+ * the whole ring) keeps the margin roughly even on a long thin block,
+ * where uniform scaling would fling the two ends far out and leave the
+ * long sides barely moved.
+ */
+function offsetRing(pts, margin) {
+  const [cx, cz] = polygonCentre(pts);
+  return pts.map(([x, z]) => {
+    const dx = x - cx;
+    const dz = z - cz;
+    const r = Math.hypot(dx, dz) || 1;
+    return [x + (dx / r) * margin, z + (dz / r) * margin];
+  });
+}
+
+/** Smooth 0→1 ramp, so a hillside rounds off at top and bottom. */
+function smoothstep01(t) {
+  const c = t < 0 ? 0 : (t > 1 ? 1 : t);
+  return c * c * (3 - 2 * c);
+}
+
 /** Ray-casting point-in-polygon, used to keep trees out of houses. */
 function pointInPolygon(x, z, pts) {
   let inside = false;
@@ -135,14 +190,41 @@ function paint(geom, hex) {
 }
 
 /**
- * A flat ribbon along a polyline — how every road, path and parking bay
- * is drawn. Each segment becomes two triangles, stretched half a width
- * past both ends so the overlaps fill in the corners at junctions
- * (cheaper than mitring, and invisible from the air).
+ * Chop a polyline into pieces no longer than `step`, so a ribbon laid
+ * along it can follow a slope instead of bridging straight over it.
  */
-function ribbonGeometry(pts, width, y) {
+function resamplePolyline(pts, step) {
+  const out = [pts[0]];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x1, z1] = pts[i];
+    const [x2, z2] = pts[i + 1];
+    const len = Math.hypot(x2 - x1, z2 - z1);
+    const pieces = Math.max(1, Math.ceil(len / step));
+    for (let k = 1; k <= pieces; k++) {
+      const t = k / pieces;
+      out.push([x1 + (x2 - x1) * t, z1 + (z2 - z1) * t]);
+    }
+  }
+  return out;
+}
+
+/**
+ * A ribbon along a polyline — how every road, path and parking bay is
+ * drawn. Each segment becomes two triangles, stretched half a width past
+ * both ends so the overlaps fill in the corners at junctions (cheaper
+ * than mitring, and invisible from the air).
+ *
+ * `heightAt` lets the ribbon drape over the terrain. It has to: the
+ * service roads and parking aisles here run right up against the long
+ * blocks, so a hill under one of those blocks always has a road on it.
+ * A flat ribbon would be swallowed; this one climbs.
+ */
+function ribbonGeometry(rawPts, width, yOffset, heightAt) {
   const pos = [];
   const half = width / 2;
+  // Short enough that a ribbon tracks a hillside closely; long enough
+  // that flat ground doesn't cost thousands of triangles.
+  const pts = resamplePolyline(rawPts, 4);
   for (let i = 0; i < pts.length - 1; i++) {
     const [x1, z1] = pts[i];
     const [x2, z2] = pts[i + 1];
@@ -161,7 +243,8 @@ function ribbonGeometry(pts, width, y) {
       [bx - px, bz - pz], [ax - px, az - pz],
     ];
     for (const ci of [0, 1, 2, 0, 2, 3]) {
-      pos.push(corners[ci][0], y, corners[ci][1]);
+      const [cx, cz] = corners[ci];
+      pos.push(cx, heightAt(cx, cz) + yOffset, cz);
     }
   }
   if (pos.length === 0) return null;
@@ -331,7 +414,133 @@ export function createNeighborhood() {
     flatMaterial({ color: COLORS.ground, map: makeGroundTexture() }, 0),
   );
   ground.rotation.x = -Math.PI / 2;
+  ground.name = 'ground';
   group.add(ground);
+
+  // Every road segment, flattened once: hills use it to work out how
+  // much room they have, trees use it to stay out of the carriageway.
+  const roadSegments = [];
+  for (const r of place.roads) {
+    for (let i = 0; i < r.pts.length - 1; i++) {
+      roadSegments.push({
+        x1: r.pts[i][0], z1: r.pts[i][1],
+        x2: r.pts[i + 1][0], z2: r.pts[i + 1][1],
+        // Keep a tree's trunk this far from the centreline of any road:
+        // half its width (the kerb) plus room for the canopy.
+        clear: r.w / 2 + 2.8,
+      });
+    }
+  }
+
+  // --- Hills ----------------------------------------------------------------
+  // The long blocks sit on their own rise. Each hill is a flat top a
+  // little wider than the building, falling away through a skirt of
+  // sloped ground to meet the flat land around it.
+  //
+  // The hills are NOT trimmed to avoid roads, because they can't be:
+  // measured against the real data, six of the seven long blocks have a
+  // service road or footpath within a metre of the wall. Roads drape
+  // over the terrain instead (see `ribbonGeometry`), so the access road
+  // climbs the hill the way it would in life.
+  const hills = [];
+
+  /**
+   * Height of the ground at a point, in metres. Zero everywhere except
+   * on a hill. Trees, the home marker and the ship's floor all read the
+   * terrain through this, so they agree with what's drawn.
+   */
+  function groundHeightAt(x, z) {
+    let h = 0;
+    for (const hill of hills) {
+      const inside = pointInPolygon(x, z, hill.pts);
+      const d = inside ? 0 : distanceToPolygon(x, z, hill.pts);
+      if (d >= hill.margin + hill.skirt) continue;
+      const t = d <= hill.margin ? 1 : 1 - (d - hill.margin) / hill.skirt;
+      const height = hill.height * smoothstep01(t);
+      if (height > h) h = height;
+    }
+    return h;
+  }
+
+  /**
+   * Build one hill's mesh: a flat cap over the footprint, then a few
+   * concentric rings stepping down to ground level. The ring heights
+   * follow the same smoothstep as `groundHeightAt`, so what you see and
+   * what the ship lands on are the same shape.
+   */
+  function hillGeometries(hill) {
+    const geoms = [];
+    const RINGS = 3;
+    const top = offsetRing(hill.pts, hill.margin);
+
+    // `toNonIndexed` because the skirt bands below are built by hand
+    // without an index, and mergeGeometries refuses a mix of the two.
+    const cap = new THREE.ShapeGeometry(footprintShape(top)).toNonIndexed();
+    cap.rotateX(-Math.PI / 2);
+    cap.translate(0, hill.height, 0);
+    geoms.push(cap);
+
+    let inner = top;
+    let innerY = hill.height;
+    for (let r = 1; r <= RINGS; r++) {
+      const frac = r / RINGS;
+      const outer = offsetRing(hill.pts, hill.margin + hill.skirt * frac);
+      const outerY = hill.height * smoothstep01(1 - frac);
+      // Skirt band: two triangles per edge, from the inner ring down to
+      // the outer one.
+      const pos = [];
+      for (let i = 0; i < inner.length - 1; i++) {
+        const a = inner[i]; const b = inner[i + 1];
+        const c = outer[i + 1]; const d = outer[i];
+        pos.push(a[0], innerY, a[1], d[0], outerY, d[1], c[0], outerY, c[1]);
+        pos.push(a[0], innerY, a[1], c[0], outerY, c[1], b[0], innerY, b[1]);
+      }
+      const band = new THREE.BufferGeometry();
+      band.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      band.computeVertexNormals();
+      band.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array((pos.length / 3) * 2), 2));
+      geoms.push(band);
+      inner = outer;
+      innerY = outerY;
+    }
+    return geoms;
+  }
+
+  // Everything standing inside a retail landuse polygon is part of a
+  // shopping centre — here, Centro Commerciale Le Piazze. Judging by
+  // footprint size alone got this wrong: the mall is a row of units of
+  // 800–2300 m² each, the same size as a block of flats, so they all
+  // came out as four-storey red-brick condos. The land they sit on is
+  // what actually distinguishes them.
+  const retailAreas = place.areas.filter(
+    (a) => a.kind === 'retail' || a.kind === 'commercial' || a.kind === 'industrial',
+  );
+
+  // Pass one: decide which blocks get a hill, and how big it can be.
+  // This has to happen before anything is built, because the hill sets
+  // the height every wall, roof and tree above it starts from.
+  for (const b of place.buildings) {
+    if (b.pts.length < 4) continue;
+    const area = polygonArea(b.pts);
+    const [bcx, bcz] = polygonCentre(b.pts);
+    const retail = area > 2500
+      || retailAreas.some((a) => pointInPolygon(bcx, bcz, a.pts));
+    if (retail || longestSpan(b.pts) < LONG_SPAN_M) continue;
+    hills.push({ pts: b.pts, height: HILL_HEIGHT, margin: HILL_MARGIN, skirt: HILL_SKIRT });
+  }
+
+  const hillGeoms = [];
+  for (const hill of hills) hillGeoms.push(...hillGeometries(hill));
+  if (hillGeoms.length) {
+    const hillMesh = new THREE.Mesh(
+      mergeGeometries(hillGeoms),
+      // Layer 1: above the ground plane it rises out of, below the
+      // lawns, roads and paths that lie on top of it.
+      flatMaterial({ color: COLORS.grass }, 1),
+    );
+    hillMesh.name = 'hills';
+    group.add(hillMesh);
+  }
 
   // --- Green space, car parks, playgrounds ----------------------------------
   const areaBuckets = new Map();
@@ -349,7 +558,8 @@ export function createNeighborhood() {
     areaBuckets.get(color).push(areaGeometry(a.pts, 0.02 + areaBuckets.get(color).length * 0.001));
   }
   for (const [color, geoms] of areaBuckets) {
-    const mesh = new THREE.Mesh(mergeGeometries(geoms), flatMaterial({ color }, 1));
+    const mesh = new THREE.Mesh(mergeGeometries(geoms), flatMaterial({ color }, 2));
+    mesh.name = 'areas';
     group.add(mesh);
   }
 
@@ -360,14 +570,18 @@ export function createNeighborhood() {
     const softSurface = r.kind === 'footway' || r.kind === 'path'
       || r.kind === 'pedestrian' || r.kind === 'cycleway';
     const y = softSurface ? 0.06 : 0.05;
-    const geom = ribbonGeometry(r.pts, r.w, y);
+    const geom = ribbonGeometry(r.pts, r.w, y, groundHeightAt);
     if (geom) (softSurface ? paved : asphalt).push(geom);
   }
   if (asphalt.length) {
-    group.add(new THREE.Mesh(mergeGeometries(asphalt), flatMaterial({ color: COLORS.asphalt }, 2)));
+    const mesh = new THREE.Mesh(mergeGeometries(asphalt), flatMaterial({ color: COLORS.asphalt }, 3));
+    mesh.name = 'roads';
+    group.add(mesh);
   }
   if (paved.length) {
-    group.add(new THREE.Mesh(mergeGeometries(paved), flatMaterial({ color: COLORS.paving }, 3)));
+    const mesh = new THREE.Mesh(mergeGeometries(paved), flatMaterial({ color: COLORS.paving }, 4));
+    mesh.name = 'paths';
+    group.add(mesh);
   }
 
   // --- Buildings ------------------------------------------------------------
@@ -377,16 +591,6 @@ export function createNeighborhood() {
   let home = null;
   let homeArea = 0;
   let homeTop = 0;
-
-  // Everything standing inside a retail landuse polygon is part of a
-  // shopping centre — here, Centro Commerciale Le Piazze. Judging by
-  // footprint size alone got this wrong: the mall is a row of units of
-  // 800–2300 m² each, the same size as a block of flats, so they all
-  // came out as four-storey red-brick condos. The land they sit on is
-  // what actually distinguishes them.
-  const retailAreas = place.areas.filter(
-    (a) => a.kind === 'retail' || a.kind === 'commercial' || a.kind === 'industrial',
-  );
 
   for (const b of place.buildings) {
     if (b.pts.length < 4) continue;
@@ -398,9 +602,15 @@ export function createNeighborhood() {
       ? b.h
       : (retail ? 8.5 : heightFor(area));
     const shape = footprintShape(b.pts);
+    // Where this building's ground floor is. Zero for everything on the
+    // flat; the top of its own hill for the long blocks.
+    const base = groundHeightAt(bcx, bcz);
 
     const walls = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
     walls.rotateX(-Math.PI / 2);
+    // Sink the walls a little into the hill so no gap can show at the
+    // join if the cap and the footprint disagree by a few centimetres.
+    if (base > 0) walls.translate(0, base - 0.4, 0);
     const wallColor = retail
       ? RETAIL_WALL
       : BRICK[Math.floor(rnd() * BRICK.length)];
@@ -410,7 +620,7 @@ export function createNeighborhood() {
     // above the extrusion's own top face so the two can't z-fight.
     const roof = new THREE.ShapeGeometry(shape);
     roof.rotateX(-Math.PI / 2);
-    roof.translate(0, height + 0.06, 0);
+    roof.translate(0, base + height + 0.06, 0);
     roofGeoms.push(paint(roof, retail
       ? RETAIL_ROOF
       : ROOF[Math.floor(rnd() * ROOF.length)]));
@@ -418,10 +628,9 @@ export function createNeighborhood() {
     footprints.push(b.pts);
 
     // Home is the building the address point sits in (or nearest to it).
-    const [cx, cz] = polygonCentre(b.pts);
-    const d = Math.hypot(cx, cz);
+    const d = Math.hypot(bcx, bcz);
     if (home == null || d < home.d) {
-      home = { d, x: cx, z: cz };
+      home = { d, x: bcx, z: bcz, base };
       homeArea = area;
       homeTop = height;
     }
@@ -447,18 +656,6 @@ export function createNeighborhood() {
   // placed a polite distance from ITS road can still land squarely on
   // another. So every candidate is checked against every road in the
   // place, and against every building wall.
-  const roadSegments = [];
-  for (const r of place.roads) {
-    for (let i = 0; i < r.pts.length - 1; i++) {
-      roadSegments.push({
-        x1: r.pts[i][0], z1: r.pts[i][1],
-        x2: r.pts[i + 1][0], z2: r.pts[i + 1][1],
-        // Keep a tree's trunk this far from the centreline of any road:
-        // half its width (the kerb) plus room for the canopy.
-        clear: r.w / 2 + 2.8,
-      });
-    }
-  }
   const wallSegments = [];
   for (const f of footprints) {
     for (let i = 0; i < f.length - 1; i++) {
@@ -499,6 +696,12 @@ export function createNeighborhood() {
         if (!clearOf(roadSegments, x, z)) continue;
         if (!clearOf(wallSegments, x, z)) continue;
         const { trunk, leaf } = treeGeometries(x, z, 0.75 + rnd() * 0.7, rnd);
+        // Stand it on the ground, which is no longer always y = 0.
+        const base = groundHeightAt(x, z);
+        if (base > 0) {
+          trunk.translate(0, base - 0.3, 0);   // dig the roots in slightly
+          leaf.translate(0, base - 0.3, 0);
+        }
         trunks.push(trunk);
         leaves.push(leaf);
         treePositions.push([x, z]);
@@ -520,7 +723,7 @@ export function createNeighborhood() {
   // A ring on the ground and a soft beam over the roof, so you can find
   // your own building from the air without hunting.
   const marker = new THREE.Group();
-  marker.position.set(home.x, 0, home.z);
+  marker.position.set(home.x, home.base, home.z);
   const ringR = Math.sqrt(homeArea) * 0.75;
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(ringR, ringR + 1.6, 48),
@@ -540,7 +743,7 @@ export function createNeighborhood() {
       side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending,
     }),
   );
-  beam.position.y = homeTop + 35;
+  beam.position.y = homeTop + 35;  // marker group already sits on the hill
   marker.add(beam);
 
   const pip = new THREE.Mesh(
@@ -553,7 +756,11 @@ export function createNeighborhood() {
 
   // Spawn: hovering over the street a little east of home, nose pointed
   // west down Via Giuseppe Impastato so the block is dead ahead.
-  const spawn = new THREE.Vector3(home.x + 95, 45, home.z + 18);
+  const spawn = new THREE.Vector3(
+    home.x + 95,
+    45 + groundHeightAt(home.x + 95, home.z + 18),
+    home.z + 18,
+  );
 
   function update(dt) {
     pip.rotation.y += dt * 1.1;
@@ -564,13 +771,19 @@ export function createNeighborhood() {
     group,
     update,
     trees: treePositions,
-    home: new THREE.Vector3(home.x, homeTop, home.z),
+    /** Ground height in metres at a point — 0 on the flat, up on a hill. */
+    groundHeightAt,
+    home: new THREE.Vector3(home.x, home.base + homeTop, home.z),
     spawn,
     heading: -Math.PI / 2, // facing west
     info: {
       name: place.name,
       town: 'Castel Maggiore',
       buildings: place.buildings.length,
+      // The long blocks that stand on their own rise (the mall doesn't).
+      hills: hills.length,
+      homeStoreyHeight: homeTop,
+      homeGround: home.base,
       attribution: place.attribution,
     },
   };

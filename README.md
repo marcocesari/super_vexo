@@ -86,4 +86,8 @@ node tools/fetch-osm.mjs --lat 44.5691968 --lon 11.3524384 \
 Keep the radius generous: at 300 m the scan cut Centro Commerciale Le Piazze
 in half and most of the mall was missing from the game.
 
+The long residential blocks stand on small hills; the shopping centre and the
+shorter houses sit on the flat. Roads and paths drape over the terrain, so the
+service road climbs its hill.
+
 Map data © OpenStreetMap contributors, [ODbL](https://osm.org/copyright).

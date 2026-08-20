@@ -42,7 +42,9 @@ const town = await page.evaluate(() => {
     buildings: t.info.buildings,
     town: t.info.town,
     homeFromAddress: Math.round(Math.hypot(t.home.x, t.home.z)),
-    homeHeight: Math.round(t.home.y),
+    homeHeight: Math.round(t.info.homeStoreyHeight),
+    homeGround: +t.info.homeGround.toFixed(1),
+    hills: t.info.hills,
     meshes: t.group.children.length,
   };
 });
@@ -60,6 +62,38 @@ check('home block is a four-storey condo', town.homeHeight >= 12 && town.homeHei
 check('the whole neighbourhood is in range', town.buildings >= 50,
   `${town.buildings} buildings`);
 
+const place = JSON.parse(
+  await (await fetch(`${URL}/src/world/places/castel-maggiore.json`)).text(),
+);
+await page.evaluate((p) => { window.__place = p; }, place);
+
+// --- The long blocks stand on hills ------------------------------------------
+check('the long blocks got their hills', town.hills >= 5, `${town.hills} hills`);
+check('home stands on one of them', town.homeGround > 2, `${town.homeGround}m above the flat`);
+
+// Roads drape over the terrain rather than being trimmed around it —
+// six of the seven long blocks have a service road within a metre of
+// the wall, so a hill always has a road on it. The invariant is that no
+// road vertex ends up buried under the ground it lies on.
+const roadDrape = await page.evaluate(() => {
+  const t = window.__superVexo.surface.town;
+  let worstBelow = 0;
+  let checked = 0;
+  for (const mesh of t.group.children) {
+    if (mesh.name !== 'roads' && mesh.name !== 'paths') continue;
+    const pos = mesh.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i += 3) {   // one vertex per triangle is plenty
+      const below = t.groundHeightAt(pos.getX(i), pos.getZ(i)) - pos.getY(i);
+      if (below > worstBelow) worstBelow = below;
+      checked++;
+    }
+  }
+  return { worstBelow: +worstBelow.toFixed(2), checked };
+});
+check('roads climb the hills instead of sinking into them',
+  roadDrape.worstBelow < 0.2 && roadDrape.checked > 100,
+  `deepest road vertex is ${roadDrape.worstBelow}m under the terrain, ${roadDrape.checked} checked`);
+
 // --- Trees stand on the verge, not in the road -------------------------------
 // They're scattered procedurally along the streets, so the only thing
 // keeping them out of the carriageway is the clearance test in
@@ -68,9 +102,6 @@ const trees = await page.evaluate(() => {
   const t = window.__superVexo.surface.town;
   return { count: t.trees.length, sample: t.trees.slice(0, 400) };
 });
-const place = JSON.parse(
-  await (await fetch(`${URL}/src/world/places/castel-maggiore.json`)).text(),
-);
 function distToSegment(px, pz, x1, z1, x2, z2) {
   const dx = x2 - x1; const dz = z2 - z1;
   const lenSq = dx * dx + dz * dz;
@@ -126,6 +157,22 @@ const floor = await page.evaluate(async () => {
 });
 check('the street is a floor, not a crash', floor.altitude > 0 && floor.vy >= 0,
   `alt=${floor.altitude}m vy=${floor.vy}`);
+
+// And that floor follows the hills, rather than letting the ship fly
+// through a five-metre rise.
+const hilltop = await page.evaluate(async () => {
+  const sv = window.__superVexo;
+  const t = sv.surface.town;
+  sv.ship.mesh.position.set(t.home.x, -20000 + 1, t.home.z);
+  sv.ship.velocity.set(0, -30, 0);
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  return {
+    alt: +sv.surface.altitude(sv.ship).toFixed(2),
+    ground: +t.groundHeightAt(t.home.x, t.home.z).toFixed(2),
+  };
+});
+check('the ship rests on the hill, not inside it', hilltop.alt > hilltop.ground,
+  `altitude ${hilltop.alt}m over ${hilltop.ground}m of hill`);
 
 // --- Climbing out returns you to space ---------------------------------------
 const space = await page.evaluate(async () => {
