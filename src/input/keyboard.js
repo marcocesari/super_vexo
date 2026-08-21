@@ -47,8 +47,10 @@ export function createKeyboard() {
     sample() {
       const throttle = (any(KEYS.throttleUp) ? 1 : 0) - (any(KEYS.throttleDown) ? 1 : 0);
       const yaw = (any(KEYS.yawLeft) ? 1 : 0) - (any(KEYS.yawRight) ? 1 : 0);
-      // ArrowUp pitches the nose UP, which in our convention is a positive
-      // rotation around the local X axis.
+      // ArrowUp is +1 on this axis, and a positive rotation about the
+      // ship's local X tips the nose DOWN — stick-forward-is-dive, the
+      // way a flight stick works rather than the way a look control
+      // does. (Measured in the game: ArrowDown and thrust climbs.)
       const pitch = (any(KEYS.pitchUp) ? 1 : 0) - (any(KEYS.pitchDown) ? 1 : 0);
       const roll = (any(KEYS.rollLeft) ? 1 : 0) - (any(KEYS.rollRight) ? 1 : 0);
       return { throttle, yaw, pitch, roll };

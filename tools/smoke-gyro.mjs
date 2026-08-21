@@ -71,6 +71,7 @@ screen.orientation.angle = 0;
 
 const { createInput } = await import('../src/input/index.js');
 const { GYRO_LOOK_CONTRIBUTION } = await import('../src/input/gyro.js');
+// GYRO_CONTRIBUTION is already imported at the top of this file.
 const input = createInput();
 await input.enableGyro();
 
@@ -91,6 +92,21 @@ function lookCheck(beta, gamma, wantX, wantY, label) {
     `lookY=${s.lookY.toFixed(2)}  (want ${wantX.toFixed(2)}, ${wantY.toFixed(2)})`,
   );
 }
+
+// Steering: lean the phone the way you want to go. The flight yaw axis
+// is positive-is-left, so a right-edge-down tilt has to come out
+// NEGATIVE here or the ship turns away from the lean.
+function steerCheck(beta, gamma, wantYaw, label) {
+  fire(beta, gamma);
+  const s = input.sample();
+  const ok = Math.abs(s.yaw - wantYaw) < 0.02;
+  if (!ok) failed = true;
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}: yaw=${s.yaw.toFixed(2)} ` +
+    `(want ${wantYaw.toFixed(2)})`);
+}
+const S = GYRO_CONTRIBUTION;
+steerCheck(0, FULL, -S, 'tilt right: nose goes right');
+steerCheck(0, -FULL, S, 'tilt left: nose goes left');
 
 const L = GYRO_LOOK_CONTRIBUTION;
 lookCheck(0, 0, 0, 0, 'level: the view sits behind the tail');

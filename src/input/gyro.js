@@ -174,11 +174,13 @@ export function createGyro() {
       let pitch = clamp(pitchDeg / PITCH_FULL_DEG, -1, 1);
       let yaw = clamp(yawDeg / YAW_FULL_DEG, -1, 1);
 
-      // Sign convention: tilt phone forward (beta decreases) → pitch nose
-      // down → negative pitch. beta increases when phone tilts back.
-      // Default DeviceOrientationEvent: tilting top-of-phone away from
-      // you gives positive beta. We want that to push the nose **up**.
-      // → keep the sign as-is.
+      // Sign convention, measured rather than assumed. beta is 0 flat on
+      // a table and +90 stood upright with the top edge toward you, so
+      // tilting the top AWAY from you makes beta negative. The flight
+      // pitch axis is positive-is-nose-down (see keyboard.js), so as
+      // this stands, tilting the top away climbs. That matches what the
+      // original note here meant to do, even though it had beta's sign
+      // backwards. Flip this if pushing the phone away should dive.
 
       // Scale by the global contribution so the gyro is a fine-tune.
       return {

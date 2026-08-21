@@ -91,7 +91,14 @@ export function createInput() {
       const g = gyro.sample();
       if (g && gyro.active) {
         pitch = clamp1(pitch + g.pitchDelta);
-        yaw = clamp1(yaw + g.yawDelta);
+        // MINUS on the yaw: you lean the phone the way you want to go.
+        // The flight axis is positive-is-left (see gamepad.js: LX left →
+        // +yaw), while the gyro reports positive for tilting the right
+        // edge DOWN — so adding them, as this did until now, banked the
+        // phone right and turned the ship left. The camera share below
+        // reads the same signal the other way round for the same
+        // reason: there, positive means "swing the view right".
+        yaw = clamp1(yaw - g.yawDelta);
         sources.push('GYRO');
       }
 
