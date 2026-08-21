@@ -21,7 +21,7 @@
 // for the HUD — values are joined with `+` (e.g. `KB`, `PAD+GYRO`).
 import { createKeyboard } from './keyboard.js';
 import { createGamepad } from './gamepad.js';
-import { createGyro, GYRO_CONTRIBUTION, GYRO_LOOK_CONTRIBUTION } from './gyro.js';
+import { createGyro } from './gyro.js';
 import { createTouch, isTouchDevice } from './touch.js';
 import { isBridgeAvailable } from '../bridge.js';
 
@@ -116,23 +116,30 @@ export function createInput() {
       let lookY = pad ? pad.lookY : 0;
       if ((lookX || lookY) && !sources.includes('PAD')) sources.push('PAD');
 
-      // …and the gyro drives the gimbal too, so a phone with no right
-      // stick can still look around: THE VIEW GOES WHERE YOU TILT IT.
-      // Tilt the right edge down and the camera swings right; tilt the
-      // top away from you and it swings up. `sample()` has already
-      // scaled its output by GYRO_CONTRIBUTION for the flight axes, so
-      // rescale to the look share rather than reading the sensor twice.
-      if (g && gyro.active) {
-        const share = GYRO_LOOK_CONTRIBUTION / GYRO_CONTRIBUTION;
-        lookX = clamp1(lookX + g.yawDelta * share);
-        lookY = clamp1(lookY + g.pitchDelta * share);
-      }
+      // …and the gyro turns the camera as well, but as a RATE: how far
+      // the phone has turned since the last frame, in radians, which the
+      // camera adds to where it is already pointing. It therefore stays
+      // where the player left it instead of springing back the moment
+      // the phone comes level, and it doesn't matter how the phone was
+      // being held when the page loaded.
+      //
+      // Separate from lookX/lookY on purpose: those are stick
+      // deflections in [-1, 1], and this is an angle. Consumers that
+      // don't want motion control simply ignore it.
+      const turn = gyro.active ? gyro.consumeTurn() : { pitch: 0, yaw: 0 };
+      const lookTurnX = turn.yaw;
+      const lookTurnY = turn.pitch;
+      if ((lookTurnX || lookTurnY) && !sources.includes('GYRO')) sources.push('GYRO');
 
       // Always at least show 'KB' so the HUD has something — matches M1.
       if (sources.length === 0) sources.push('KB');
       lastSources = sources;
 
-      return { throttle, yaw, pitch, roll, lookX, lookY, stickYaw, stickThrottle };
+      return {
+        throttle, yaw, pitch, roll,
+        lookX, lookY, lookTurnX, lookTurnY,
+        stickYaw, stickThrottle,
+      };
     },
 
     activeSources() {

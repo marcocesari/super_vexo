@@ -328,17 +328,16 @@ check('and one foot actually lifts', worstFloat - worstSink > 0.005,
   `${((worstFloat - worstSink) * 100).toFixed(1)}cm of movement`);
 
 // --- Looking around on foot --------------------------------------------------
-// The look axes swing the walking camera the same way they swing the
-// chase camera in flight — and on a phone the gyro drives them, which is
-// the whole point: tilt to look down the side of the ship while standing
-// next to it. Driven here through a real DeviceOrientationEvent, so this
-// covers the whole chain: sensor → input.sample() → camera.
+// Two things to prove, and the second is the one that matters: the
+// camera turns when the phone turns, and it STAYS THERE when the phone
+// stops. Driven through real DeviceOrientationEvents, so this covers the
+// whole chain: sensor → input.sample() → camera.
 const gyroLook = await page.evaluate(async () => {
   const g = window.__superVexo;
   const f = g.onFoot;
-  // Back to open ground first: the boom swings wide to see past a wall
-  // or the ship, and a camera that isn't behind him has nothing to say
-  // about which way "behind him" moved.
+  // Open ground first: the boom swings wide to see past a wall or the
+  // ship, and a camera that isn't behind him has nothing to say about
+  // which way "behind him" moved.
   const town = g.surface.town;
   let best = null;
   for (let x = -200; x <= 200; x += 4) {
@@ -349,10 +348,8 @@ const gyroLook = await page.evaluate(async () => {
     }
   }
   if (best) { f.position.x = best.x; f.position.z = best.z; }
-  // The camera keeps its own yaw and drifts back behind him over about
-  // three quarters of a second, so let it finish settling before
-  // measuring where "straight behind" is.
   await new Promise((r) => setTimeout(r, 1800));
+
   const fire = (beta, gamma) => window.dispatchEvent(
     new DeviceOrientationEvent('deviceorientation', { alpha: 0, beta, gamma }),
   );
@@ -363,7 +360,6 @@ const gyroLook = await page.evaluate(async () => {
       await new Promise((r) => setTimeout(r, 40));
     }
   };
-  // Where the camera sits, as an angle off straight-behind-him.
   const swing = () => {
     const cam = g.camera.position;
     const p = f.position;
@@ -373,23 +369,64 @@ const gyroLook = await page.evaluate(async () => {
     while (d < -Math.PI) d += Math.PI * 2;
     return d;
   };
-  await hold(0, 0, 1400);            // flat: calibrates the neutral pose
+  await hold(0, 0, 700);
   const level = swing();
-  await hold(0, 35, 900);            // right edge down
-  const tiltedRight = swing();
-  await hold(0, 0, 2600);            // back to flat, and let it settle
-  const recentred = swing();
-  return { level, tiltedRight, recentred };
+  // Turn the phone 30 degrees to the right, in steps, then hold it there.
+  for (let deg = 0; deg <= 30; deg += 3) await hold(0, deg, 60);
+  const turned = swing();
+  // Keep holding it at 30: a rate control does nothing more, an absolute
+  // one would sit at whatever the tilt maps to.
+  await hold(0, 30, 1200);
+  const held = swing();
+  return { level, turned, held };
 });
 check('level, the walking camera sits behind him',
   Math.abs(gyroLook.level) < 0.15, `${gyroLook.level.toFixed(2)} rad off`);
-// Tilt right → the camera walks round to his left and keeps looking at
-// him, which is what "the view swung right" looks like from outside.
-check('tilting the phone swings the walking camera',
-  gyroLook.tiltedRight > 0.5 && gyroLook.tiltedRight < 1.2,
-  `${gyroLook.tiltedRight.toFixed(2)} rad off straight-behind`);
-check('and it falls back behind him when the phone is level again',
-  Math.abs(gyroLook.recentred) < 0.15, `${gyroLook.recentred.toFixed(2)} rad off`);
+check('turning the phone turns the camera',
+  Math.abs(gyroLook.turned - gyroLook.level) > 0.3,
+  `${gyroLook.level.toFixed(2)} → ${gyroLook.turned.toFixed(2)} rad`);
+check('and it stays there while the phone is held still',
+  Math.abs(gyroLook.held - gyroLook.turned) < 0.12,
+  `${gyroLook.turned.toFixed(2)} → ${gyroLook.held.toFixed(2)} rad after a second`);
+
+// The stick is a rate too: push it and the camera keeps going, let go
+// and it holds. It used to spring back to behind him the instant the
+// stick was released, which is what Marco reported.
+const stickLook = await page.evaluate(async () => {
+  const g = window.__superVexo;
+  const f = g.onFoot;
+  const swing = () => {
+    const cam = g.camera.position;
+    const p = f.position;
+    const a = Math.atan2(cam.x - p.x, cam.z - p.z);
+    let d = a - (f.vexo.group.rotation.y + Math.PI);
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  };
+  // Drive the look axis directly: no pad is attached to a headless
+  // browser, and this is the same number a right stick would produce.
+  const pad = g.__lookPad ?? (g.__lookPad = { x: 0 });
+  const realSample = f.__sample;
+  const before = swing();
+  // Feed the axis through the update the loop is already calling.
+  const t0 = performance.now();
+  while (performance.now() - t0 < 700) {
+    f.update(0.016, { throttle: 0, yaw: 0, stickYaw: 0, stickThrottle: 0, lookX: 1, lookY: 0 });
+    await new Promise((r) => requestAnimationFrame(r));
+  }
+  const pushed = swing();
+  await new Promise((r) => setTimeout(r, 900));   // released: does it spring back?
+  const released = swing();
+  void pad; void realSample;
+  return { before, pushed, released };
+});
+check('the look stick turns the camera',
+  Math.abs(stickLook.pushed - stickLook.before) > 0.4,
+  `${stickLook.before.toFixed(2)} → ${stickLook.pushed.toFixed(2)} rad`);
+check('and the view stays where it was left',
+  Math.abs(stickLook.released - stickLook.pushed) < 0.15,
+  `${stickLook.pushed.toFixed(2)} → ${stickLook.released.toFixed(2)} rad after release`);
 
 // --- Walls --------------------------------------------------------------------
 const walls = await page.evaluate(() => {

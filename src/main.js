@@ -193,7 +193,7 @@ function tryBeginWarp() {
 const chaseCamera = createChaseCamera(camera);
 // Right-stick look for this frame. Only the FLY state writes it; the
 // cinematic and title card leave the camera parked behind the tail.
-const look = { x: 0, y: 0 };
+const look = { x: 0, y: 0, turnX: 0, turnY: 0 };
 
 // --- Resize -----------------------------------------------------------------
 // One place that reacts to the window changing shape — a phone rotating,
@@ -334,6 +334,10 @@ function frame(now) {
     const canLook = !fastTravel.suppressInput && !missionScreens.isOpen();
     look.x = canLook ? axes.lookX : 0;
     look.y = canLook ? axes.lookY : 0;
+    // How far the phone turned this frame, in radians — motion control,
+    // which the camera accumulates rather than tracking as a posture.
+    look.turnX = canLook ? axes.lookTurnX : 0;
+    look.turnY = canLook ? axes.lookTurnY : 0;
 
     // Toggle the Tablet: T key or pad "−" (Select).
     if (input.keyboard.consumeJustPressed(['KeyT']) || input.gamepad.consumeJustPressed(BUTTONS.Select)) {

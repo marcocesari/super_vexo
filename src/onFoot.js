@@ -85,15 +85,21 @@ const LADDER_LOCAL_Z = 0.55;
 const CLIMB_STANDOFF = 0.32;
 const STEPOFF_DISTANCE = 2.0;
 
-// How far the look axes swing the walking camera around him. The same
-// axes the chase camera uses in flight — right stick, and the gyro on a
-// phone — so tilting to look down the side of the ship works the same
-// whether you are flying it or standing next to it. Less range than in
-// flight: a camera that can swing all the way to his face would spend
-// most of its time looking at the back of his head from the front.
-const FOOT_LOOK_YAW = Math.PI * 0.62;     // ~112 degrees either way
+// Looking around on foot.
+//
+// The stick is a RATE, not a deflection: push it and the camera keeps
+// turning, let go and it stays where you left it. That is how every
+// third-person camera works, and the alternative — deflection as an
+// angle, which is what the flight camera does and what this used to
+// copy — springs the view back the instant you let go, so you can never
+// leave it pointing anywhere.
+//
+// The gyro adds to the same angle, also as a rate: `axes.lookTurnX/Y`
+// is how far the phone turned this frame. Motion control is a
+// displacement, not a posture.
+const FOOT_LOOK_RATE = 2.4;               // rad/s at full stick
+const FOOT_PITCH_RATE = 1.3;
 const FOOT_LOOK_PITCH = Math.PI * 0.19;   // ~34 degrees up or down
-const FOOT_LOOK_HALFLIFE = 0.09;
 
 // The camera boom on foot, and how much of it can be given up before a
 // wall or the ship's own hull. A 10 m ship with a 7 m wingspan is easy
@@ -120,6 +126,8 @@ function alphaFor(dt, halflife) {
 }
 
 function clamp1(v) { return v < -1 ? -1 : (v > 1 ? 1 : v); }
+
+function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
 /** Shortest signed angle from a to b. */
 function angleDelta(a, b) {
@@ -207,13 +215,12 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
   let heading = 0;
   let climbY = 0;
 
-  // Where the look axes have swung the walking camera, in radians off
-  // straight-behind. Smoothed, like the chase camera's gimbal.
-  let orbitYaw = 0;
-  let orbitPitch = 0;
-  // The yaw the camera looks along, kept apart from his heading: the
-  // stick is read in this frame, so it must not chase him instantly.
-  let camBaseYaw = 0;
+  // The direction the camera looks along, in world radians, and how far
+  // it is tilted. It has its own yaw rather than being welded behind him
+  // so that a held stick direction keeps meaning the same direction on
+  // screen — and now, so that a view the player aimed stays aimed.
+  let camPitch = 0;
+  let camYaw = 0;
   // Metres per second across the ground, eased toward the stick.
   const vel = new THREE.Vector3();
   const _target = new THREE.Vector3();
@@ -364,8 +371,8 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
       // Pitching the view up walks the camera down and back, the way a
       // boom on a gimbal moves — so looking up at him keeps him in
       // frame instead of sliding the picture off his head.
-      const reach = boom * Math.cos(orbitPitch);
-      const rise = boom * Math.sin(orbitPitch);
+      const reach = boom * Math.cos(camPitch);
+      const rise = boom * Math.sin(camPitch);
       _camGoal.set(dx, 0, dz)
         .multiplyScalar(reach)
         .add(_lookGoal)
@@ -433,9 +440,9 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
    */
   function boomBehind() {
     // Opposite the way the camera is looking. Not "behind him": the
-    // camera has its own settled yaw so that a held stick direction
-    // keeps meaning the same direction on screen.
-    const base = camBaseYaw + orbitYaw + Math.PI;
+    // camera has its own yaw, so a held stick direction keeps meaning
+    // the same direction on screen and an aimed view stays aimed.
+    const base = camYaw + Math.PI;
     for (const swing of [0, 0.42, -0.42, 0.85, -0.85, 1.3, -1.3, 1.9, -1.9]) {
       const a = base + swing;
       const dx = Math.sin(a);
@@ -496,9 +503,8 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
   function enterWalk() {
     state = 'walk';
     phaseT = 0;
-    orbitYaw = 0;
-    orbitPitch = 0;
-    camBaseYaw = heading;
+    camPitch = 0;
+    camYaw = heading;
     vel.set(0, 0, 0);
     hintT = CONTROLS_HINT_TIME;
     camInit = false;
@@ -571,7 +577,7 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
     heading += angleDelta(heading, want) * alphaFor(dt, 0.12);
     // Keep the camera behind him as he turns, so control is handed over
     // with the stick's "forward" pointing where he is already facing.
-    camBaseYaw = heading;
+    camYaw = heading;
     applyVexoTransform();
     if (t >= 1) enterWalk();
   }
@@ -588,17 +594,19 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
   }
 
   function updateWalk(dt, axes) {
-    // Look axes → where the camera rides, as an offset from wherever it
-    // is currently settled. Deflection is an ANGLE, not a rate, exactly
-    // as in flight: let go and the view drifts back on its own, with
-    // nothing to re-centre by hand.
+    // --- Looking around -------------------------------------------------------
+    // Stick as a rate, gyro as a displacement, both into the same angle.
+    // Nothing here springs back: where you point it is where it stays.
     const lookX = clamp1(axes?.lookX ?? 0);
-    const wantYaw = lookX * FOOT_LOOK_YAW;
-    const wantPitch = -clamp1(axes?.lookY ?? 0) * FOOT_LOOK_PITCH;
-    const aLook = alphaFor(dt, FOOT_LOOK_HALFLIFE);
-    orbitYaw += (wantYaw - orbitYaw) * aLook;
-    orbitPitch += (wantPitch - orbitPitch) * aLook;
-    const camYaw = camBaseYaw + orbitYaw;
+    const lookY = clamp1(axes?.lookY ?? 0);
+    const turnX = axes?.lookTurnX ?? 0;
+    const turnY = axes?.lookTurnY ?? 0;
+    camYaw += lookX * FOOT_LOOK_RATE * dt + turnX;
+    camPitch = clamp(
+      camPitch - lookY * FOOT_PITCH_RATE * dt - turnY,
+      -FOOT_LOOK_PITCH, FOOT_LOOK_PITCH,
+    );
+    const looking = Math.abs(lookX) > 0.05 || Math.abs(turnX) > 0.0015;
 
     // --- Where the stick points, he goes ------------------------------------
     // Not tank controls: the stick is a DIRECTION in the frame the player
@@ -670,8 +678,11 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
     else vexo.setGait('idle');
 
     // The camera drifts back behind whichever way he ended up facing —
-    // but only while he is going roughly forward or standing still, and
-    // never while the player is holding a look.
+    // but only while he is going roughly forward and nobody is looking
+    // around. This is the re-centre: the gyro literature is against a
+    // dedicated reset button, on the grounds that the player already
+    // has better ways to say "put it back", and walking forward is
+    // exactly such a way.
     //
     // Chasing him unconditionally is a feedback loop: hold left, he
     // turns left, the camera follows, so "left" now points somewhere
@@ -679,9 +690,10 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
     // left key walked him round a circle about a metre across, for ever.
     // Gated, he sets off across the screen in a straight line and the
     // camera only closes up once he is heading away from it again.
-    const goingForward = Math.abs(moveX) < 0.4;
-    if (Math.abs(lookX) < 0.05 && goingForward) {
-      camBaseYaw += angleDelta(camBaseYaw, heading) * alphaFor(dt, CAM_RECENTRE_HALFLIFE);
+    const goingForward = Math.abs(moveX) < 0.4 && push > 0.05;
+    if (!looking && goingForward) {
+      camYaw += angleDelta(camYaw, heading) * alphaFor(dt, CAM_RECENTRE_HALFLIFE);
+      camPitch += (0 - camPitch) * alphaFor(dt, CAM_RECENTRE_HALFLIFE * 2);
     }
 
     // Follow the ground, hills included.

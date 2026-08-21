@@ -72,7 +72,9 @@ Then open http://localhost:5173.
   the screen, turning to face the way he's going. Diagonals aren't faster, and
   he leans into a start and carries a step into a stop
 - **Shift / R1** — run
-- **Right stick, or tilting the phone** — swing the camera around him
+- **Right stick, or turning the phone** — swing the camera around him. Push and
+  it keeps turning; let go and it stays where you left it. Walking forward
+  eases it back behind him on its own, so there's no button to press
 
 **Gamepad controls** (USB / Bluetooth pad on desktop, or the native iOS wrapper):
 - **Left stick** — fly the ship: push up to thrust, left / right to turn
@@ -83,12 +85,21 @@ Then open http://localhost:5173.
   the face — so you can see it from any angle
 - **D-pad** — pitch (up / down) and roll (left / right)
 
-**Gyroscope** does two jobs on a phone. It adds a little fine pitch / yaw to the
-flight axes (20%), and it drives the camera the way the right stick does — the
-view goes where you tilt it, so tilting the right edge down swings the view
-right and tilting the top away swings it up. A full 35° tilt is about 80° of
-swing, and letting the phone come level drops the view back behind the tail on
-its own. It works the same standing on the street as it does flying.
+**Gyroscope** does two different jobs on a phone, and they work differently on
+purpose.
+
+*Steering* is a **tilt**: lean the phone the way you want to go and it adds a
+little fine pitch / yaw to the flight axes (20%), on top of the stick. Leaning
+into a turn is an absolute gesture, so an absolute reading is right for it.
+
+*Looking* is a **turn**: the camera moves as far as the phone moves and then
+stays there, exactly like a mouse — which reports how far it slid, not where it
+sits on the desk. Turn the phone 20° right and the view comes 20° right and
+holds; hold the phone anywhere you like and nothing drifts. This is how games
+with good motion controls do it, and it means the view is never pinned to
+however you happen to be holding the phone. Touching the right stick puts the
+gyro's offset away, so the stick stays in charge and letting go of it still
+drops the view behind the tail.
 
 ## Landing on Earth
 

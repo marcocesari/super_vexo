@@ -17,12 +17,16 @@
 // is undefined) is a NO-OP that still wires the listener.
 
 export const GYRO_CONTRIBUTION = 0.2; // 20%
-// The gyro drives the camera gimbal as well as the flight axes, and it
-// gets a bigger share there. Steering wants the gyro to be a fine-tune
-// of the stick — 20% — but looking around is the gyro's own job: at
-// this share a full 35-degree tilt swings the view about 80 degrees,
-// enough to see down the side of the ship without a right stick at all.
-export const GYRO_LOOK_CONTRIBUTION = 0.45;
+
+// Camera control is a RATE, not a tilt — see `consumeTurn()`. On the
+// "natural sensitivity" scale the gyro community uses, 1.0 means the
+// camera turns exactly as far as the phone did. Experienced players run
+// 4-5; for a game a child plays one-handed, 1:1 is plenty.
+export const GYRO_LOOK_SENSITIVITY = 1.0;
+// A single event that claims the phone jumped more than this many
+// degrees is the sensor re-seating itself (an orientation change, a
+// permission prompt, coming back from the background), not a person.
+const MAX_STEP_DEG = 25;
 const CALIBRATION_MS = 1000;          // hold neutral 1s
 // Pitch / yaw saturate at this much device tilt (degrees) → +/- 1.
 const PITCH_FULL_DEG = 35;
@@ -51,6 +55,15 @@ export function createGyro() {
   let lastEvent = null;        // most recent event
   let lastEventTime = 0;
 
+  // How far the phone has TURNED, in screen-space degrees, since anyone
+  // last asked. Accumulated per event rather than sampled per frame:
+  // events and frames arrive at different rates, and a turn measured
+  // across a dropped frame still has to count.
+  let turnPitch = 0;
+  let turnYaw = 0;
+  let prevPitchDeg = null;
+  let prevYawDeg = null;
+
   function onEvent(e) {
     // beta is the value we care most about for pitch; we tolerate nulls.
     if (e.alpha == null && e.beta == null && e.gamma == null) return;
@@ -61,6 +74,22 @@ export function createGyro() {
       gamma: e.gamma ?? 0,
     };
     lastEventTime = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+
+    // Accumulate the TURN. This needs no neutral pose and no
+    // calibration: what the camera wants is how far the phone moved
+    // since the last reading, exactly as a mouse reports how far it
+    // slid rather than where it sits on the desk.
+    const now = screenAngles(lastEvent);
+    if (prevPitchDeg !== null) {
+      const dPitch = now.pitch - prevPitchDeg;
+      const dYaw = now.yaw - prevYawDeg;
+      if (Math.abs(dPitch) < MAX_STEP_DEG && Math.abs(dYaw) < MAX_STEP_DEG) {
+        turnPitch += dPitch;
+        turnYaw += dYaw;
+      }
+    }
+    prevPitchDeg = now.pitch;
+    prevYawDeg = now.yaw;
 
     if (neutral == null) {
       const now = lastEventTime;
@@ -91,6 +120,22 @@ export function createGyro() {
     neutral = null;
     calibrationStart = 0;
     calibrationSum = { alpha: 0, beta: 0, gamma: 0, n: 0 };
+    // The screen just turned under the sensor, so the last screen-space
+    // reading is meaningless. Drop it rather than counting the change of
+    // frame as a giant flick of the wrist.
+    prevPitchDeg = null;
+    prevYawDeg = null;
+  }
+
+  /** Screen-space tilt of the phone right now, in degrees. */
+  function screenAngles(e) {
+    const angle = screenAngleRad();
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    return {
+      pitch: e.beta * cos - e.gamma * sin,
+      yaw: e.beta * sin + e.gamma * cos,
+    };
   }
 
   function attach() {
@@ -148,8 +193,35 @@ export function createGyro() {
     },
 
     /**
+     * How far the phone has turned since this was last called, in
+     * RADIANS of screen-space pitch and yaw, scaled by the look
+     * sensitivity. Reading it clears it, so every turn is counted once
+     * and none is counted twice.
+     *
+     * This is the input a camera wants. Gyroscopes measure angular
+     * velocity, and the whole of gyro aiming is `displacement =
+     * velocity x time`: the camera moves while the phone moves and
+     * STAYS where it was left when the phone stops. Mapping absolute
+     * tilt instead — which this module used to do for the camera —
+     * pins the view to however the player happens to be holding the
+     * phone, and springs it back the moment they relax.
+     */
+    consumeTurn() {
+      if (!listening || prevPitchDeg === null) return { pitch: 0, yaw: 0 };
+      const out = {
+        pitch: turnPitch * DEG_TO_RAD * GYRO_LOOK_SENSITIVITY,
+        yaw: turnYaw * DEG_TO_RAD * GYRO_LOOK_SENSITIVITY,
+      };
+      turnPitch = 0;
+      turnYaw = 0;
+      return out;
+    },
+
+    /**
      * Returns { pitchDelta, yawDelta } scaled to roughly [-1, 1] *
-     * GYRO_CONTRIBUTION. Returns null until calibrated.
+     * GYRO_CONTRIBUTION. Returns null until calibrated. This is the
+     * STEERING contribution — a tilt, deliberately, because leaning the
+     * phone into a turn is an absolute gesture.
      */
     sample() {
       if (!lastEvent || !neutral) return null;
@@ -192,3 +264,5 @@ export function createGyro() {
 }
 
 function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+const DEG_TO_RAD = Math.PI / 180;

@@ -12,6 +12,15 @@
 //      ANGLE, not a rate, so letting go always drops the view straight
 //      back behind the tail. Nothing to re-centre by hand.
 //
+//      A phone's actual gyroscope goes through the same gimbal but the
+//      other way about: it reports how far the phone TURNED, which is
+//      added to where the camera already points and stays there. That
+//      is what motion control is — a displacement, like a mouse, not a
+//      posture — and it is why the two are accumulated separately
+//      below. Touching the stick bleeds the gyro's offset away, so the
+//      stick stays the authority and releasing it still drops the view
+//      behind the tail.
+//
 // The one invariant, in both jobs: the camera always looks *exactly* at
 // the ship's origin, so the ship never leaves the centre of the frame.
 // That's why the look target isn't smoothed the way the position is —
@@ -45,6 +54,8 @@ const AXIS_Y = new THREE.Vector3(0, 1, 0);
 
 function clamp1(v) { return v < -1 ? -1 : (v > 1 ? 1 : v); }
 
+function clampTo(v, limit) { return v < -limit ? -limit : (v > limit ? limit : v); }
+
 /** Frame-rate-independent smoothing factor for a given half-life. */
 function alphaFor(dt, halflife) {
   // After `halflife` seconds we have closed exactly half the remaining
@@ -60,6 +71,9 @@ export function createChaseCamera(camera) {
   // behind the ship".
   let orbitYaw = 0;
   let orbitPitch = 0;
+  // Where the phone has carried the view, kept apart from the stick.
+  let gyroYaw = 0;
+  let gyroPitch = 0;
   let initialized = false;
 
   const _offset = new THREE.Vector3();
@@ -74,6 +88,8 @@ export function createChaseCamera(camera) {
     reset() {
       orbitYaw = 0;
       orbitPitch = 0;
+      gyroYaw = 0;
+      gyroPitch = 0;
       initialized = false;
     },
 
@@ -87,8 +103,25 @@ export function createChaseCamera(camera) {
       // Stick → target angle. Pushing the view UP means the camera drops
       // BELOW the ship and tilts up at it, so the pitch angle is negated:
       // a positive rotation about local X lifts the camera.
-      const wantYaw = clamp1(look?.x ?? 0) * LOOK_YAW_MAX;
-      const wantPitch = -clamp1(look?.y ?? 0) * LOOK_PITCH_MAX;
+      const stickX = clamp1(look?.x ?? 0);
+      const stickY = clamp1(look?.y ?? 0);
+
+      // Motion control accumulates; the stick does not.
+      gyroYaw = clampTo(gyroYaw + (look?.turnX ?? 0), LOOK_YAW_MAX);
+      gyroPitch = clampTo(gyroPitch - (look?.turnY ?? 0), LOOK_PITCH_MAX);
+      // Using the stick puts the gyro away, so the two never fight over
+      // the same gimbal and letting go of the stick still means "behind
+      // the tail". The gyro literature's advice, in as much as a game
+      // without spare buttons can take it: no reset button, but always
+      // a way to put the view back.
+      if (Math.abs(stickX) > 0.05 || Math.abs(stickY) > 0.05) {
+        const drop = alphaFor(dt, 0.25);
+        gyroYaw -= gyroYaw * drop;
+        gyroPitch -= gyroPitch * drop;
+      }
+
+      const wantYaw = clampTo(stickX * LOOK_YAW_MAX + gyroYaw, LOOK_YAW_MAX);
+      const wantPitch = clampTo(-stickY * LOOK_PITCH_MAX + gyroPitch, LOOK_PITCH_MAX);
 
       const aOrbit = alphaFor(dt, ORBIT_HALFLIFE);
       orbitYaw += (wantYaw - orbitYaw) * aOrbit;
