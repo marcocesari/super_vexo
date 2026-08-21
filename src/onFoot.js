@@ -151,11 +151,31 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
   // No suit light: a light appearing in the scene the first time he
   // steps out would recompile every shader in the game. See createVexo.
   const vexo = createVexo({ suitLight: false, environment });
-  vexo.group.visible = false;
-  scene.add(vexo.group);
-
   const ladder = createLadder();
-  scene.add(ladder.group);
+
+  // Neither of them is in the scene while the player is flying.
+  //
+  // Hiding them would be enough to stop them being DRAWN — the renderer
+  // gives up on an invisible object before it recurses — but not enough
+  // to stop them costing anything: updateMatrixWorld walks the whole
+  // graph every frame regardless of visibility, and that is 120-odd
+  // matrices for a man nobody can see. Attaching them for the sequence
+  // and detaching afterwards costs nothing at the join, because the
+  // renderer caches its compiled programs against the materials, which
+  // are never disposed.
+  let attached = false;
+  function attach() {
+    if (attached) return;
+    scene.add(vexo.group);
+    scene.add(ladder.group);
+    attached = true;
+  }
+  function detach() {
+    if (!attached) return;
+    scene.remove(vexo.group);
+    scene.remove(ladder.group);
+    attached = false;
+  }
 
   // Prompt line: doubles as the skip hint during the cutscene and the
   // board hint on the ground.
@@ -212,12 +232,19 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
     return SURFACE_ORIGIN.y + town.groundHeightAt(x - SURFACE_ORIGIN.x, z - SURFACE_ORIGIN.z);
   }
 
+  // The prompt is touched every frame, so remember what is on it and
+  // write nothing when it hasn't changed. Assigning the same value back
+  // to the DOM sixty times a second is a waste even when the browser is
+  // clever enough to skip the style invalidation.
+  let promptText = null;
   function setPrompt(text) {
+    if (text === promptText) return;
+    promptText = text;
     if (!text) {
       prompt.hidden = true;
       return;
     }
-    if (prompt.textContent !== text) prompt.textContent = text;
+    prompt.textContent = text;
     prompt.hidden = false;
   }
 
@@ -257,6 +284,7 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
     }
 
     // Committed: the ship belongs to the sequence from here.
+    attach();
     state = 'settle';
     phaseT = 0;
     // Long enough to watch, short enough not to be a lift ride.
@@ -555,6 +583,7 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
       ladder.setExtension(0);
       surface.unpark();
       camInit = false;
+      detach();
     }
   }
 
@@ -780,6 +809,7 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
       vexo.group.visible = false;
       ladder.setExtension(0);
       setPrompt(null);
+      detach();
     },
   };
 }
