@@ -733,6 +733,11 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
   //   hip.rotation.x  < 0  → leg swings forward
   //   shin.rotation.x > 0  → knee folds (heel toward the backside), the
   //                          only direction a knee actually goes
+  //   forearm.rotation.x < 0 → elbow folds (hand toward the front). The
+  //                          OPPOSITE sign to the knee, because an elbow
+  //                          bends the other way from a knee. It was
+  //                          positive until Marco spotted the forearms
+  //                          jutting out behind the elbows.
   //   shoulder.rotation.x ≈ -2.4 → hand up and forward, at a rung
   let t = 0;
   let gait = 'idle';
@@ -904,9 +909,10 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
       // rather than on rails.
       arm.shoulder.rotation.z = arm.side * (0.11 - Math.max(0, -swing) * 0.28);
       // Elbows lag the shoulder again — the forearm is still folding
-      // while the upper arm has started back.
+      // while the upper arm has started back. Negative: the hand folds
+      // toward the FRONT of him. An elbow is not a knee.
       const foreSwing = curveAt(HIP_CURVE, tArm - ELBOW_LAG) * DEG * amp * 0.5;
-      arm.forearm.rotation.x = 0.22 + Math.max(0, -foreSwing) * 1.3;
+      arm.forearm.rotation.x = -(0.22 + Math.max(0, -foreSwing) * 1.3);
     }
 
     // The body rides on top of all that — and its height is NOT authored.
@@ -972,12 +978,14 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     }
     for (const [i, arm] of arms.entries()) {
       // Hands overhead on the rungs, alternating opposite the feet.
-      // Nearly straight up: at 45 degrees he reads as reaching out for
-      // something rather than hanging off a ladder above his head.
+      // The shoulder was raised almost vertical here to compensate for
+      // an elbow that folded the wrong way and shoved the forearm
+      // forward-and-down. With the elbow folding properly, the arm
+      // reaches up and forward and the FOREARM finishes the job.
       const p = phase + i * Math.PI + Math.PI;
-      arm.shoulder.rotation.x = -2.78 + Math.sin(p) * 0.3;
+      arm.shoulder.rotation.x = -2.45 + Math.sin(p) * 0.28;
       arm.shoulder.rotation.z = arm.side * 0.16;
-      arm.forearm.rotation.x = 0.5 - Math.max(0, Math.sin(p)) * 0.35;
+      arm.forearm.rotation.x = -(0.5 - Math.max(0, Math.sin(p)) * 0.3);
     }
     body.position.set(0, 0, 0);
     body.rotation.z = 0;

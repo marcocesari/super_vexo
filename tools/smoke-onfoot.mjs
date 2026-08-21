@@ -406,19 +406,20 @@ const stickLook = await page.evaluate(async () => {
   };
   // Drive the look axis directly: no pad is attached to a headless
   // browser, and this is the same number a right stick would produce.
-  const pad = g.__lookPad ?? (g.__lookPad = { x: 0 });
-  const realSample = f.__sample;
+  // A fixed count of fixed-dt updates rather than a wall-clock loop —
+  // at headless frame rates "hold it for 700ms" is however many frames
+  // the machine felt like giving us, which made this flap.
   const before = swing();
-  // Feed the axis through the update the loop is already calling.
-  const t0 = performance.now();
-  while (performance.now() - t0 < 700) {
-    f.update(0.016, { throttle: 0, yaw: 0, stickYaw: 0, stickThrottle: 0, lookX: 1, lookY: 0 });
-    await new Promise((r) => requestAnimationFrame(r));
-  }
+  const held = { throttle: 0, yaw: 0, stickYaw: 0, stickThrottle: 0, lookX: 1, lookY: 0 };
+  for (let i = 0; i < 40; i++) f.update(0.016, held);
+  // Those 40 updates all landed in one tick, so the camera's own spring
+  // is still catching up with where the stick put the goal. Let it
+  // arrive before reading, or "it kept moving after I let go" is just
+  // the spring finishing.
+  await new Promise((r) => setTimeout(r, 500));
   const pushed = swing();
   await new Promise((r) => setTimeout(r, 900));   // released: does it spring back?
   const released = swing();
-  void pad; void realSample;
   return { before, pushed, released };
 });
 check('the look stick turns the camera',
