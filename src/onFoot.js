@@ -41,8 +41,17 @@ import { strings } from './strings.js';
 // --- On foot ----------------------------------------------------------------
 const WALK_SPEED = 2.4;         // m/s — a brisk walk
 const RUN_SPEED = 5.4;
-const BACK_SPEED = 1.3;
-const TURN_RATE = 2.7;          // rad/s
+// How quickly the velocity catches up with the stick, and how quickly he
+// turns to face it. Both are half-lives in seconds rather than a
+// per-frame fraction, so the feel doesn't change with the frame rate.
+const ACCEL_HALFLIFE = 0.11;
+const TURN_HALFLIFE = 0.08;
+// Below this he is standing, not walking — with momentum in the
+// velocity there is no longer a clean moment when movement stops.
+const IDLE_SPEED = 0.15;
+// How fast the camera drifts back behind him after he changes direction.
+// Slow on purpose: it is a follow, not a leash.
+const CAM_RECENTRE_HALFLIFE = 0.75;
 const WALK_RADIUS = 0.38;       // his shoulders, for bumping into walls
 const HULL_RADIUS = 1.7;        // he walks around the fuselage, not through it
 const BOARD_RANGE = 2.6;        // how close to the ladder the prompt appears
@@ -182,6 +191,12 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
   // straight-behind. Smoothed, like the chase camera's gimbal.
   let orbitYaw = 0;
   let orbitPitch = 0;
+  // The yaw the camera looks along, kept apart from his heading: the
+  // stick is read in this frame, so it must not chase him instantly.
+  let camBaseYaw = 0;
+  // Metres per second across the ground, eased toward the stick.
+  const vel = new THREE.Vector3();
+  const _target = new THREE.Vector3();
 
   const _camGoal = new THREE.Vector3();
   const _lookGoal = new THREE.Vector3();
@@ -389,8 +404,10 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
    * behind, which turns the game into a map view.
    */
   function boomBehind() {
-    // Straight behind him, plus wherever the look axes have swung it.
-    const base = heading + Math.PI + orbitYaw;
+    // Opposite the way the camera is looking. Not "behind him": the
+    // camera has its own settled yaw so that a held stick direction
+    // keeps meaning the same direction on screen.
+    const base = camBaseYaw + orbitYaw + Math.PI;
     for (const swing of [0, 0.42, -0.42, 0.85, -0.85, 1.3, -1.3, 1.9, -1.9]) {
       const a = base + swing;
       const dx = Math.sin(a);
@@ -453,6 +470,8 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
     phaseT = 0;
     orbitYaw = 0;
     orbitPitch = 0;
+    camBaseYaw = heading;
+    vel.set(0, 0, 0);
     hintT = CONTROLS_HINT_TIME;
     camInit = false;
   }
@@ -522,6 +541,9 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
     // Turn to face away from the ship, out into the street.
     const want = Math.atan2(outward.x, outward.z);
     heading += angleDelta(heading, want) * alphaFor(dt, 0.12);
+    // Keep the camera behind him as he turns, so control is handed over
+    // with the stick's "forward" pointing where he is already facing.
+    camBaseYaw = heading;
     applyVexoTransform();
     if (t >= 1) enterWalk();
   }
@@ -537,39 +559,63 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
   }
 
   function updateWalk(dt, axes) {
-    // Look axes → where the camera rides. Deflection is an ANGLE, not a
-    // rate, exactly as in flight: let go and the view falls back behind
-    // him on its own, with nothing to re-centre by hand.
-    const wantYaw = clamp1(axes?.lookX ?? 0) * FOOT_LOOK_YAW;
+    // Look axes → where the camera rides, as an offset from wherever it
+    // is currently settled. Deflection is an ANGLE, not a rate, exactly
+    // as in flight: let go and the view drifts back on its own, with
+    // nothing to re-centre by hand.
+    const lookX = clamp1(axes?.lookX ?? 0);
+    const wantYaw = lookX * FOOT_LOOK_YAW;
     const wantPitch = -clamp1(axes?.lookY ?? 0) * FOOT_LOOK_PITCH;
     const aLook = alphaFor(dt, FOOT_LOOK_HALFLIFE);
     orbitYaw += (wantYaw - orbitYaw) * aLook;
     orbitPitch += (wantPitch - orbitPitch) * aLook;
+    const camYaw = camBaseYaw + orbitYaw;
 
-    // Turning is a rate, walking is a speed — the same shape as the
-    // flight controls, so the stick means roughly what it meant a
-    // moment ago.
+    // --- Where the stick points, he goes ------------------------------------
+    // Not tank controls: the stick is a DIRECTION in the frame the player
+    // is looking at, and he turns to face wherever that is. Push left and
+    // he walks left across the screen, rather than pivoting on the spot.
     //
-    // A / stick-left gives yaw = +1, and turning left has to INCREASE
-    // the heading. His forward is (sin h, cos h): raising h swings it
-    // from +Z toward +X, and with the camera parked behind him looking
-    // along +Z, world +X is the left of the screen. Subtracting here —
-    // which is what this line did at first — sends A to the right and
-    // D to the left, and looks like the keys are swapped.
-    heading += (axes?.yaw ?? 0) * TURN_RATE * dt;
+    // The input pair is normalised, so a diagonal isn't 1.41 times faster
+    // than a straight line — and analog sticks keep their magnitude, so
+    // a half-pushed stick is a stroll.
+    // The stick WITHOUT the gyro mixed in (see input/index.js): on a
+    // phone the gyro is swinging the camera, and a tilt to look around
+    // must not walk him sideways.
+    const moveX = clamp1(axes?.stickYaw ?? axes?.yaw ?? 0);       // + is left
+    const moveZ = clamp1(axes?.stickThrottle ?? axes?.throttle ?? 0); // + is away
+    let push = Math.hypot(moveX, moveZ);
+    if (push > 1) push = 1;
 
     const running = input.keyboard.isDown('ShiftLeft')
       || input.keyboard.isDown('ShiftRight')
       || input.gamepad.isButtonDown(BUTTONS.R1);
-    const throttle = axes?.throttle ?? 0;
-    const speed = throttle >= 0
-      ? throttle * (running ? RUN_SPEED : WALK_SPEED)
-      : throttle * BACK_SPEED;
+    const topSpeed = running ? RUN_SPEED : WALK_SPEED;
 
-    if (Math.abs(speed) > 0.02) {
-      const step = speed * dt;
-      foot.x += Math.sin(heading) * step;
-      foot.z += Math.cos(heading) * step;
+    if (push > 0.05) {
+      // Rotate the stick into the world by the camera's yaw, then aim
+      // both the walk and the man himself down that line.
+      const want = camYaw + Math.atan2(moveX, moveZ);
+      _target.set(Math.sin(want), 0, Math.cos(want)).multiplyScalar(topSpeed * push);
+      // Shortest way round, so facing +179 and wanting -179 is a two
+      // degree turn rather than a 358 degree spin.
+      heading += angleDelta(heading, want) * alphaFor(dt, TURN_HALFLIFE);
+    } else {
+      _target.set(0, 0, 0);
+    }
+
+    // Momentum. Easing the velocity toward the target rather than
+    // snapping to it is most of what "fluid" means here: he leans into a
+    // start and carries a step into a stop instead of switching between
+    // stopped and full speed on a key edge.
+    const aVel = alphaFor(dt, ACCEL_HALFLIFE);
+    vel.x += (_target.x - vel.x) * aVel;
+    vel.z += (_target.z - vel.z) * aVel;
+
+    const speed = Math.hypot(vel.x, vel.z);
+    if (speed > 0.05) {
+      foot.x += vel.x * dt;
+      foot.z += vel.z * dt;
 
       // Walls and tree trunks.
       town.resolveWalk(
@@ -587,10 +633,26 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
         foot.x = parkPos.x + (dx / d) * HULL_RADIUS;
         foot.z = parkPos.z + (dz / d) * HULL_RADIUS;
       }
+    }
+    // The gait runs off the speed he is actually moving at, so the walk
+    // cycle winds up and down with the momentum above rather than
+    // switching on with the key.
+    if (speed > IDLE_SPEED) vexo.setGait('walk', speed);
+    else vexo.setGait('idle');
 
-      vexo.setGait('walk', Math.abs(speed));
-    } else {
-      vexo.setGait('idle');
+    // The camera drifts back behind whichever way he ended up facing —
+    // but only while he is going roughly forward or standing still, and
+    // never while the player is holding a look.
+    //
+    // Chasing him unconditionally is a feedback loop: hold left, he
+    // turns left, the camera follows, so "left" now points somewhere
+    // else, so he turns again. Measured before this gate went in, a held
+    // left key walked him round a circle about a metre across, for ever.
+    // Gated, he sets off across the screen in a straight line and the
+    // camera only closes up once he is heading away from it again.
+    const goingForward = Math.abs(moveX) < 0.4;
+    if (Math.abs(lookX) < 0.05 && goingForward) {
+      camBaseYaw += angleDelta(camBaseYaw, heading) * alphaFor(dt, CAM_RECENTRE_HALFLIFE);
     }
 
     // Follow the ground, hills included.

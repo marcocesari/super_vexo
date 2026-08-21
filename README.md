@@ -67,8 +67,12 @@ Then open http://localhost:5173.
 **On foot** (see below):
 - **L** — climb out, from anywhere over the town; and climb back in when
   you're standing at the ladder
-- **W / S** — walk forward / back, **A / D** — turn
-- **Shift** — run
+- **W A S D / left stick** — walk. The stick is a *direction* in the frame
+  you're looking at, not a steering wheel: push left and he walks left across
+  the screen, turning to face the way he's going. Diagonals aren't faster, and
+  he leans into a start and carries a step into a stop
+- **Shift / R1** — run
+- **Right stick, or tilting the phone** — swing the camera around him
 
 **Gamepad controls** (USB / Bluetooth pad on desktop, or the native iOS wrapper):
 - **Left stick** — fly the ship: push up to thrust, left / right to turn
@@ -135,6 +139,13 @@ From then on the stick walks him instead of flying the ship — buildings, walls
 and tree trunks are solid, and the ground under him is the same terrain the
 roads drape over, so he walks up the hills. Stand on the glowing ring at the
 foot of the ladder and press **L** again to climb back in.
+
+His walk cycle is keyframed from clinical gait data rather than a sine wave:
+the cycle is 60% stance and 40% swing, the knee flexes twice (15° as the heel
+lands, 60° through mid-swing), and the ankle rolls from heel strike to toe-off.
+His body height isn't animated at all — it's derived from where the leg
+geometry puts the soles, so the planted foot stays exactly on the road and the
+rise and fall comes out for free.
 
 If the ship is sitting somewhere with no room for a ladder on either side — in
 the middle of a building, say, since the ship doesn't collide with them — it

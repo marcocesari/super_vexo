@@ -277,12 +277,12 @@ check('A turns him left', leftTurn.side === 'left' && leftTurn.amount > 0.2,
 check('D turns him right', rightTurn.side === 'right' && rightTurn.amount > 0.2,
   `${rightTurn.side} (${rightTurn.amount.toFixed(2)})`);
 
-const gaits = await page.evaluate(async () => {
-  const f = window.__superVexo.onFoot;
-  const still = f.vexo.gait;
-  return { still };
-});
-check('he stands still when the stick is centred', gaits.still === 'idle', gaits.still);
+// He carries a step or so past the key release now — the velocity eases
+// down rather than switching off — so give the momentum time to run out
+// before asking whether he has stopped.
+await page.waitForTimeout(600);
+const gaits = await page.evaluate(() => ({ still: window.__superVexo.onFoot.vexo.gait }));
+check('he comes to rest when the stick is centred', gaits.still === 'idle', gaits.still);
 
 // --- The walk cycle keeps him on the ground ----------------------------------
 // The body's height through the cycle is derived from the leg angles
@@ -349,7 +349,10 @@ const gyroLook = await page.evaluate(async () => {
     }
   }
   if (best) { f.position.x = best.x; f.position.z = best.z; }
-  await new Promise((r) => setTimeout(r, 400));
+  // The camera keeps its own yaw and drifts back behind him over about
+  // three quarters of a second, so let it finish settling before
+  // measuring where "straight behind" is.
+  await new Promise((r) => setTimeout(r, 1800));
   const fire = (beta, gamma) => window.dispatchEvent(
     new DeviceOrientationEvent('deviceorientation', { alpha: 0, beta, gamma }),
   );
@@ -374,7 +377,7 @@ const gyroLook = await page.evaluate(async () => {
   const level = swing();
   await hold(0, 35, 900);            // right edge down
   const tiltedRight = swing();
-  await hold(0, 0, 900);             // back to flat
+  await hold(0, 0, 2600);            // back to flat, and let it settle
   const recentred = swing();
   return { level, tiltedRight, recentred };
 });
@@ -383,7 +386,7 @@ check('level, the walking camera sits behind him',
 // Tilt right → the camera walks round to his left and keeps looking at
 // him, which is what "the view swung right" looks like from outside.
 check('tilting the phone swings the walking camera',
-  gyroLook.tiltedRight > 0.5 && gyroLook.tiltedRight < 1.3,
+  gyroLook.tiltedRight > 0.5 && gyroLook.tiltedRight < 1.2,
   `${gyroLook.tiltedRight.toFixed(2)} rad off straight-behind`);
 check('and it falls back behind him when the phone is level again',
   Math.abs(gyroLook.recentred) < 0.15, `${gyroLook.recentred.toFixed(2)} rad off`);

@@ -87,6 +87,14 @@ export function createInput() {
         if (kb.throttle || kb.yaw || kb.pitch || kb.roll) sources.push('KB');
       }
 
+      // The left stick as it stands BEFORE the gyro is mixed in. Walking
+      // on foot reads these: down there the gyro's job is looking
+      // around, and a tilt to look over your shoulder must not also walk
+      // the man sideways. Flying keeps the mixed axes below, where the
+      // gyro is a deliberate fine-tune of the stick.
+      const stickYaw = yaw;
+      const stickThrottle = throttle;
+
       // Gyro adds fine pitch/yaw if calibrated and producing signal.
       const g = gyro.sample();
       if (g && gyro.active) {
@@ -124,7 +132,7 @@ export function createInput() {
       if (sources.length === 0) sources.push('KB');
       lastSources = sources;
 
-      return { throttle, yaw, pitch, roll, lookX, lookY };
+      return { throttle, yaw, pitch, roll, lookX, lookY, stickYaw, stickThrottle };
     },
 
     activeSources() {
