@@ -679,6 +679,49 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     body.add(suitLight);
   }
 
+  // --- A spine and a neck -----------------------------------------------------
+  // Up to here everything hangs off one group, which means the chest,
+  // the head and the arms are welded to the hips: whatever the pelvis
+  // does, they do. That is most of what makes a walk look rigid. People
+  // walk with the shoulders turning against the hips, the spine leaning
+  // into the direction of travel, and the head held level while all of
+  // that goes on underneath it.
+  //
+  // So: reparent. Everything above the waist moves under `upper`, which
+  // pivots at the waist, and everything above the neck moves again under
+  // `headPivot`, which pivots at the neck. Done here rather than at
+  // build time because the parts are placed in body coordinates all the
+  // way through, and rewriting sixty positions to be relative to a joint
+  // is how you end up with a jaw two centimetres from a face.
+  const SPINE_Y = 1.02;
+  const NECK_Y = 1.53;
+
+  const upper = new THREE.Group();
+  upper.position.y = SPINE_Y;
+  const headPivot = new THREE.Group();
+  headPivot.position.y = NECK_Y - SPINE_Y;
+
+  const staysWithHips = new Set([hips, belt, buckle, ...legs.map((l) => l.hip)]);
+  if (suitLight) staysWithHips.add(suitLight);
+  for (const part of [...body.children]) {
+    if (staysWithHips.has(part)) continue;
+    part.position.y -= SPINE_Y;
+    upper.add(part);
+  }
+  for (const part of [...upper.children]) {
+    if (part.position.y + SPINE_Y >= NECK_Y) {
+      part.position.y -= NECK_Y - SPINE_Y;
+      headPivot.add(part);
+    }
+  }
+  upper.add(headPivot);
+  body.add(upper);
+
+  // The torso mesh's rest height, now that it is measured from the
+  // waist rather than from the floor.
+  const torsoRestY = torso.position.y;
+  const headRestY = headPivot.position.y;
+
   // --- Motion -----------------------------------------------------------------
   // Three gaits, all posed by hand from one phase angle. There is no
   // skeleton and no clips: every joint below is a group rotation, which
@@ -701,16 +744,26 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
   // walk — the giveaway that a walk cycle is on a fixed timer.
   const STRIDE = 1.6;
   const ARM_REST_X = 0.04;
+  // How far behind the legs the upper body runs, as a fraction of the
+  // cycle. Small — 5% is about 50ms at walking pace — but it is the
+  // difference between a body and a mannequin on a turntable.
+  const UPPER_LAG = 0.05;
+  const ELBOW_LAG = 0.04;
 
   function poseIdle() {
     const breath = Math.sin(t * 1.6);
-    torso.position.y = 0.97 + breath * 0.005;
+    torso.position.y = torsoRestY + breath * 0.005;
     torso.scale.x = 1 + breath * 0.006;
     body.position.set(0, 0, 0);
     body.rotation.z = 0;
-    torso.rotation.y = 0;
+    // The chest lifts a little as he breathes; the head stays where it
+    // is, which is what makes breathing read as breathing.
+    upper.rotation.set(-breath * 0.006, 0, 0);
+    headPivot.rotation.set(breath * 0.006, 0, 0);
+    headPivot.position.y = headRestY;
     for (const leg of legs) {
       leg.hip.rotation.x = 0;
+      leg.hip.rotation.y = leg.side * 0.07;   // toes out, standing too
       leg.hip.position.z = 0;
       leg.shin.rotation.x = 0;
       leg.ankle.rotation.x = 0;
@@ -819,6 +872,10 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
       const knee = curveAt(KNEE_CURVE, t) * DEG * amp;
       const ankle = curveAt(ANKLE_CURVE, t) * DEG * amp;
       leg.hip.rotation.x = -hip;      // negative rotation swings it forward
+      // Toes out. Nobody walks with their feet parallel: the natural
+      // stance turns each foot out five to ten degrees, and feet aimed
+      // dead ahead is a thing only soldiers and robots do.
+      leg.hip.rotation.y = leg.side * 0.09;
       leg.shin.rotation.x = knee;
       leg.ankle.rotation.x = -ankle;  // dorsiflexion is a negative rotation
       // Pelvic rotation: the swinging hip travels forward ahead of the
@@ -827,16 +884,29 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
       leg.hip.position.z = Math.sin((t % 1) * Math.PI * 2) * 0.022 * amp;
     }
 
+    // --- The upper body ------------------------------------------------------
+    // Everything above the waist runs LATE. Real bodies are not rigid
+    // assemblies moving on one clock: the hips lead, the spine follows,
+    // the shoulders follow the spine and the hands trail the arms. That
+    // lag is what animators call overlap, and its absence is most of
+    // what reads as "rigid" — every joint arriving on the same frame is
+    // the signature of a machine.
+    const lagged = cycle - UPPER_LAG;
+
     for (const [i, arm] of arms.entries()) {
       // Opposite the leg on the same side, and about half as far: arms
       // swing roughly 20 degrees forward and 12 back.
-      const t = cycle + i * 0.5;
-      const swing = curveAt(HIP_CURVE, t) * DEG * amp * 0.5;
-      arm.shoulder.rotation.x = ARM_REST_X + swing;
-      arm.shoulder.rotation.z = arm.side * 0.11;
-      // The elbow folds as the arm comes forward and opens on the way
-      // back, which is the difference between an arm and a pendulum.
-      arm.forearm.rotation.x = 0.22 + Math.max(0, -swing) * 1.3;
+      const tArm = lagged + i * 0.5;
+      const swing = curveAt(HIP_CURVE, tArm) * DEG * amp * 0.5;
+      arm.shoulder.rotation.x = ARM_REST_X + swing + Math.sin(t * 0.71 + i) * 0.012;
+      // The arm also swings slightly ACROSS him as it comes forward and
+      // drifts out as it goes back, so the hands travel in shallow arcs
+      // rather than on rails.
+      arm.shoulder.rotation.z = arm.side * (0.11 - Math.max(0, -swing) * 0.28);
+      // Elbows lag the shoulder again — the forearm is still folding
+      // while the upper arm has started back.
+      const foreSwing = curveAt(HIP_CURVE, tArm - ELBOW_LAG) * DEG * amp * 0.5;
+      arm.forearm.rotation.x = 0.22 + Math.max(0, -foreSwing) * 1.3;
     }
 
     // The body rides on top of all that — and its height is NOT authored.
@@ -847,15 +917,44 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     // The rise and fall falls out on its own — highest over the stance
     // leg, lowest at double support — and the foot that is down stays
     // exactly on the ground.
-    body.position.y = -lowestSole();
+    const drop = lowestSole();
+    body.position.y = -drop;
     // Weight shifts sideways onto whichever foot is down. Once per
     // cycle, unlike the bob.
     body.position.x = Math.sin(phase) * 0.022 * amp;
-    body.rotation.z = -Math.sin(phase) * 0.03 * amp;
-    // Shoulders counter-rotate against the pelvis. Only the chest turns:
-    // the head stays pointed where he is going, as it does in life.
-    torso.rotation.y = Math.sin(phase) * 0.08 * amp;
-    torso.position.y = 0.97;
+    // Pelvic drop: the hip on the swinging side falls a few degrees,
+    // because nothing is holding it up.
+    body.rotation.z = -Math.sin(phase) * 0.045 * amp;
+
+    // Shoulders counter-rotate against the pelvis, late.
+    const twist = Math.sin((lagged % 1) * Math.PI * 2);
+    upper.rotation.y = twist * 0.13 * amp;
+    // And they roll the other way to the hips, which is what keeps the
+    // head over the feet instead of swinging out past them.
+    upper.rotation.z = -body.rotation.z * 0.55;
+    // He leans into it, more the faster he goes.
+    upper.rotation.x = -Math.min(0.16, speed * 0.028) - (0.5 - 0.5 * Math.cos(phase * 2)) * 0.02;
+    // He is still breathing while he walks. Faster than at rest, and
+    // on its OWN clock — nothing about breath is locked to footfalls.
+    const breath = Math.sin(t * 2.3);
+    torso.position.y = torsoRestY + breath * 0.004;
+    torso.scale.x = 1 + breath * 0.005;
+
+    // The head is the last thing to move and the least. It holds its
+    // line down the street while the chest turns underneath it, stays
+    // level as he leans, and takes only a fraction of the bob — which
+    // is why people's heads glide and their hips don't.
+    //
+    // The drift on the end is deliberate and is not part of the walk:
+    // a slow wander on a period that shares no factor with the stride,
+    // so the animation never repeats exactly. A cycle that comes back
+    // to precisely the same pose every 1.6 metres is the last thing
+    // that gives a walk away as a loop.
+    const drift = Math.sin(t * 0.83) * 0.035 + Math.sin(t * 0.37) * 0.02;
+    headPivot.rotation.y = -upper.rotation.y * 0.75 + drift;
+    headPivot.rotation.x = -upper.rotation.x * 0.8 + Math.sin(t * 0.61) * 0.015;
+    headPivot.rotation.z = -upper.rotation.z * 0.6;
+    headPivot.position.y = headRestY + drop * 0.35;
   }
 
   function poseClimb(dt) {
@@ -865,6 +964,7 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     for (const [i, leg] of legs.entries()) {
       const p = phase + i * Math.PI;
       leg.hip.rotation.x = -0.5 - Math.sin(p) * 0.4;
+      leg.hip.rotation.y = 0;                 // square to the rungs
       leg.hip.position.z = 0;
       leg.shin.rotation.x = 0.95 + Math.sin(p) * 0.45;
       // Toes up: he is standing on rungs, not on the flat.
@@ -881,8 +981,11 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     }
     body.position.set(0, 0, 0);
     body.rotation.z = 0;
-    torso.rotation.y = 0;
-    torso.position.y = 0.97;
+    // Leaning into the ladder, looking up at the next rung.
+    upper.rotation.set(-0.12, 0, 0);
+    headPivot.rotation.set(0.2, 0, 0);
+    headPivot.position.y = headRestY;
+    torso.position.y = torsoRestY;
   }
 
   function update(dt) {

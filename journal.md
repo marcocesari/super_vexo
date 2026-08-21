@@ -2,6 +2,36 @@
 
 Most recent entries on top.
 
+## 2026-08-21 — A spine, a neck, and the walk stops being rigid
+
+- Marco, after the gait-analysis walk landed: "Vexo walks in a rigid
+  way, change it by making him more humanoid." The joint angles were
+  right by then — what was missing was everything above the waist.
+- **The whole figure hung off one group**, so the chest, the head and
+  the arms were welded to the hips: whatever the pelvis did, they did.
+  There is a `upper` group pivoting at the waist now, and a `headPivot`
+  inside it pivoting at the neck. Both are made by REPARENTING after the
+  build rather than by rewriting sixty part positions to be relative to
+  a joint, which is how you end up with a jaw two centimetres from a
+  face. (One trap: the pose functions were still writing the torso's old
+  absolute height every frame, which put it 1 m above his shoulders. He
+  measured 2.54 m tall until that was chased down.)
+- **Overlap.** The upper body now runs 5% of a cycle behind the legs and
+  the elbows 4% behind the shoulders. Hips lead, spine follows,
+  shoulders follow the spine, hands trail the arms. Every joint arriving
+  on the same frame is the signature of a machine, and removing that is
+  most of what "more humanoid" turned out to mean.
+- Plus the things a body does that a rig doesn't: shoulders counter-
+  rotating against the pelvis, the pelvis dropping on the swing side,
+  a lean that grows with speed, arms swinging slightly across him,
+  breathing that carries on while he walks and on its own clock, toes
+  turned out seven degrees, and the head holding its line down the
+  street while all of it goes on underneath.
+- The head also drifts on periods (0.83, 0.61, 0.37 Hz) that share no
+  factor with the stride, so the cycle never comes back to exactly the
+  same pose. A loop that repeats precisely every 1.6 m is the last thing
+  that gives a walk away.
+
 ## 2026-08-21 — A walk built from gait analysis, and two inverted controls
 
 - Marco: "make Vexo walk more humanoid-like, look up on the internet and
