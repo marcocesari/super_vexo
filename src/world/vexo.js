@@ -3,7 +3,8 @@
 // From the concept art (`vexo_character.jpg`): a young pilot in dark
 // gunmetal powered armour, lit all over by thin green circuit traces.
 // Green visor across the eyes with a headset and mic boom, messy brown
-// hair above it, heavy plates on shoulders, chest, thighs and shins,
+// hair above it — messy, in separated clumps, not a smooth cap — heavy
+// plates on shoulders, chest, thighs and shins,
 // and cyan light rings in the boot soles. A sidearm holstered on his
 // left thigh with his hand hanging beside it, magazine pouches on his
 // right, and a lit green panel on the outside of each gauntlet.
@@ -351,24 +352,89 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     body.add(ear);
   }
 
-  // Hair: overlapping smooth blobs, roughed up by rotation rather than
-  // by faceting — flat shading made it read as a crystal helmet.
-  // Sitting low and wide on the skull, and flattened. Piled up on top it
-  // reads as a bun; the art has it swept messily across the head.
+  // Hair. Two layers, because one wasn't working.
+  //
+  // The blobs alone — which is all this used to be — give volume and a
+  // smooth silhouette, and a smooth silhouette is a swimming cap. The
+  // art has it messy: clumps that separate and point, a fringe hanging
+  // over the visor, the whole lot swept across the head rather than
+  // sitting on it symmetrically.
+  //
+  // So the blobs are smaller now and only do the bulk, and the shape
+  // comes from LOCKS laid over them: short tapered spikes standing off
+  // the skull, each aimed outward from the centre of the head and then
+  // biased toward the sweep direction, so they lie the same way instead
+  // of bristling like a sea urchin. The jitter is a written-down table
+  // rather than Math.random, so his outline is the same every time the
+  // page loads — the smoke test measures how tall he is.
   const hairSeeds = [
-    [0, 1.735, -0.012, 0.098], [-0.062, 1.724, 0.03, 0.072],
-    [0.062, 1.728, 0.026, 0.074], [0, 1.712, -0.072, 0.082],
-    [-0.084, 1.702, -0.025, 0.068], [0.086, 1.705, -0.02, 0.066],
-    [0.028, 1.762, -0.005, 0.056], [-0.034, 1.757, -0.038, 0.054],
-    [-0.058, 1.694, 0.058, 0.05], [0.06, 1.696, 0.055, 0.048],
-    [-0.03, 1.748, 0.058, 0.05], [0.036, 1.75, 0.055, 0.048],
+    [0, 1.732, -0.012, 0.09], [-0.06, 1.722, 0.028, 0.066],
+    [0.06, 1.726, 0.024, 0.068], [0, 1.71, -0.07, 0.076],
+    [-0.082, 1.7, -0.024, 0.062], [0.084, 1.703, -0.02, 0.06],
+    [0.026, 1.757, -0.005, 0.05], [-0.032, 1.752, -0.036, 0.048],
+    [-0.056, 1.692, 0.056, 0.046], [0.058, 1.694, 0.053, 0.044],
   ];
-  for (const [x, y, z, r] of hairSeeds) {
-    const tuft = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 10), hairMat);
+  for (const [i, [x, y, z, r]] of hairSeeds.entries()) {
+    const tuft = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 9), hairMat);
     tuft.position.set(x, y, z);
     tuft.scale.set(1.12, 0.72, 1.1);
-    tuft.rotation.set(Math.random() * 0.5, Math.random() * 2, (Math.random() - 0.5) * 0.5);
+    tuft.rotation.set((i % 3) * 0.18, i * 0.7, ((i % 5) - 2) * 0.12);
     body.add(tuft);
+  }
+
+  // The clumps that make it messy.
+  //
+  // Two wrong turns before this, both worth writing down. Aiming spikes
+  // straight out from the middle of the skull gives a stegosaurus.
+  // Making them thin and long instead gives a sea urchin. The lesson is
+  // the same both times: anything that STANDS OFF a smooth ball reads as
+  // a spine, whatever its proportions, because hair doesn't stick out of
+  // a head — it LIES ALONG it and separates into clumps at the ends.
+  //
+  // So these are flattened lozenges laid nearly tangential to the skull,
+  // sweeping back and across, each overlapping its neighbours and the
+  // blobs beneath. What breaks the outline is a clump's tapered END,
+  // not a pole. Same sphere primitive as the blobs, so they blend into
+  // each other instead of looking bolted on.
+  //
+  // The table is written down rather than randomised so his outline is
+  // identical every time the page loads — the smoke test measures how
+  // tall he is, and hair that rolls its own dice fails it one run in ten.
+  const FORWARD_Z = new THREE.Vector3(0, 0, 1);
+  const _strandDir = new THREE.Vector3();
+  // [x, y, z, size, long, dirX, dirY, dirZ]  — dir is where the clump POINTS
+  const CLUMPS = [
+    // Fringe: sweeping down and across the forehead, over the visor.
+    [-0.05, 1.736, 0.055, 0.05, 1.5, 0.35, -0.6, 0.72],
+    [-0.008, 1.744, 0.062, 0.052, 1.55, 0.3, -0.45, 0.84],
+    [0.038, 1.74, 0.056, 0.048, 1.45, 0.55, -0.5, 0.67],
+    [0.074, 1.728, 0.03, 0.042, 1.35, 0.85, -0.35, 0.4],
+    // Crown: laid back over the top, one clump crossing another — and
+    // two standing up out of it, which is what the art has and what
+    // stops the top being a dome again.
+    [-0.03, 1.764, 0.03, 0.05, 1.5, -0.25, 0.25, 0.94],
+    [0.028, 1.768, 0.012, 0.052, 1.6, 0.42, 0.62, 0.66],
+    [-0.02, 1.766, -0.03, 0.05, 1.5, -0.3, 0.6, -0.74],
+    [0.042, 1.756, -0.036, 0.046, 1.45, 0.5, 0.15, -0.85],
+    // Sides: lying over the ears, sweeping back.
+    [-0.084, 1.72, 0.014, 0.046, 1.5, -0.5, -0.1, 0.86],
+    [-0.086, 1.712, -0.038, 0.044, 1.45, -0.45, -0.05, -0.89],
+    [0.086, 1.722, 0.01, 0.048, 1.5, 0.5, -0.05, 0.86],
+    [0.088, 1.714, -0.036, 0.044, 1.45, 0.45, -0.1, -0.89],
+    // Back: sticking out where it was slept on.
+    [-0.032, 1.72, -0.078, 0.048, 1.55, -0.2, 0.05, -0.98],
+    [0.03, 1.724, -0.08, 0.05, 1.6, 0.2, 0.15, -0.97],
+    [0.0, 1.7, -0.082, 0.044, 1.4, 0.0, -0.35, -0.94],
+  ];
+  for (const [x, y, z, size, long, dx, dy, dz] of CLUMPS) {
+    const clump = new THREE.Mesh(new THREE.SphereGeometry(size, 10, 8), hairMat);
+    // Flattened against the head and drawn out along its own length:
+    // a strand of hair is wider than it is thick and longer than both.
+    clump.scale.set(0.62, 0.44, long);
+    clump.position.set(x, y, z);
+    _strandDir.set(dx, dy, dz).normalize();
+    clump.quaternion.setFromUnitVectors(FORWARD_Z, _strandDir);
+    body.add(clump);
   }
 
   // Visor: a shallow band wrapped across the eyes. Built as a section of
