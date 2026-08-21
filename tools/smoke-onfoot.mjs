@@ -180,14 +180,33 @@ check('he stands on the ground, not in it', Math.abs(rig.feetAboveGround) < 0.02
 
 // --- Walking ------------------------------------------------------------------
 async function walkFor(ms, { run = false } = {}) {
-  const before = (await state()).pos;
   if (run) await page.keyboard.down('ShiftLeft');
   await page.keyboard.down('KeyW');
-  await page.waitForTimeout(ms);
+  // Measured against the game's OWN clock, not the wall clock. The loop
+  // caps dt at 100ms per frame (main.js), so at the frame rates a
+  // headless browser manages, a second of wall time can be two thirds of
+  // a second of game time — and the same walk then reads 2.4 m/s on one
+  // run and 1.5 on the next.
+  const moved = await page.evaluate(async (ms) => {
+    const f = window.__superVexo.onFoot;
+    const from = { x: f.position.x, z: f.position.z };
+    let simulated = 0;
+    let last = performance.now();
+    const t0 = last;
+    while (performance.now() - t0 < ms) {
+      await new Promise((r) => requestAnimationFrame(r));
+      const now = performance.now();
+      simulated += Math.min((now - last) / 1000, 0.1);
+      last = now;
+    }
+    return {
+      distance: Math.hypot(f.position.x - from.x, f.position.z - from.z),
+      simulated,
+    };
+  }, ms);
   await page.keyboard.up('KeyW');
   if (run) await page.keyboard.up('ShiftLeft');
-  const after = (await state()).pos;
-  return Math.hypot(after[0] - before[0], after[2] - before[2]) / (ms / 1000);
+  return moved.simulated > 0.1 ? moved.distance / moved.simulated : 0;
 }
 
 // Stand him in open ground before timing anything. He steps off the
@@ -218,7 +237,9 @@ check('there is open ground to walk in', openGround != null,
   openGround ? `14m clear at ${openGround.x},${openGround.z}` : 'none found');
 await page.waitForTimeout(500);   // let the camera settle behind him
 const walkSpeed = await walkFor(1200);
-check('he walks at a walking pace', walkSpeed > 1.6 && walkSpeed < 2.7,
+// WALK_SPEED is 2.4 m/s; the window allows for the frame or two of
+// sampling either side of the timed loop.
+check('he walks at a walking pace', walkSpeed > 2.0 && walkSpeed < 3.0,
   `${walkSpeed.toFixed(2)} m/s`);
 const runSpeed = await walkFor(1000, { run: true });
 check('Shift makes him run', runSpeed > walkSpeed + 1.2,
@@ -263,6 +284,49 @@ const gaits = await page.evaluate(async () => {
 });
 check('he stands still when the stick is centred', gaits.still === 'idle', gaits.still);
 
+// --- The walk cycle keeps him on the ground ----------------------------------
+// The body's height through the cycle is derived from the leg angles
+// (vexo.js: lowestSole), not authored, precisely so the stance foot
+// stays planted. If that maths ever disagrees with the geometry he
+// wades through the pavement or trots along above it — and at a glance,
+// mid-stride, neither is obvious.
+const soleTrack = [];
+await page.keyboard.down('KeyW');
+for (let i = 0; i < 10; i++) {
+  await page.waitForTimeout(90);
+  soleTrack.push(await page.evaluate(() => {
+    const g = window.__superVexo;
+    const f = g.onFoot;
+    const root = f.vexo.group;
+    root.updateWorldMatrix(true, true);
+    const V = root.position.constructor;
+    const v = new V();
+    let lowest = Infinity;
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      const p = o.geometry.attributes.position;
+      for (let k = 0; k < p.count; k++) {
+        v.fromBufferAttribute(p, k);
+        o.localToWorld(v);
+        if (v.y < lowest) lowest = v.y;
+      }
+    });
+    const town = g.surface.town;
+    const ground = -20000 + town.groundHeightAt(f.position.x, f.position.z);
+    return +(lowest - ground).toFixed(3);
+  }));
+}
+await page.keyboard.up('KeyW');
+const worstSink = Math.min(...soleTrack);
+const worstFloat = Math.max(...soleTrack);
+check('his feet stay on the road while he walks',
+  worstSink > -0.06 && worstFloat < 0.06,
+  `sole between ${worstSink}m and ${worstFloat}m of the ground over ${soleTrack.length} frames`);
+// A walk that never lifts a foot is a shuffle: the swing foot has to
+// leave the ground, so the two ends of that range must differ.
+check('and one foot actually lifts', worstFloat - worstSink > 0.005,
+  `${((worstFloat - worstSink) * 100).toFixed(1)}cm of movement`);
+
 // --- Looking around on foot --------------------------------------------------
 // The look axes swing the walking camera the same way they swing the
 // chase camera in flight — and on a phone the gyro drives them, which is
@@ -272,6 +336,20 @@ check('he stands still when the stick is centred', gaits.still === 'idle', gaits
 const gyroLook = await page.evaluate(async () => {
   const g = window.__superVexo;
   const f = g.onFoot;
+  // Back to open ground first: the boom swings wide to see past a wall
+  // or the ship, and a camera that isn't behind him has nothing to say
+  // about which way "behind him" moved.
+  const town = g.surface.town;
+  let best = null;
+  for (let x = -200; x <= 200; x += 4) {
+    for (let z = -200; z <= 200; z += 4) {
+      if (!town.isClear(x, z, 14)) continue;
+      const d = Math.hypot(x - g.ship.mesh.position.x, z - g.ship.mesh.position.z);
+      if (d > 40 && (best === null || d < best.d)) best = { x, z, d };
+    }
+  }
+  if (best) { f.position.x = best.x; f.position.z = best.z; }
+  await new Promise((r) => setTimeout(r, 400));
   const fire = (beta, gamma) => window.dispatchEvent(
     new DeviceOrientationEvent('deviceorientation', { alpha: 0, beta, gamma }),
   );

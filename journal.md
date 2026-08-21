@@ -2,6 +2,63 @@
 
 Most recent entries on top.
 
+## 2026-08-21 — A walk built from gait analysis, and two inverted controls
+
+- Marco: "make Vexo walk more humanoid-like, look up on the internet and
+  see how a human walks like." So the walk cycle is now keyframed from
+  clinical gait data rather than from a sine wave. What the reading
+  changed, in order of how much it shows:
+  - **The cycle is not symmetric.** Stance is 60% of it and swing 40%,
+    with about 20% spent in double support. A sine wave is symmetric,
+    which is exactly why sine-wave walks read as marching.
+  - **The knee flexes twice.** About 15° just after the heel lands, to
+    absorb the impact, and about 60° through mid-swing to clear the
+    ground. The old cycle had one flexion, which is a stilt.
+  - **The ankle rolls, so he needed one.** He had no ankle joint at all
+    — the boot was welded to the shin. Now: neutral at heel strike,
+    plantarflexed as the foot slaps flat, ~10° dorsiflexed as the body
+    passes over it, then ~20° of plantarflexion to push off.
+  - Hip runs from ~28° flexion at contact to ~12° extension at terminal
+    stance; arms swing opposite the legs at about half the amplitude,
+    elbow folding on the way forward; pelvis and shoulders counter-rotate.
+- Sources: [AAPM&R, Biomechanics of Normal
+  Gait](https://now.aapmr.org/biomechanics-normal-gait/) for the phase
+  percentages and double support; Perry's *Gait Analysis* values via
+  [Physiopedia](https://www.physio-pedia.com/Joint_Range_of_Motion_During_Gait)
+  and [Kenhub](https://www.kenhub.com/en/library/anatomy/gait-cycle) for
+  the joint angles.
+- **The body's height is no longer authored.** An animated bob sinks his
+  boots into the road, because the walk controller plants his origin on
+  the ground and any dip takes the feet with it. Two-link forward
+  kinematics work out where the soles actually ended up for the current
+  pose, and the body hangs off the lower one — so the rise and fall
+  comes out of the leg geometry for free, highest over the stance leg
+  and lowest at double support, with the planted foot exactly on the
+  road. `smoke:onfoot` watches the sole through ten frames of walking:
+  it stays within 5 cm of the ground and something lifts by 6 cm.
+
+Also this session, two controls that were the wrong way round:
+
+- **Walking turned the wrong way.** His forward is (sin h, cos h), so
+  raising the heading swings his nose toward the left of the screen; the
+  line subtracted, so A went right and D went left. The test that now
+  guards it reads the camera's own +X axis out of its world matrix
+  rather than trusting my arithmetic — and it only measures in open
+  ground with the camera provably behind him, because the first version
+  measured beside the ship, where the boom swings wide to see past the
+  hull, and reported the exact opposite.
+- **The gyro steered away from the lean.** Its yaw was added to a
+  positive-is-left flight axis while the sensor reports positive for
+  tilting the right edge down. It subtracts now. The gyro also drives
+  the camera gimbal, at a 45% share against the 20% it gets for
+  steering, and the walking camera gained the look axes so there is
+  something for it to drive on foot.
+- Two comments in the input layer described the opposite of what the
+  code does, and both cost me time: keyboard.js claimed ArrowUp pitches
+  the nose up (it dives — the axis is stick-forward-is-dive), and
+  gyro.js had beta's sign backwards. Corrected in place, behaviour left
+  alone.
+
 ## 2026-08-21 — Out of the ship, on foot in Castel Maggiore
 
 - Marco asked for the character in the game: a ladder off the side of

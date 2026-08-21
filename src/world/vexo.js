@@ -520,7 +520,15 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     const shinGroup = new THREE.Group();
     shinGroup.position.y = -0.4;
     leg.add(shinGroup);
-    legs.push({ hip: leg, shin: shinGroup, side });
+
+    // And an ankle below that, carrying the whole boot. Without one the
+    // foot is a block welded to the shin: it can't meet the ground heel
+    // first, can't roll flat, and can't push off — which is most of what
+    // makes a walk read as walking rather than as sliding.
+    const ankleGroup = new THREE.Group();
+    ankleGroup.position.y = -0.3;
+    shinGroup.add(ankleGroup);
+    legs.push({ hip: leg, shin: shinGroup, ankle: ankleGroup, side });
 
     const shin = limb(0.068, 0.055, 0.32, suit);
     shin.position.y = -0.18;
@@ -538,23 +546,23 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     // that rounds off, with the lit sole ring between them.
     const boot = new THREE.Mesh(new THREE.SphereGeometry(0.075, 18, 14), armour);
     boot.scale.set(0.95, 0.72, 1.5);
-    boot.position.set(0, -0.335, 0.03);
-    shinGroup.add(boot);
-    const instep = plate(0.105, 0.07, 0.11, armour, 0, -0.312, 0.072, 0.03);
+    boot.position.set(0, -0.035, 0.03);
+    ankleGroup.add(boot);
+    const instep = plate(0.105, 0.07, 0.11, armour, 0, -0.012, 0.072, 0.03);
     instep.rotation.x = 0.22;
-    shinGroup.add(instep);
+    ankleGroup.add(instep);
     const toe = new THREE.Mesh(new THREE.SphereGeometry(0.055, 16, 12), armourLight);
     toe.scale.set(1, 0.62, 1.15);
-    toe.position.set(0, -0.362, 0.132);
-    shinGroup.add(toe);
+    toe.position.set(0, -0.062, 0.132);
+    ankleGroup.add(toe);
     const heel = new THREE.Mesh(new THREE.SphereGeometry(0.05, 14, 10), armourLight);
     heel.scale.set(1, 0.7, 0.9);
-    heel.position.set(0, -0.357, -0.045);
-    shinGroup.add(heel);
+    heel.position.set(0, -0.057, -0.045);
+    ankleGroup.add(heel);
     const sole = new THREE.Mesh(new THREE.TorusGeometry(0.042, 0.011, 8, 18), glowMat);
     sole.rotation.x = Math.PI / 2;
-    sole.position.set(0, -0.386, 0.025);
-    shinGroup.add(sole);
+    sole.position.set(0, -0.086, 0.025);
+    ankleGroup.add(sole);
   }
 
   // A soft green light inside the suit, so the glow spills onto whatever
@@ -594,11 +602,14 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     const breath = Math.sin(t * 1.6);
     torso.position.y = 0.97 + breath * 0.005;
     torso.scale.x = 1 + breath * 0.006;
-    body.position.y = 0;
+    body.position.set(0, 0, 0);
     body.rotation.z = 0;
+    torso.rotation.y = 0;
     for (const leg of legs) {
       leg.hip.rotation.x = 0;
+      leg.hip.position.z = 0;
       leg.shin.rotation.x = 0;
+      leg.ankle.rotation.x = 0;
     }
     for (const [i, arm] of arms.entries()) {
       arm.shoulder.rotation.x = ARM_REST_X + Math.sin(t * 1.6 + i) * 0.012;
@@ -607,32 +618,139 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     }
   }
 
+  // --- The walk cycle ---------------------------------------------------------
+  // Keyframed from how people actually walk, rather than from a sine
+  // wave. Sources are in the journal; the shape that matters:
+  //
+  //   * The cycle is 60% STANCE (foot down) and 40% SWING. It is not
+  //     symmetric, and a sine wave is, which is why sine-wave walks
+  //     read as marching.
+  //   * The knee flexes TWICE per cycle: ~15 degrees just after the
+  //     heel lands, taking the impact, and ~60 degrees through mid-swing
+  //     to get the foot past the ground. One flexion looks like a stilt.
+  //   * The ankle rolls: neutral at heel strike, plantarflexed as the
+  //     foot slaps flat, dorsiflexed as the body passes over it, then
+  //     20 degrees of plantarflexion to push off.
+  //   * The arms swing opposite the legs, and the pelvis and shoulders
+  //     counter-rotate against each other.
+  //
+  // Percentages below are percent of the cycle from heel strike, and the
+  // values are DEGREES, so they can be read against the tables.
+  const HIP_CURVE = [    // + is the thigh forward (flexion)
+    [0, 28], [12, 22], [30, 6], [50, -12], [62, -8], [75, 16], [88, 28], [100, 28],
+  ];
+  const KNEE_CURVE = [   // + is the heel drawn toward the backside
+    [0, 4], [12, 16], [30, 6], [45, 14], [60, 40], [73, 60], [87, 26], [100, 4],
+  ];
+  const ANKLE_CURVE = [  // + is toes UP (dorsiflexion)
+    [0, 0], [8, -8], [30, 5], [45, 10], [58, -20], [68, -4], [80, 2], [100, 0],
+  ];
+
+  /**
+   * Read a keyframe table at `t` (0..1 through the cycle). Smoothstep
+   * between keys so the joins don't show as ticks in the motion.
+   */
+  function curveAt(table, t) {
+    const p = ((t % 1) + 1) % 1 * 100;
+    for (let i = 1; i < table.length; i++) {
+      const [p0, v0] = table[i - 1];
+      const [p1, v1] = table[i];
+      if (p <= p1) {
+        const u = (p - p0) / (p1 - p0);
+        return v0 + (v1 - v0) * (u * u * (3 - 2 * u));
+      }
+    }
+    return table[table.length - 1][1];
+  }
+
+  const DEG = Math.PI / 180;
+
+  // The leg, as lengths rather than as meshes: hip height, thigh, shin,
+  // and the two corners of the sole in ankle space (heel behind, toe in
+  // front). These mirror the positions the geometry above is built at —
+  // if a limb length changes up there, change it here too, or he walks
+  // through the pavement.
+  const HIP_Y = 0.8;
+  const THIGH = 0.4;
+  const SHIN = 0.3;
+  const SOLE_POINTS = [[-0.045, -0.107], [0.132, -0.096]];   // [z, y]
+
+  /**
+   * The lowest point of either sole for the pose the legs are currently
+   * in, measured in body space. Two-link forward kinematics — cheaper
+   * than asking Three.js to update world matrices mid-pose, and it
+   * cannot disagree with itself between frames.
+   */
+  function lowestSole() {
+    let lowest = Infinity;
+    for (const leg of legs) {
+      const a = leg.hip.rotation.x;
+      const b = a + leg.shin.rotation.x;
+      const c = b + leg.ankle.rotation.x;
+      const ankleY = HIP_Y - THIGH * Math.cos(a) - SHIN * Math.cos(b);
+      for (const [z, y] of SOLE_POINTS) {
+        // Rotate the sole corner by the ankle's total angle.
+        const py = ankleY + y * Math.cos(c) - z * Math.sin(c);
+        if (py < lowest) lowest = py;
+      }
+    }
+    return lowest;
+  }
+
   function poseWalk(dt) {
     // Below a slow walk the amplitude stops shrinking, or the last step
     // before standing still turns into a shuffle.
     const speed = Math.max(gaitSpeed, 0.4);
     phase += (speed / STRIDE) * Math.PI * 2 * dt;
-    const amp = Math.min(1.4, 0.45 + speed / 3.2);
+    const cycle = phase / (Math.PI * 2);
+    // Scale the whole pose with speed: a stroll is a small version of a
+    // stride, and a run is a big one.
+    const amp = Math.min(1.35, 0.55 + speed / 4);
 
     for (const [i, leg] of legs.entries()) {
-      const p = phase + i * Math.PI;
-      leg.hip.rotation.x = -Math.sin(p) * 0.58 * amp;
-      // The knee folds through the back half of the stride and stays
-      // straight through the front half — that asymmetry is what makes
-      // a leg read as a leg rather than a pendulum.
-      leg.shin.rotation.x = Math.max(0, -Math.sin(p + 0.5)) * 0.95 * amp;
+      // The two legs are half a cycle apart — that is the whole of what
+      // makes it a walk rather than a hop.
+      const t = cycle + i * 0.5;
+      const hip = curveAt(HIP_CURVE, t) * DEG * amp;
+      const knee = curveAt(KNEE_CURVE, t) * DEG * amp;
+      const ankle = curveAt(ANKLE_CURVE, t) * DEG * amp;
+      leg.hip.rotation.x = -hip;      // negative rotation swings it forward
+      leg.shin.rotation.x = knee;
+      leg.ankle.rotation.x = -ankle;  // dorsiflexion is a negative rotation
+      // Pelvic rotation: the swinging hip travels forward ahead of the
+      // stance hip. A couple of centimetres, but it is what stops the
+      // hips reading as a fixed bar between the legs.
+      leg.hip.position.z = Math.sin((t % 1) * Math.PI * 2) * 0.022 * amp;
     }
+
     for (const [i, arm] of arms.entries()) {
-      const p = phase + i * Math.PI;
-      // Opposite the leg on the same side: left arm forward with right leg.
-      arm.shoulder.rotation.x = ARM_REST_X + Math.sin(p) * 0.45 * amp;
+      // Opposite the leg on the same side, and about half as far: arms
+      // swing roughly 20 degrees forward and 12 back.
+      const t = cycle + i * 0.5;
+      const swing = curveAt(HIP_CURVE, t) * DEG * amp * 0.5;
+      arm.shoulder.rotation.x = ARM_REST_X + swing;
       arm.shoulder.rotation.z = arm.side * 0.11;
-      arm.forearm.rotation.x = 0.2 + Math.max(0, Math.sin(p)) * 0.45 * amp;
+      // The elbow folds as the arm comes forward and opens on the way
+      // back, which is the difference between an arm and a pendulum.
+      arm.forearm.rotation.x = 0.22 + Math.max(0, -swing) * 1.3;
     }
-    // Hips drop when the legs are at full split and rise over the stance
-    // leg — twice per cycle, which is why this runs at 2x phase.
-    body.position.y = -(0.5 - 0.5 * Math.cos(phase * 2)) * 0.045 * amp;
-    body.rotation.z = Math.sin(phase) * 0.025 * amp;
+
+    // The body rides on top of all that — and its height is NOT authored.
+    // Hand-animating a bob sinks his boots into the road at the bottom of
+    // it: the walk controller plants his origin on the ground, so any dip
+    // takes the feet with it. Instead, work out where the soles actually
+    // ended up for the pose above and hang the body off the lower one.
+    // The rise and fall falls out on its own — highest over the stance
+    // leg, lowest at double support — and the foot that is down stays
+    // exactly on the ground.
+    body.position.y = -lowestSole();
+    // Weight shifts sideways onto whichever foot is down. Once per
+    // cycle, unlike the bob.
+    body.position.x = Math.sin(phase) * 0.022 * amp;
+    body.rotation.z = -Math.sin(phase) * 0.03 * amp;
+    // Shoulders counter-rotate against the pelvis. Only the chest turns:
+    // the head stays pointed where he is going, as it does in life.
+    torso.rotation.y = Math.sin(phase) * 0.08 * amp;
     torso.position.y = 0.97;
   }
 
@@ -643,7 +761,10 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     for (const [i, leg] of legs.entries()) {
       const p = phase + i * Math.PI;
       leg.hip.rotation.x = -0.5 - Math.sin(p) * 0.4;
+      leg.hip.position.z = 0;
       leg.shin.rotation.x = 0.95 + Math.sin(p) * 0.45;
+      // Toes up: he is standing on rungs, not on the flat.
+      leg.ankle.rotation.x = -0.25;
     }
     for (const [i, arm] of arms.entries()) {
       // Hands overhead on the rungs, alternating opposite the feet.
@@ -654,8 +775,9 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
       arm.shoulder.rotation.z = arm.side * 0.16;
       arm.forearm.rotation.x = 0.5 - Math.max(0, Math.sin(p)) * 0.35;
     }
-    body.position.y = 0;
+    body.position.set(0, 0, 0);
     body.rotation.z = 0;
+    torso.rotation.y = 0;
     torso.position.y = 0.97;
   }
 
