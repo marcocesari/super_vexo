@@ -54,6 +54,55 @@ check(270, 0, FULL, 1, 0, 'landscape (other way): pitch flips sign');
 check(270, FULL, 0, 0, -1, 'landscape (other way): yaw flips sign');
 check(180, FULL, 0, -1, 0, 'upside-down portrait: pitch inverted');
 
+// --- The gyro also drives the camera gimbal ----------------------------------
+// The right stick swings the view around the ship; on a phone there may
+// not be one, so a tilt has to do the same job. This checks the wiring
+// in src/input/index.js: that the look axes pick the gyro up at all,
+// that they take the bigger LOOK share rather than the 20% steering
+// share, and that the view goes WHERE YOU TILT — right edge down swings
+// the view right, top away swings it up.
+// Node 22 ships its own read-only `navigator`, so define over it.
+Object.defineProperty(globalThis, 'navigator', {
+  value: { getGamepads: () => [], maxTouchPoints: 0 },
+  configurable: true,
+});
+globalThis.document = { addEventListener: () => {}, removeEventListener: () => {} };
+screen.orientation.angle = 0;
+
+const { createInput } = await import('../src/input/index.js');
+const { GYRO_LOOK_CONTRIBUTION } = await import('../src/input/gyro.js');
+const input = createInput();
+await input.enableGyro();
+
+// Calibrate this gyro instance the same way: flat, for a second.
+fire(0, 0);
+const c0 = performance.now();
+while (performance.now() - c0 < 1100) { /* calibration window */ }
+fire(0, 0);
+
+function lookCheck(beta, gamma, wantX, wantY, label) {
+  fire(beta, gamma);
+  const s = input.sample();
+  const okX = Math.abs(s.lookX - wantX) < 0.02;
+  const okY = Math.abs(s.lookY - wantY) < 0.02;
+  if (!okX || !okY) failed = true;
+  console.log(
+    `${okX && okY ? 'PASS' : 'FAIL'}  ${label}: lookX=${s.lookX.toFixed(2)} ` +
+    `lookY=${s.lookY.toFixed(2)}  (want ${wantX.toFixed(2)}, ${wantY.toFixed(2)})`,
+  );
+}
+
+const L = GYRO_LOOK_CONTRIBUTION;
+lookCheck(0, 0, 0, 0, 'level: the view sits behind the tail');
+lookCheck(0, FULL, L, 0, 'tilt right: view swings right');
+lookCheck(0, -FULL, -L, 0, 'tilt left: view swings left');
+lookCheck(FULL, 0, 0, L, 'tilt back: view swings up');
+lookCheck(-FULL, 0, 0, -L, 'tilt forward: view swings down');
+// Half a tilt is half a swing — and still more than the 20% the flight
+// axes get, which is the whole point of the separate share.
+lookCheck(0, FULL / 2, L / 2, 0, 'half a tilt is half a swing');
+
+
 if (failed) {
   console.error('\nSMOKE FAILED');
   process.exit(1);

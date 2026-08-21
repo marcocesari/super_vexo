@@ -79,7 +79,12 @@ Then open http://localhost:5173.
   the face — so you can see it from any angle
 - **D-pad** — pitch (up / down) and roll (left / right)
 
-**Gyroscope** adds a little fine pitch / yaw on a phone, on top of the sticks.
+**Gyroscope** does two jobs on a phone. It adds a little fine pitch / yaw to the
+flight axes (20%), and it drives the camera the way the right stick does — the
+view goes where you tilt it, so tilting the right edge down swings the view
+right and tilting the top away swings it up. A full 35° tilt is about 80° of
+swing, and letting the phone come level drops the view back behind the tail on
+its own. It works the same standing on the street as it does flying.
 
 ## Landing on Earth
 

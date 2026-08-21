@@ -263,6 +263,53 @@ const gaits = await page.evaluate(async () => {
 });
 check('he stands still when the stick is centred', gaits.still === 'idle', gaits.still);
 
+// --- Looking around on foot --------------------------------------------------
+// The look axes swing the walking camera the same way they swing the
+// chase camera in flight — and on a phone the gyro drives them, which is
+// the whole point: tilt to look down the side of the ship while standing
+// next to it. Driven here through a real DeviceOrientationEvent, so this
+// covers the whole chain: sensor → input.sample() → camera.
+const gyroLook = await page.evaluate(async () => {
+  const g = window.__superVexo;
+  const f = g.onFoot;
+  const fire = (beta, gamma) => window.dispatchEvent(
+    new DeviceOrientationEvent('deviceorientation', { alpha: 0, beta, gamma }),
+  );
+  const hold = async (beta, gamma, ms) => {
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms) {
+      fire(beta, gamma);
+      await new Promise((r) => setTimeout(r, 40));
+    }
+  };
+  // Where the camera sits, as an angle off straight-behind-him.
+  const swing = () => {
+    const cam = g.camera.position;
+    const p = f.position;
+    const a = Math.atan2(cam.x - p.x, cam.z - p.z);
+    let d = a - (f.vexo.group.rotation.y + Math.PI);
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  };
+  await hold(0, 0, 1400);            // flat: calibrates the neutral pose
+  const level = swing();
+  await hold(0, 35, 900);            // right edge down
+  const tiltedRight = swing();
+  await hold(0, 0, 900);             // back to flat
+  const recentred = swing();
+  return { level, tiltedRight, recentred };
+});
+check('level, the walking camera sits behind him',
+  Math.abs(gyroLook.level) < 0.15, `${gyroLook.level.toFixed(2)} rad off`);
+// Tilt right → the camera walks round to his left and keeps looking at
+// him, which is what "the view swung right" looks like from outside.
+check('tilting the phone swings the walking camera',
+  gyroLook.tiltedRight > 0.5 && gyroLook.tiltedRight < 1.3,
+  `${gyroLook.tiltedRight.toFixed(2)} rad off straight-behind`);
+check('and it falls back behind him when the phone is level again',
+  Math.abs(gyroLook.recentred) < 0.15, `${gyroLook.recentred.toFixed(2)} rad off`);
+
 // --- Walls --------------------------------------------------------------------
 const walls = await page.evaluate(() => {
   const town = window.__superVexo.surface.town;

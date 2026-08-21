@@ -17,6 +17,12 @@
 // is undefined) is a NO-OP that still wires the listener.
 
 export const GYRO_CONTRIBUTION = 0.2; // 20%
+// The gyro drives the camera gimbal as well as the flight axes, and it
+// gets a bigger share there. Steering wants the gyro to be a fine-tune
+// of the stick — 20% — but looking around is the gyro's own job: at
+// this share a full 35-degree tilt swings the view about 80 degrees,
+// enough to see down the side of the ship without a right stick at all.
+export const GYRO_LOOK_CONTRIBUTION = 0.45;
 const CALIBRATION_MS = 1000;          // hold neutral 1s
 // Pitch / yaw saturate at this much device tilt (degrees) → +/- 1.
 const PITCH_FULL_DEG = 35;

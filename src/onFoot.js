@@ -76,6 +76,16 @@ const LADDER_LOCAL_Z = 0.55;
 const CLIMB_STANDOFF = 0.32;
 const STEPOFF_DISTANCE = 2.0;
 
+// How far the look axes swing the walking camera around him. The same
+// axes the chase camera uses in flight — right stick, and the gyro on a
+// phone — so tilting to look down the side of the ship works the same
+// whether you are flying it or standing next to it. Less range than in
+// flight: a camera that can swing all the way to his face would spend
+// most of its time looking at the back of his head from the front.
+const FOOT_LOOK_YAW = Math.PI * 0.62;     // ~112 degrees either way
+const FOOT_LOOK_PITCH = Math.PI * 0.19;   // ~34 degrees up or down
+const FOOT_LOOK_HALFLIFE = 0.09;
+
 // The camera boom on foot, and how much of it can be given up before a
 // wall or the ship's own hull. A 10 m ship with a 7 m wingspan is easy
 // to end up inside of: he steps off facing away from it, which puts the
@@ -99,6 +109,8 @@ const UP = new THREE.Vector3(0, 1, 0);
 function alphaFor(dt, halflife) {
   return 1 - Math.pow(2, -dt / halflife);
 }
+
+function clamp1(v) { return v < -1 ? -1 : (v > 1 ? 1 : v); }
 
 /** Shortest signed angle from a to b. */
 function angleDelta(a, b) {
@@ -165,6 +177,11 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
   const foot = new THREE.Vector3();
   let heading = 0;
   let climbY = 0;
+
+  // Where the look axes have swung the walking camera, in radians off
+  // straight-behind. Smoothed, like the chase camera's gimbal.
+  let orbitYaw = 0;
+  let orbitPitch = 0;
 
   const _camGoal = new THREE.Vector3();
   const _lookGoal = new THREE.Vector3();
@@ -301,13 +318,18 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
       // on however much boom there is room for.
       _lookGoal.copy(foot).addScaledVector(UP, VEXO_HEIGHT * 0.62);
       const { dx, dz, boom } = boomBehind();
+      // Pitching the view up walks the camera down and back, the way a
+      // boom on a gimbal moves — so looking up at him keeps him in
+      // frame instead of sliding the picture off his head.
+      const reach = boom * Math.cos(orbitPitch);
+      const rise = boom * Math.sin(orbitPitch);
       _camGoal.set(dx, 0, dz)
-        .multiplyScalar(boom)
+        .multiplyScalar(reach)
         .add(_lookGoal)
         // A short boom means something is in the way — gain a little
         // height to see over it, but not so much that the shot turns
         // into a map view.
-        .addScaledVector(UP, 1.15 + (BOOM_LENGTH - boom) * 0.2);
+        .addScaledVector(UP, 1.15 + (BOOM_LENGTH - boom) * 0.2 + rise);
       keepAboveGround();
       return;
     }
@@ -367,8 +389,10 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
    * behind, which turns the game into a map view.
    */
   function boomBehind() {
+    // Straight behind him, plus wherever the look axes have swung it.
+    const base = heading + Math.PI + orbitYaw;
     for (const swing of [0, 0.42, -0.42, 0.85, -0.85, 1.3, -1.3, 1.9, -1.9]) {
-      const a = heading + Math.PI + swing;
+      const a = base + swing;
       const dx = Math.sin(a);
       const dz = Math.cos(a);
       if (cameraFits(foot.x + dx * BOOM_LENGTH, foot.z + dz * BOOM_LENGTH)) {
@@ -377,8 +401,8 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
     }
     // Boxed in on every side — back off along the heading as far as
     // there is room for.
-    const dx = -Math.sin(heading);
-    const dz = -Math.cos(heading);
+    const dx = Math.sin(base);
+    const dz = Math.cos(base);
     for (let boom = BOOM_LENGTH - 0.6; boom > BOOM_MIN; boom -= 0.6) {
       if (cameraFits(foot.x + dx * boom, foot.z + dz * boom)) return { dx, dz, boom };
     }
@@ -427,6 +451,8 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
   function enterWalk() {
     state = 'walk';
     phaseT = 0;
+    orbitYaw = 0;
+    orbitPitch = 0;
     hintT = CONTROLS_HINT_TIME;
     camInit = false;
   }
@@ -511,6 +537,15 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
   }
 
   function updateWalk(dt, axes) {
+    // Look axes → where the camera rides. Deflection is an ANGLE, not a
+    // rate, exactly as in flight: let go and the view falls back behind
+    // him on its own, with nothing to re-centre by hand.
+    const wantYaw = clamp1(axes?.lookX ?? 0) * FOOT_LOOK_YAW;
+    const wantPitch = -clamp1(axes?.lookY ?? 0) * FOOT_LOOK_PITCH;
+    const aLook = alphaFor(dt, FOOT_LOOK_HALFLIFE);
+    orbitYaw += (wantYaw - orbitYaw) * aLook;
+    orbitPitch += (wantPitch - orbitPitch) * aLook;
+
     // Turning is a rate, walking is a speed — the same shape as the
     // flight controls, so the stick means roughly what it meant a
     // moment ago.

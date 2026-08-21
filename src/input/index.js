@@ -21,7 +21,7 @@
 // for the HUD — values are joined with `+` (e.g. `KB`, `PAD+GYRO`).
 import { createKeyboard } from './keyboard.js';
 import { createGamepad } from './gamepad.js';
-import { createGyro } from './gyro.js';
+import { createGyro, GYRO_CONTRIBUTION, GYRO_LOOK_CONTRIBUTION } from './gyro.js';
 import { createTouch, isTouchDevice } from './touch.js';
 import { isBridgeAvailable } from '../bridge.js';
 
@@ -95,11 +95,23 @@ export function createInput() {
         sources.push('GYRO');
       }
 
-      // Right stick → camera gimbal. It never mixes with the flight
-      // axes, so it just passes straight through from the pad.
-      const lookX = pad ? pad.lookX : 0;
-      const lookY = pad ? pad.lookY : 0;
+      // Right stick → camera gimbal. The pad's stick never mixes with
+      // the flight axes, so it passes straight through.
+      let lookX = pad ? pad.lookX : 0;
+      let lookY = pad ? pad.lookY : 0;
       if ((lookX || lookY) && !sources.includes('PAD')) sources.push('PAD');
+
+      // …and the gyro drives the gimbal too, so a phone with no right
+      // stick can still look around: THE VIEW GOES WHERE YOU TILT IT.
+      // Tilt the right edge down and the camera swings right; tilt the
+      // top away from you and it swings up. `sample()` has already
+      // scaled its output by GYRO_CONTRIBUTION for the flight axes, so
+      // rescale to the look share rather than reading the sensor twice.
+      if (g && gyro.active) {
+        const share = GYRO_LOOK_CONTRIBUTION / GYRO_CONTRIBUTION;
+        lookX = clamp1(lookX + g.yawDelta * share);
+        lookY = clamp1(lookY + g.pitchDelta * share);
+      }
 
       // Always at least show 'KB' so the HUD has something — matches M1.
       if (sources.length === 0) sources.push('KB');
