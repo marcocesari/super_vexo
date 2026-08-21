@@ -513,9 +513,15 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
   function updateWalk(dt, axes) {
     // Turning is a rate, walking is a speed — the same shape as the
     // flight controls, so the stick means roughly what it meant a
-    // moment ago. Left on the stick turns left, which is a DECREASING
-    // heading: forward is (sin h, cos h), so h grows clockwise.
-    heading -= (axes?.yaw ?? 0) * TURN_RATE * dt;
+    // moment ago.
+    //
+    // A / stick-left gives yaw = +1, and turning left has to INCREASE
+    // the heading. His forward is (sin h, cos h): raising h swings it
+    // from +Z toward +X, and with the camera parked behind him looking
+    // along +Z, world +X is the left of the screen. Subtracting here —
+    // which is what this line did at first — sends A to the right and
+    // D to the left, and looks like the keys are swapped.
+    heading += (axes?.yaw ?? 0) * TURN_RATE * dt;
 
     const running = input.keyboard.isDown('ShiftLeft')
       || input.keyboard.isDown('ShiftRight')

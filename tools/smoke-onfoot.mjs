@@ -115,8 +115,10 @@ const camePartWayDown = await page.evaluate(async () => {
 check('the ship flies itself down rather than teleporting',
   camePartWayDown.after < camePartWayDown.before - 5,
   `${camePartWayDown.before}m → ${camePartWayDown.after}m in 0.6s`);
-check('the ladder deploys', await waitForState('deploy', 4000));
-check('Vexo climbs down it', await waitForState('down', 4000));
+// Generous: pressing L at 60 m buys a three-and-a-half second descent
+// before the ladder is even out, and this runs at headless frame rates.
+check('the ladder deploys', await waitForState('deploy', 9000));
+check('Vexo climbs down it', await waitForState('down', 6000));
 check('control passes to him at the bottom', await waitForState('walk', 8000));
 
 const onFoot = await state();
@@ -188,25 +190,71 @@ async function walkFor(ms, { run = false } = {}) {
   return Math.hypot(after[0] - before[0], after[2] - before[2]) / (ms / 1000);
 }
 
-// Face him at open ground first, so a wall doesn't decide the result.
-await page.evaluate(() => {
+// Stand him in open ground before timing anything. He steps off the
+// ladder wherever the ship happened to park, which is often a few metres
+// from a wall — and a walk speed measured into a wall is the wall's
+// speed, not his. (The block that used to be here computed a clear
+// direction and then threw it away, so the timing came out different
+// every run.)
+const openGround = await page.evaluate(() => {
   const g = window.__superVexo;
   const f = g.onFoot;
   const town = g.surface.town;
-  // Walk out from the ship until there is 30 m of clear ground ahead.
-  for (let i = 0; i < 36; i++) {
-    const a = (i / 36) * Math.PI * 2;
-    const x = f.position.x + Math.sin(a) * 22;
-    const z = f.position.z + Math.cos(a) * 22;
-    if (town.isClear(x - 0, z - 0, 3)) continue;
+  let best = null;
+  for (let x = -200; x <= 200; x += 4) {
+    for (let z = -200; z <= 200; z += 4) {
+      if (!town.isClear(x, z, 14)) continue;
+      const d = Math.hypot(x - g.ship.mesh.position.x, z - g.ship.mesh.position.z);
+      if (d > 40 && (best === null || d < best.d)) best = { x, z, d };
+    }
   }
+  if (best) {
+    f.position.x = best.x;
+    f.position.z = best.z;
+  }
+  return best;
 });
+check('there is open ground to walk in', openGround != null,
+  openGround ? `14m clear at ${openGround.x},${openGround.z}` : 'none found');
+await page.waitForTimeout(500);   // let the camera settle behind him
 const walkSpeed = await walkFor(1200);
 check('he walks at a walking pace', walkSpeed > 1.6 && walkSpeed < 2.7,
   `${walkSpeed.toFixed(2)} m/s`);
 const runSpeed = await walkFor(1000, { run: true });
 check('Shift makes him run', runSpeed > walkSpeed + 1.2,
   `${runSpeed.toFixed(2)} m/s vs ${walkSpeed.toFixed(2)}`);
+
+// Which way is left? Not a matter of opinion: the camera's own +X axis,
+// straight out of its world matrix, is the right of the screen. Hold a
+// key, see which side his nose swings toward. This exists because the
+// first version had the sign backwards — A turned him right and D
+// turned him left, and nothing else in this file could tell.
+async function turnDirection(key) {
+  const before = await page.evaluate(() => {
+    const g = window.__superVexo;
+    const m = g.camera.matrixWorld.elements;
+    const y = g.onFoot.vexo.group.rotation.y;
+    return { right: [m[0], m[2]], forward: [Math.sin(y), Math.cos(y)] };
+  });
+  await page.keyboard.down(key);
+  await page.waitForTimeout(450);
+  await page.keyboard.up(key);
+  await page.waitForTimeout(250);
+  const after = await page.evaluate(() => {
+    const y = window.__superVexo.onFoot.vexo.group.rotation.y;
+    return [Math.sin(y), Math.cos(y)];
+  });
+  const dx = after[0] - before.forward[0];
+  const dz = after[1] - before.forward[1];
+  const towardScreenRight = dx * before.right[0] + dz * before.right[1];
+  return { side: towardScreenRight > 0 ? 'right' : 'left', amount: Math.abs(towardScreenRight) };
+}
+const leftTurn = await turnDirection('KeyA');
+const rightTurn = await turnDirection('KeyD');
+check('A turns him left', leftTurn.side === 'left' && leftTurn.amount > 0.2,
+  `${leftTurn.side} (${leftTurn.amount.toFixed(2)})`);
+check('D turns him right', rightTurn.side === 'right' && rightTurn.amount > 0.2,
+  `${rightTurn.side} (${rightTurn.amount.toFixed(2)})`);
 
 const gaits = await page.evaluate(async () => {
   const f = window.__superVexo.onFoot;
