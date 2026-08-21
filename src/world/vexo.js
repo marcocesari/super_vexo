@@ -4,7 +4,9 @@
 // gunmetal powered armour, lit all over by thin green circuit traces.
 // Green visor across the eyes with a headset and mic boom, messy brown
 // hair above it, heavy plates on shoulders, chest, thighs and shins,
-// and cyan light rings in the boot soles.
+// and cyan light rings in the boot soles. A sidearm holstered on his
+// left thigh with his hand hanging beside it, magazine pouches on his
+// right, and a lit green panel on the outside of each gauntlet.
 //
 // No model files — he's Three.js primitives in a Group, like everything
 // else here. What keeps that from looking like a stack of bricks:
@@ -242,13 +244,23 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     roughness: 0.08,
   });
   const glowMat = new THREE.MeshBasicMaterial({ color: BOOT_GLOW });
+  // The lit rectangle on the outside of the forearm in the concept art —
+  // a small screen set into the gauntlet. Bright enough to read as its
+  // own light source without the bloom the game doesn't have.
+  const panelMat = new THREE.MeshStandardMaterial({
+    color: 0x0d2b1c,
+    emissive: CIRCUIT,
+    emissiveIntensity: 1.15,
+    metalness: 0.2,
+    roughness: 0.35,
+  });
 
   // Per-material rather than `scene.environment`: this way he reflects
   // something without the town and the ship quietly changing appearance
   // around him. Set before anything is rendered, so no shader is
   // recompiled for it.
   if (environment) {
-    for (const m of [armour, armourLight, suit, skinMat, hairMat, visorMat]) {
+    for (const m of [armour, armourLight, suit, skinMat, hairMat, visorMat, panelMat]) {
       m.envMap = environment;
       m.envMapIntensity = 0.55;
     }
@@ -464,19 +476,66 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     const cuff = plate(0.1, 0.055, 0.09, armourLight, 0, -0.052, 0.006, 0.026);
     forearm.add(cuff);
 
-    // Hand: a rounded palm with capsule fingers, curled slightly.
-    const palm = plate(0.06, 0.082, 0.036, suit, 0, -0.278, 0.004, 0.02);
-    forearm.add(palm);
-    for (let f = 0; f < 4; f++) {
-      const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.0085, 0.042, 3, 8), suit);
-      finger.position.set((f - 1.5) * 0.017, -0.342, 0.008);
-      finger.rotation.x = 0.28;
-      forearm.add(finger);
+    // Hand. In the art the fingers are long and slim, slightly parted,
+    // and curled the way a hand hangs when nobody is using it — index
+    // straightest, little finger most curled, each one shorter than the
+    // last. Four identical capsules in a row, which is what this was,
+    // reads as a mitten.
+    //
+    // The whole hand hangs off a wrist group so it can be TURNED. Arms
+    // at rest hang with the palms toward the thighs and the thumbs
+    // forward; built flat on the forearm the palms face front, which is
+    // the pose of a man about to be searched. Rotating the wrist carries
+    // the curl round with it, so the fingers still close toward the
+    // palm — now toward his leg, as they should.
+    const hand = new THREE.Group();
+    hand.position.set(0, -0.28, 0.004);
+    hand.rotation.y = -side * 1.15;
+    forearm.add(hand);
+
+    const palm = plate(0.056, 0.078, 0.032, suit, 0, 0.004, 0, 0.018);
+    palm.rotation.x = 0.06;
+    hand.add(palm);
+    // Knuckles: the ridge the fingers hang off, so they don't sprout
+    // straight out of a flat plate.
+    const knuckles = new THREE.Mesh(new THREE.CapsuleGeometry(0.011, 0.045, 3, 8), suit);
+    knuckles.rotation.z = Math.PI / 2;
+    knuckles.position.set(0, -0.032, 0.003);
+    hand.add(knuckles);
+
+    // index → little: longer to shorter, straighter to more curled.
+    const FINGERS = [
+      { len: 0.044, r: 0.0078, curl: 0.30, splay: 0.05 },
+      { len: 0.047, r: 0.0080, curl: 0.36, splay: 0.02 },
+      { len: 0.043, r: 0.0075, curl: 0.44, splay: -0.02 },
+      { len: 0.035, r: 0.0068, curl: 0.52, splay: -0.06 },
+    ];
+    for (const [f, spec] of FINGERS.entries()) {
+      const finger = new THREE.Mesh(
+        new THREE.CapsuleGeometry(spec.r, spec.len, 3, 8), suit,
+      );
+      // Hung from the knuckle rather than placed by their middles, so
+      // the curl swings the tip and not the whole finger.
+      const reach = spec.len / 2 + 0.006;
+      finger.position.set(
+        (f - 1.5) * 0.0165 * side,
+        -0.037 - Math.cos(spec.curl) * reach,
+        0.003 + Math.sin(spec.curl) * reach,
+      );
+      finger.rotation.set(spec.curl, 0, spec.splay * side);
+      hand.add(finger);
     }
-    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.0095, 0.03, 3, 8), suit);
-    thumb.position.set(side * 0.028, -0.302, 0.016);
-    thumb.rotation.set(0.5, 0, side * -0.5);
-    forearm.add(thumb);
+    // Thumb: out on the leading edge of the palm and swung across it —
+    // which, once the wrist is turned, is the front of the hand.
+    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.0092, 0.032, 3, 8), suit);
+    thumb.position.set(side * 0.028, -0.016, 0.014);
+    thumb.rotation.set(0.5, 0, -side * 0.7);
+    hand.add(thumb);
+
+    // The lit panel on the outside of the gauntlet.
+    const panel = plate(0.034, 0.052, 0.008, panelMat, side * 0.055, -0.145, 0.004, 0.008);
+    panel.rotation.y = side * Math.PI / 2;
+    forearm.add(panel);
 
     // Arms hang with a slight outward flare, as in the art.
     arm.rotation.z = side * 0.11;
@@ -502,9 +561,54 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     const thighPlate = plate(0.125, 0.25, 0.05, armour, 0, -0.19, 0.045, 0.05);
     thighPlate.rotation.x = -0.05;
     leg.add(thighPlate);
-    const pouch = plate(0.05, 0.115, 0.055, armourLight, side * 0.086, -0.21, 0.006, 0.02);
-    pouch.rotation.y = side * 0.35;
-    leg.add(pouch);
+    // Thigh kit, as in the art: a sidearm holstered on his left leg with
+    // his hand hanging beside it, and magazine pouches on his right.
+    // Facing +Z, his left is +X.
+    if (side > 0) {
+      // Holster: a shell round the barrel, strapped to the thigh.
+      const holster = plate(0.052, 0.115, 0.062, armour, side * 0.086, -0.235, 0.004, 0.016);
+      holster.rotation.set(0.12, side * 0.3, 0);
+      leg.add(holster);
+      const strap = plate(0.06, 0.022, 0.07, armourLight, side * 0.086, -0.19, 0.004, 0.008);
+      strap.rotation.set(0, side * 0.3, 0);
+      leg.add(strap);
+
+      // The pistol itself, sitting in it: butt up and canted back, the
+      // way it has to be to draw. Only the top half shows.
+      const gun = new THREE.Group();
+      gun.position.set(side * 0.088, -0.16, 0.006);
+      gun.rotation.set(0.18, side * 0.3, side * 0.12);
+      leg.add(gun);
+      // Slide, mostly buried in the holster.
+      const slide = plate(0.026, 0.1, 0.036, armour, 0, -0.03, 0, 0.006);
+      gun.add(slide);
+      // Grip, angled back off the frame.
+      const grip = plate(0.024, 0.062, 0.032, suit, 0, 0.034, -0.019, 0.008);
+      grip.rotation.x = -0.32;
+      gun.add(grip);
+      // Trigger guard: the loop under the frame is most of a pistol's
+      // silhouette, and it is two triangles' worth of geometry.
+      const guard = new THREE.Mesh(new THREE.TorusGeometry(0.014, 0.004, 6, 12, Math.PI), armour);
+      guard.rotation.set(0, Math.PI / 2, -0.4);
+      guard.position.set(0, 0.006, 0.004);
+      gun.add(guard);
+      // A green pip on the back of the slide — the sight, and the same
+      // green as everything else he carries.
+      const sight = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.006, 0.004), panelMat);
+      sight.position.set(0, 0.014, 0.016);
+      gun.add(sight);
+    } else {
+      // Magazine pouches: two slabs, as in the art.
+      for (const [i, y] of [-0.185, -0.245].entries()) {
+        const mag = plate(0.042, 0.052, 0.05, armourLight, side * 0.086, y, 0.004, 0.01);
+        mag.rotation.y = side * 0.32;
+        leg.add(mag);
+        const lip = plate(0.046, 0.01, 0.054, armour, side * 0.086, y + 0.03, 0.004, 0.005);
+        lip.rotation.y = side * 0.32;
+        leg.add(lip);
+        void i;
+      }
+    }
 
     leg.add(joint(0.068, suit, -0.4));     // knee
     const kneeCap = new THREE.Mesh(
