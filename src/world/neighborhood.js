@@ -88,6 +88,23 @@ function polygonCentre(pts) {
   return [x / pts.length, z / pts.length];
 }
 
+/**
+ * Nearest point on a line segment, on the ground plane. Written into
+ * `out` to keep the walk resolver allocation-free — it runs against every
+ * wall in the neighbourhood on every frame Vexo is on foot.
+ */
+function closestPointOnSegment(px, pz, x1, z1, x2, z2, out) {
+  const dx = x2 - x1;
+  const dz = z2 - z1;
+  const lenSq = dx * dx + dz * dz;
+  if (lenSq < 1e-9) { out[0] = x1; out[1] = z1; return out; }
+  let t = ((px - x1) * dx + (pz - z1) * dz) / lenSq;
+  t = t < 0 ? 0 : (t > 1 ? 1 : t);
+  out[0] = x1 + dx * t;
+  out[1] = z1 + dz * t;
+  return out;
+}
+
 /** Shortest distance from a point to a line segment, on the ground plane. */
 function distanceToSegment(px, pz, x1, z1, x2, z2) {
   const dx = x2 - x1;
@@ -762,6 +779,111 @@ export function createNeighborhood() {
     home.z + 18,
   );
 
+  // --- Walking collision ------------------------------------------------------
+  // Vexo on foot is a circle on the ground plane. Buildings are the same
+  // polygons that were extruded into walls, so what he can see he can
+  // walk into; tree trunks are circles.
+  //
+  // Brute force over every wall, with a bounding-box reject first: ~30
+  // buildings and a few hundred trees is nothing per frame, and a grid
+  // would be one more thing to keep in step with the geometry.
+  const TRUNK_RADIUS = 0.42;
+  const footprintBounds = footprints.map((pts) => {
+    let minX = Infinity; let minZ = Infinity; let maxX = -Infinity; let maxZ = -Infinity;
+    for (const [x, z] of pts) {
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (z < minZ) minZ = z;
+      if (z > maxZ) maxZ = z;
+    }
+    return [minX, minZ, maxX, maxZ];
+  });
+
+  const _near = [0, 0];
+
+  /**
+   * Slide a walker of the given radius out of anything solid.
+   *
+   * @param {number} x  town-local metres
+   * @param {number} z
+   * @param {number} radius
+   * @param {number[]} out  `[x, z]`, written in place
+   * @returns {number[]} out
+   */
+  function resolveWalk(x, z, radius, out) {
+    let px = x;
+    let pz = z;
+
+    for (let b = 0; b < footprints.length; b++) {
+      const [minX, minZ, maxX, maxZ] = footprintBounds[b];
+      if (px < minX - radius || px > maxX + radius
+          || pz < minZ - radius || pz > maxZ + radius) continue;
+
+      const pts = footprints[b];
+      const inside = pointInPolygon(px, pz, pts);
+      // Nearest point on the outline, whichever side of it we are on.
+      let bestX = 0; let bestZ = 0; let bestSq = Infinity;
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        closestPointOnSegment(px, pz, pts[j][0], pts[j][1], pts[i][0], pts[i][1], _near);
+        const d = (px - _near[0]) ** 2 + (pz - _near[1]) ** 2;
+        if (d < bestSq) { bestSq = d; bestX = _near[0]; bestZ = _near[1]; }
+      }
+      const dist = Math.sqrt(bestSq);
+      if (!inside && dist >= radius) continue;
+
+      // Outside: push along the outward direction we already have.
+      // Inside (he clipped a corner, or the ship parked him in a wall):
+      // that direction points inward, so flip it and put him out through
+      // the nearest wall.
+      let nx = px - bestX;
+      let nz = pz - bestZ;
+      if (dist < 1e-6) { nx = 1; nz = 0; } else { nx /= dist; nz /= dist; }
+      if (inside) { nx = -nx; nz = -nz; }
+      px = bestX + nx * radius;
+      pz = bestZ + nz * radius;
+    }
+
+    for (const [tx, tz] of treePositions) {
+      const dx = px - tx;
+      const dz = pz - tz;
+      const minDist = radius + TRUNK_RADIUS;
+      const distSq = dx * dx + dz * dz;
+      if (distSq >= minDist * minDist) continue;
+      const dist = Math.sqrt(distSq);
+      if (dist < 1e-6) { px = tx + minDist; continue; }
+      px = tx + (dx / dist) * minDist;
+      pz = tz + (dz / dist) * minDist;
+    }
+
+    out[0] = px;
+    out[1] = pz;
+    return out;
+  }
+
+  /**
+   * True when a circle of `radius` at this point touches nothing solid —
+   * used to decide whether there is room to set the ship down and climb
+   * out, rather than parking it inside somebody's kitchen.
+   */
+  function isClear(x, z, radius) {
+    for (let b = 0; b < footprints.length; b++) {
+      const [minX, minZ, maxX, maxZ] = footprintBounds[b];
+      if (x < minX - radius || x > maxX + radius
+          || z < minZ - radius || z > maxZ + radius) continue;
+      const pts = footprints[b];
+      if (pointInPolygon(x, z, pts)) return false;
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        if (distanceToSegment(x, z, pts[j][0], pts[j][1], pts[i][0], pts[i][1]) < radius) {
+          return false;
+        }
+      }
+    }
+    for (const [tx, tz] of treePositions) {
+      if (Math.hypot(x - tx, z - tz) < radius + TRUNK_RADIUS) return false;
+    }
+    return true;
+  }
+
   function update(dt) {
     pip.rotation.y += dt * 1.1;
     pip.position.y = homeTop + 14 + Math.sin(performance.now() * 0.0016) * 1.4;
@@ -773,6 +895,10 @@ export function createNeighborhood() {
     trees: treePositions,
     /** Ground height in metres at a point — 0 on the flat, up on a hill. */
     groundHeightAt,
+    /** Slide a walker out of walls and tree trunks. See above. */
+    resolveWalk,
+    /** Is there room here to set down and get out? */
+    isClear,
     home: new THREE.Vector3(home.x, home.base + homeTop, home.z),
     spawn,
     heading: -Math.PI / 2, // facing west

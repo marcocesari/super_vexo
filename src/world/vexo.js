@@ -6,20 +6,26 @@
 // hair above it, heavy plates on shoulders, chest, thighs and shins,
 // and cyan light rings in the boot soles.
 //
-// Built the same way as everything else here — Three.js primitives in a
-// Group, no model files. Two things do most of the work:
+// No model files — he's Three.js primitives in a Group, like everything
+// else here. What keeps that from looking like a stack of bricks:
 //
-//   1. A CIRCUIT TEXTURE used as an emissive map on every armour
-//      surface. Modelling those traces as geometry would cost hundreds
-//      of slivers; painted onto a canvas they cost one texture, and
-//      they wrap the body the same way they do in the art.
-//   2. PLATES over a body. The limbs and torso are simple tapered
-//      shapes, and the silhouette comes from armour laid on top —
-//      pauldrons, knee caps, shin guards — which is how the reference
-//      reads too.
+//   1. ROUNDED PLATES. Every piece of armour is an extruded rounded
+//      rectangle with a bevelled edge, not a box. Real armour has a
+//      radius on every edge, and the highlight running along that curve
+//      is most of what makes a surface read as metal.
+//   2. A LATHED TORSO. The chest is a turned profile — hips, waist,
+//      ribs, shoulders — rather than a scaled cylinder, so the body
+//      tapers instead of standing there like a bin.
+//   3. CAPSULE LIMBS with ball joints at shoulder, elbow and knee, so
+//      arms and legs socket into the body instead of butting against it.
+//   4. A CIRCUIT TEXTURE used as an emissive map. Modelling those
+//      traces as geometry would cost hundreds of slivers; painted onto
+//      a canvas they cost one texture and wrap the body the way they
+//      do in the art.
 //
 // Scale is metres, like the rest of the surface world: he stands 1.8 m
-// tall with his feet at y = 0.
+// tall with his feet at y = 0, so he can be dropped into Castel
+// Maggiore at its own one-unit-per-metre scale.
 import * as THREE from 'three';
 
 export const VEXO_HEIGHT = 1.8;
@@ -76,285 +82,611 @@ function makeCircuitTexture() {
   return tex;
 }
 
-/** Rounded-ish box: the workhorse shape for every plate on him. */
-function plate(w, h, d, material, x = 0, y = 0, z = 0) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+/** A rounded rectangle, as a Shape, centred on the origin. */
+function roundedRect(w, h, r) {
+  const shape = new THREE.Shape();
+  const x = -w / 2;
+  const y = -h / 2;
+  const radius = Math.max(0.001, Math.min(r, w / 2 - 0.001, h / 2 - 0.001));
+  shape.moveTo(x + radius, y);
+  shape.lineTo(x + w - radius, y);
+  shape.absarc(x + w - radius, y + radius, radius, -Math.PI / 2, 0);
+  shape.lineTo(x + w, y + h - radius);
+  shape.absarc(x + w - radius, y + h - radius, radius, 0, Math.PI / 2);
+  shape.lineTo(x + radius, y + h);
+  shape.absarc(x + radius, y + h - radius, radius, Math.PI / 2, Math.PI);
+  shape.lineTo(x, y + radius);
+  shape.absarc(x + radius, y + radius, radius, Math.PI, Math.PI * 1.5);
+  return shape;
+}
+
+/**
+ * An armour plate: a rounded rectangle extruded with a bevelled edge, so
+ * every silhouette line is a curve catching light rather than a corner.
+ * This replaced plain boxes everywhere on him, and it is the single
+ * biggest reason he stopped looking like a toy.
+ */
+function plate(w, h, d, material, x = 0, y = 0, z = 0, cornerR = 0.02) {
+  // The bevel adds its thickness to BOTH faces, so the extrusion depth
+  // gives that back — otherwise every plate comes out fatter than asked.
+  const bevel = Math.min(0.012, d * 0.35);
+  const geom = new THREE.ExtrudeGeometry(roundedRect(w, h, cornerR), {
+    depth: Math.max(0.001, d - bevel * 2),
+    bevelEnabled: true,
+    bevelThickness: bevel,
+    bevelSize: bevel,
+    bevelSegments: 2,
+    curveSegments: 4,
+  });
+  geom.center();
+  const mesh = new THREE.Mesh(geom, material);
   mesh.position.set(x, y, z);
   return mesh;
 }
 
-/** A tapered limb segment — wider at the top, narrower at the bottom. */
-function limb(topR, bottomR, length, material, segments = 8) {
-  const geom = new THREE.CylinderGeometry(topR, bottomR, length, segments);
-  return new THREE.Mesh(geom, material);
+/** A limb segment: a tapered cylinder with rounded ends. */
+function limb(topR, bottomR, length, material, segments = 16) {
+  const group = new THREE.Group();
+  group.add(new THREE.Mesh(
+    new THREE.CylinderGeometry(topR, bottomR, length, segments),
+    material,
+  ));
+  // Caps, so a limb doesn't end in a flat disc where it meets a joint.
+  const top = new THREE.Mesh(new THREE.SphereGeometry(topR, segments, 8), material);
+  top.position.y = length / 2;
+  top.scale.y = 0.7;
+  group.add(top);
+  const bottom = new THREE.Mesh(new THREE.SphereGeometry(bottomR, segments, 8), material);
+  bottom.position.y = -length / 2;
+  bottom.scale.y = 0.7;
+  group.add(bottom);
+  return group;
+}
+
+/** A ball joint — shoulder, elbow, knee. */
+function joint(radius, material, y = 0) {
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 16, 12), material);
+  mesh.position.y = y;
+  return mesh;
+}
+
+/**
+ * The torso, turned on a lathe from a profile: hips, waist, ribs, chest,
+ * then in to the shoulders. Squashed on Z afterwards, because a chest is
+ * an ellipse seen from above, not a circle.
+ */
+function torsoGeometry() {
+  const profile = [
+    [0.001, 0.00], [0.150, 0.00], [0.168, 0.04],
+    [0.163, 0.12],                                // waist, pulled in
+    [0.178, 0.20], [0.200, 0.30], [0.212, 0.38],  // ribs opening out
+    [0.208, 0.46],                                // chest
+    [0.170, 0.52], [0.090, 0.55], [0.001, 0.555], // shoulders, closing
+  ].map(([r, y]) => new THREE.Vector2(r, y));
+  const geom = new THREE.LatheGeometry(profile, 28);
+  geom.scale(1.06, 1, 0.84);
+  return geom;
 }
 
 /**
  * Build Vexo.
  *
+ * @param {object} [opts]
+ * @param {THREE.Texture} [opts.environment]  a pre-filtered environment
+ *        for his armour to reflect. Metal has almost no diffuse colour
+ *        of its own, so without one he renders as a silhouette with
+ *        green lines on it — see the note on metalness below. The
+ *        turntable gives the whole scene one; in the game he carries
+ *        his own, so nothing else in the world changes.
+ * @param {boolean} [opts.suitLight]  give him the little green point
+ *        light inside the suit. On in the turntable, OFF in the game:
+ *        how many lights a scene holds is baked into every shader as a
+ *        #define, so a light that appears when he steps out of the ship
+ *        recompiles every material in the world mid-play. Same trap
+ *        `surface.js` documents for the daylight.
  * @returns {{ group: THREE.Group, update: (dt: number) => void,
- *            height: number }}
+ *            height: number, setGait: (mode: string, speed?: number) => void }}
  */
-export function createVexo() {
+export function createVexo({ suitLight: wantSuitLight = true, environment = null } = {}) {
   const group = new THREE.Group();
+  // Everything hangs off this rather than off `group` directly, so a
+  // walk cycle can bob the whole figure a couple of centimetres without
+  // touching the position the walk controller is writing into `group`.
+  const body = new THREE.Group();
+  group.add(body);
   const circuits = makeCircuitTexture();
 
-  // Armour: dark, fairly metallic, with the circuit map glowing on top.
   // NOTE ON METALNESS: a physically-metallic surface reflects its
   // surroundings and emits almost no diffuse light of its own, so with
-  // no environment map in the scene it renders nearly black — the first
-  // pass at this looked like a man made of green light with a void for
-  // a body. Keeping metalness modest lets the key light describe the
-  // plates, which is what makes him read as armoured rather than lit.
+  // nothing to reflect it renders nearly black — an early pass at this
+  // looked like a man made of green light with a void for a body. These
+  // values assume the scene has an environment map (the character
+  // viewer builds one); without one, drop metalness to about 0.35.
   const armour = new THREE.MeshStandardMaterial({
     color: ARMOUR_DARK,
-    metalness: 0.35,
-    roughness: 0.5,
+    metalness: 0.62,
+    roughness: 0.38,
     emissive: CIRCUIT,
     emissiveMap: circuits,
-    emissiveIntensity: 0.38,
+    emissiveIntensity: 0.34,
   });
   const armourLight = new THREE.MeshStandardMaterial({
     color: ARMOUR_MID,
-    metalness: 0.42,
-    roughness: 0.42,
+    metalness: 0.7,
+    roughness: 0.3,
     emissive: CIRCUIT,
     emissiveMap: circuits,
-    emissiveIntensity: 0.26,
+    emissiveIntensity: 0.22,
   });
   const suit = new THREE.MeshStandardMaterial({
     color: UNDERSUIT,
-    metalness: 0.2,
-    roughness: 0.8,
+    metalness: 0.25,
+    roughness: 0.72,
     emissive: CIRCUIT,
     emissiveMap: circuits,
     emissiveIntensity: 0.3,
   });
   const skinMat = new THREE.MeshStandardMaterial({
-    color: SKIN, metalness: 0, roughness: 0.85,
+    color: SKIN, metalness: 0, roughness: 0.72,
   });
   const hairMat = new THREE.MeshStandardMaterial({
-    color: HAIR, metalness: 0, roughness: 0.95, flatShading: true,
+    color: HAIR, metalness: 0, roughness: 0.9,
   });
   const visorMat = new THREE.MeshStandardMaterial({
     color: VISOR,
     emissive: VISOR,
-    emissiveIntensity: 1.4,
+    emissiveIntensity: 1.6,
     transparent: true,
-    opacity: 0.72,
-    metalness: 0.2,
-    roughness: 0.15,
+    opacity: 0.58,
+    metalness: 0.4,
+    roughness: 0.08,
   });
   const glowMat = new THREE.MeshBasicMaterial({ color: BOOT_GLOW });
 
+  // Per-material rather than `scene.environment`: this way he reflects
+  // something without the town and the ship quietly changing appearance
+  // around him. Set before anything is rendered, so no shader is
+  // recompiled for it.
+  if (environment) {
+    for (const m of [armour, armourLight, suit, skinMat, hairMat, visorMat]) {
+      m.envMap = environment;
+      m.envMapIntensity = 0.55;
+    }
+  }
+
   // --- Torso ----------------------------------------------------------------
-  // Chest tapers from broad shoulders down to the belt.
-  const chest = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.215, 0.17, 0.42, 10),
+  const torso = new THREE.Mesh(torsoGeometry(), suit);
+  torso.position.y = 0.97;
+  body.add(torso);
+
+  // Chest armour: a shell curved around the ribs. Two flat plates stuck
+  // on the front read as a bib, however they're angled — a section of a
+  // sphere follows the body instead, which is what a breastplate does.
+  // Sphere `phi` starts at -X and sweeps toward +Z, so a shell facing
+  // FORWARD is centred on phi = pi/2 — not on pi, which is where the
+  // first attempt put it (armour neatly covering his right flank and
+  // nothing else).
+  const breastplate = new THREE.Mesh(
+    new THREE.SphereGeometry(0.19, 28, 18, Math.PI * 0.22, Math.PI * 0.56, Math.PI * 0.16, Math.PI * 0.5),
     armour,
   );
-  // Wider than deep, like a person — but not by as much as the first
-  // pass, which made him vanish in profile.
-  chest.scale.set(1.16, 1, 0.86);
-  chest.position.y = 1.28;
-  group.add(chest);
+  breastplate.scale.set(1.12, 1.16, 0.92);
+  breastplate.position.set(0, 1.33, 0.006);
+  body.add(breastplate);
+  // Sternum ridge splitting the two halves.
+  const sternum = plate(0.028, 0.19, 0.03, armourLight, 0, 1.35, 0.155, 0.012);
+  body.add(sternum);
+  // Collar band across the top of the chest.
+  const collar = new THREE.Mesh(
+    new THREE.TorusGeometry(0.125, 0.026, 10, 24, Math.PI * 1.15),
+    armour,
+  );
+  collar.rotation.set(Math.PI / 2, 0, Math.PI * 0.92);
+  collar.position.set(0, 1.465, 0.01);
+  collar.scale.z = 0.8;
+  body.add(collar);
 
-  // Chest plates: two slabs angled off the sternum.
-  for (const side of [-1, 1]) {
-    const pec = plate(0.16, 0.19, 0.1, armourLight, side * 0.09, 1.35, 0.11);
-    pec.rotation.z = side * -0.12;
-    group.add(pec);
-  }
-  // Abdomen: the segmented under-suit showing between plates.
-  const abs = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.15, 0.2, 10), suit);
-  abs.scale.set(1.08, 1, 0.82);
-  abs.position.y = 1.02;
-  group.add(abs);
+  // Back plate, so he isn't bare from behind.
+  const backPlate = plate(0.25, 0.3, 0.05, armour, 0, 1.3, -0.11, 0.07);
+  backPlate.rotation.x = -0.06;
+  body.add(backPlate);
 
-  // Belt with a lit buckle.
-  const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.09, 12), armourLight);
-  belt.scale.set(1.08, 1, 0.86);
-  belt.position.y = 0.94;
-  group.add(belt);
-  const buckle = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), glowMat);
-  buckle.scale.set(1.5, 1, 0.5);
-  buckle.position.set(0, 0.94, 0.155);
-  group.add(buckle);
+  // Belt: a proper ring, with a lit buckle.
+  const belt = new THREE.Mesh(new THREE.TorusGeometry(0.153, 0.034, 12, 32), armourLight);
+  belt.rotation.x = Math.PI / 2;
+  belt.position.y = 0.99;
+  belt.scale.set(1.06, 0.86, 1);
+  body.add(belt);
+  const buckle = new THREE.Mesh(new THREE.SphereGeometry(0.042, 16, 12), glowMat);
+  buckle.scale.set(1.5, 1, 0.45);
+  buckle.position.set(0, 0.99, 0.132);
+  body.add(buckle);
 
-  // Hips, under the belt.
-  const hips = new THREE.Mesh(new THREE.CylinderGeometry(0.185, 0.17, 0.16, 10), armour);
-  hips.scale.set(1.08, 1, 0.88);
-  hips.position.y = 0.83;
-  group.add(hips);
+  // Hips.
+  const hips = new THREE.Mesh(new THREE.SphereGeometry(0.152, 20, 14), armour);
+  hips.scale.set(1.04, 0.58, 0.82);
+  hips.position.y = 0.905;
+  body.add(hips);
 
   // --- Head -----------------------------------------------------------------
-  const neck = limb(0.055, 0.06, 0.09, suit);
-  neck.position.y = 1.53;
-  group.add(neck);
+  const neck = limb(0.052, 0.058, 0.08, suit, 12);
+  neck.position.y = 1.55;
+  body.add(neck);
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.105, 16, 14), skinMat);
-  head.scale.set(0.98, 1.12, 1.0);
-  head.position.y = 1.65;
-  group.add(head);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.105, 24, 20), skinMat);
+  head.scale.set(0.95, 1.14, 1.0);
+  head.position.y = 1.66;
+  body.add(head);
 
-  // Jaw/chin, so the profile isn't a ball.
-  const jaw = plate(0.13, 0.07, 0.12, skinMat, 0, 1.585, 0.015);
-  group.add(jaw);
+  // Jaw and chin: a smaller sphere blended under the skull, which is
+  // what gives a face a wedge shape instead of a ball.
+  const jaw = new THREE.Mesh(new THREE.SphereGeometry(0.07, 20, 16), skinMat);
+  jaw.scale.set(0.94, 0.82, 1.04);
+  jaw.position.set(0, 1.6, 0.014);
+  body.add(jaw);
 
-  // Hair: a scatter of flattened blobs, messy like the reference.
+  // Nose — small, but without it the profile is a balloon.
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.042, 8), skinMat);
+  nose.rotation.x = Math.PI * 0.52;
+  nose.position.set(0, 1.646, 0.095);
+  body.add(nose);
+
+  // Ears, tucked under the headset.
+  for (const side of [-1, 1]) {
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 8), skinMat);
+    ear.scale.set(0.5, 1, 0.8);
+    ear.position.set(side * 0.096, 1.655, 0.005);
+    body.add(ear);
+  }
+
+  // Hair: overlapping smooth blobs, roughed up by rotation rather than
+  // by faceting — flat shading made it read as a crystal helmet.
+  // Sitting low and wide on the skull, and flattened. Piled up on top it
+  // reads as a bun; the art has it swept messily across the head.
   const hairSeeds = [
-    [0, 1.74, -0.01, 0.105], [-0.06, 1.735, 0.03, 0.075],
-    [0.06, 1.74, 0.02, 0.08], [0, 1.72, -0.08, 0.085],
-    [-0.08, 1.71, -0.03, 0.07], [0.085, 1.715, -0.02, 0.07],
-    [0.02, 1.775, 0.0, 0.06], [-0.03, 1.77, -0.04, 0.055],
+    [0, 1.735, -0.012, 0.098], [-0.062, 1.724, 0.03, 0.072],
+    [0.062, 1.728, 0.026, 0.074], [0, 1.712, -0.072, 0.082],
+    [-0.084, 1.702, -0.025, 0.068], [0.086, 1.705, -0.02, 0.066],
+    [0.028, 1.762, -0.005, 0.056], [-0.034, 1.757, -0.038, 0.054],
+    [-0.058, 1.694, 0.058, 0.05], [0.06, 1.696, 0.055, 0.048],
+    [-0.03, 1.748, 0.058, 0.05], [0.036, 1.75, 0.055, 0.048],
   ];
   for (const [x, y, z, r] of hairSeeds) {
-    const tuft = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), hairMat);
+    const tuft = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 10), hairMat);
     tuft.position.set(x, y, z);
-    tuft.scale.set(1.1, 0.85, 1.1);
-    tuft.rotation.set(Math.random(), Math.random(), Math.random());
-    group.add(tuft);
+    tuft.scale.set(1.12, 0.72, 1.1);
+    tuft.rotation.set(Math.random() * 0.5, Math.random() * 2, (Math.random() - 0.5) * 0.5);
+    body.add(tuft);
   }
 
-  // Visor: a wraparound bar across the eyes.
-  const visor = new THREE.Mesh(new THREE.CylinderGeometry(0.108, 0.108, 0.045, 16, 1, true, -0.9, 1.8), visorMat);
-  visor.position.set(0, 1.675, 0);
-  visor.scale.set(1, 1, 1.02);
-  group.add(visor);
-
-  // Headset: ear cups plus a mic boom curving to the mouth.
+  // Visor: a shallow band wrapped across the eyes. Built as a section of
+  // a cylinder — a torus ring kept sliding round the skull and reading
+  // as a headband instead of eyewear.
+  // Cylinder `theta` starts at +Z, so a band across the FACE is centred
+  // on zero. Starting it at 0.72*pi wrapped it round the back of his
+  // head, where it did nobody any good.
+  const visor = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.109, 0.109, 0.04, 28, 1, true, -Math.PI * 0.28, Math.PI * 0.56),
+    visorMat,
+  );
+  visor.position.set(0, 1.668, 0.004);
+  visor.scale.set(1, 1, 0.94);
+  body.add(visor);
+  // The frame sits just INSIDE the lens and is a little taller, so it
+  // shows as a rim above and below rather than covering the green
+  // entirely — which is what it did when it was the outer layer.
+  const visorFrame = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.104, 0.104, 0.052, 28, 1, true, -Math.PI * 0.29, Math.PI * 0.58),
+    armourLight,
+  );
+  visorFrame.position.set(0, 1.668, 0.004);
+  visorFrame.scale.set(1, 1, 0.94);
+  body.add(visorFrame);
   for (const side of [-1, 1]) {
-    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.03, 10), armourLight);
-    cup.rotation.z = Math.PI / 2;
-    cup.position.set(side * 0.105, 1.66, 0);
-    group.add(cup);
+    const temple = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.085, 8), armourLight);
+    temple.rotation.set(Math.PI / 2, 0, 0);
+    temple.position.set(side * 0.098, 1.668, -0.028);
+    body.add(temple);
   }
-  const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.11, 6), armourLight);
-  boom.position.set(-0.075, 1.615, 0.06);
+
+  // Headset: ear cups with a rounded rim, plus a mic boom.
+  for (const side of [-1, 1]) {
+    const cup = new THREE.Mesh(new THREE.SphereGeometry(0.036, 16, 12), armourLight);
+    cup.scale.set(0.55, 1, 0.9);
+    cup.position.set(side * 0.107, 1.658, 0);
+    body.add(cup);
+  }
+  const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.11, 8), armourLight);
+  boom.position.set(-0.078, 1.618, 0.062);
   boom.rotation.set(-0.5, 0, 0.7);
-  group.add(boom);
-  const mic = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 6), glowMat);
-  mic.position.set(-0.045, 1.585, 0.095);
-  group.add(mic);
+  body.add(boom);
+  const mic = new THREE.Mesh(new THREE.SphereGeometry(0.012, 10, 8), glowMat);
+  mic.position.set(-0.048, 1.588, 0.097);
+  body.add(mic);
 
   // --- Arms -----------------------------------------------------------------
+  // Two groups per arm, not one: the shoulder swings the whole arm and
+  // the elbow swings everything below it. A single group can only make
+  // him semaphore — climbing a ladder needs the forearm to fold.
   const arms = [];
   for (const side of [-1, 1]) {
     const arm = new THREE.Group();
-    arm.position.set(side * 0.245, 1.44, 0);
-    group.add(arm);
-    arms.push(arm);
+    arm.position.set(side * 0.215, 1.44, 0);
+    body.add(arm);
 
-    // Pauldron: the big rounded shoulder plate.
-    const pauldron = new THREE.Mesh(new THREE.SphereGeometry(0.115, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.62), armour);
-    pauldron.scale.set(1, 0.95, 1.05);
-    pauldron.position.y = 0.02;
-    pauldron.rotation.z = side * 0.25;
+    // Shoulder ball, then the pauldron over it — a dome, not a box.
+    arm.add(joint(0.072, suit));
+    const pauldron = new THREE.Mesh(
+      new THREE.SphereGeometry(0.108, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.58),
+      armour,
+    );
+    pauldron.scale.set(1.04, 1.05, 1.08);
+    pauldron.position.y = 0.012;
+    pauldron.rotation.z = side * 0.22;
     arm.add(pauldron);
+    // A second, smaller lip below it: layered plates, as in the art.
+    const lip = new THREE.Mesh(
+      new THREE.SphereGeometry(0.088, 18, 10, 0, Math.PI * 2, Math.PI * 0.34, Math.PI * 0.2),
+      armourLight,
+    );
+    lip.position.y = -0.032;
+    lip.rotation.z = side * 0.22;
+    arm.add(lip);
 
-    const upper = limb(0.062, 0.052, 0.28, suit);
-    upper.position.y = -0.16;
+    const upper = limb(0.058, 0.05, 0.24, suit);
+    upper.position.y = -0.17;
     arm.add(upper);
-    // Bicep band.
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.062, 0.07, 10), armourLight);
-    band.position.y = -0.1;
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.015, 10, 20), armourLight);
+    band.rotation.x = Math.PI / 2;
+    band.position.y = -0.12;
     arm.add(band);
 
-    const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), armour);
-    elbow.position.y = -0.3;
-    arm.add(elbow);
+    arm.add(joint(0.052, armour, -0.3));   // elbow
 
-    // Forearm: the heaviest armour on the arm, a gauntlet.
-    const fore = limb(0.058, 0.05, 0.26, armour);
-    fore.position.y = -0.44;
-    arm.add(fore);
-    const gauntlet = plate(0.115, 0.16, 0.115, armourLight, 0, -0.46, 0);
-    gauntlet.rotation.y = side * 0.2;
-    arm.add(gauntlet);
+    // Below the elbow. Every Y below is the old figure plus 0.3, because
+    // they used to hang off the shoulder and now they hang off here.
+    const forearm = new THREE.Group();
+    forearm.position.y = -0.3;
+    arm.add(forearm);
+    arms.push({ shoulder: arm, forearm, side });
 
-    // Hand: palm plus a hint of fingers, hanging relaxed.
-    const hand = plate(0.075, 0.11, 0.05, suit, 0, -0.62, 0.005);
-    arm.add(hand);
-    for (let f = 0; f < 3; f++) {
-      const finger = plate(0.018, 0.06, 0.03, suit, (f - 1) * 0.024, -0.69, 0.012);
-      finger.rotation.x = 0.25;
-      arm.add(finger);
+    // Forearm and gauntlet: the heaviest armour on the arm.
+    const fore = limb(0.052, 0.045, 0.22, suit);
+    fore.position.y = -0.12;
+    forearm.add(fore);
+    const gauntlet = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.062, 0.05, 0.17, 16),
+      armour,
+    );
+    gauntlet.position.y = -0.14;
+    gauntlet.scale.z = 0.92;
+    forearm.add(gauntlet);
+    const cuff = plate(0.1, 0.055, 0.09, armourLight, 0, -0.052, 0.006, 0.026);
+    forearm.add(cuff);
+
+    // Hand: a rounded palm with capsule fingers, curled slightly.
+    const palm = plate(0.06, 0.082, 0.036, suit, 0, -0.278, 0.004, 0.02);
+    forearm.add(palm);
+    for (let f = 0; f < 4; f++) {
+      const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.0085, 0.042, 3, 8), suit);
+      finger.position.set((f - 1.5) * 0.017, -0.342, 0.008);
+      finger.rotation.x = 0.28;
+      forearm.add(finger);
     }
+    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.0095, 0.03, 3, 8), suit);
+    thumb.position.set(side * 0.028, -0.302, 0.016);
+    thumb.rotation.set(0.5, 0, side * -0.5);
+    forearm.add(thumb);
 
     // Arms hang with a slight outward flare, as in the art.
-    arm.rotation.z = side * 0.13;
+    arm.rotation.z = side * 0.11;
     arm.rotation.x = 0.04;
   }
 
   // --- Legs -----------------------------------------------------------------
+  // Every length below hangs off a hip at y = 0.8 and is budgeted so the
+  // soles land on y = 0. Get it wrong and he stands shin-deep in the
+  // floor — which is exactly what the first turntable render showed.
+  const legs = [];
   for (const side of [-1, 1]) {
     const leg = new THREE.Group();
-    leg.position.set(side * 0.105, 0.8, 0);
-    group.add(leg);
+    leg.position.set(side * 0.098, 0.8, 0);
+    body.add(leg);
 
-    // The chain below hangs from the hip at y = 0.8, and every length
-    // here is budgeted so the soles land on y = 0. Get this wrong and he
-    // stands shin-deep in the floor, which is exactly what the first
-    // turntable showed.
-    const thigh = limb(0.093, 0.075, 0.36, suit);
-    thigh.position.y = -0.20;
+    leg.add(joint(0.082, suit));
+
+    const thigh = limb(0.085, 0.07, 0.34, suit);
+    thigh.position.y = -0.2;
     leg.add(thigh);
-
-    // Thigh plate: the big slab down the front of the leg.
-    const thighPlate = plate(0.14, 0.27, 0.115, armour, 0, -0.19, 0.05);
-    thighPlate.rotation.x = -0.06;
+    // Thigh plate, curved round the front of the leg.
+    const thighPlate = plate(0.125, 0.25, 0.05, armour, 0, -0.19, 0.045, 0.05);
+    thighPlate.rotation.x = -0.05;
     leg.add(thighPlate);
-    // A holster/pouch on the outside of each thigh.
-    const pouch = plate(0.055, 0.13, 0.075, armourLight, side * 0.095, -0.21, 0);
+    const pouch = plate(0.05, 0.115, 0.055, armourLight, side * 0.086, -0.21, 0.006, 0.02);
+    pouch.rotation.y = side * 0.35;
     leg.add(pouch);
 
-    const knee = new THREE.Mesh(new THREE.SphereGeometry(0.072, 10, 8), armour);
-    knee.scale.set(1, 1, 1.15);
-    knee.position.y = -0.40;
-    leg.add(knee);
-    const kneeCap = plate(0.1, 0.11, 0.065, armourLight, 0, -0.41, 0.055);
+    leg.add(joint(0.068, suit, -0.4));     // knee
+    const kneeCap = new THREE.Mesh(
+      new THREE.SphereGeometry(0.075, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.55),
+      armour,
+    );
+    kneeCap.rotation.x = Math.PI * 0.42;
+    kneeCap.position.set(0, -0.405, 0.028);
     leg.add(kneeCap);
 
-    const shin = limb(0.072, 0.06, 0.34, suit);
-    shin.position.y = -0.58;
-    leg.add(shin);
-    // Shin guard.
-    const guard = plate(0.115, 0.28, 0.095, armour, 0, -0.57, 0.045);
-    leg.add(guard);
+    // Below the knee, on its own group so it can fold. As with the
+    // elbow, every Y here is the old figure plus 0.4.
+    const shinGroup = new THREE.Group();
+    shinGroup.position.y = -0.4;
+    leg.add(shinGroup);
+    legs.push({ hip: leg, shin: shinGroup, side });
 
-    // Boot: a chunky wedge with a lit sole ring. Bottom face at y = 0.
-    const boot = plate(0.135, 0.11, 0.26, armour, 0, -0.745, 0.045);
-    leg.add(boot);
-    const toe = plate(0.12, 0.08, 0.1, armourLight, 0, -0.755, 0.165);
-    leg.add(toe);
-    const sole = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 6, 14), glowMat);
+    const shin = limb(0.068, 0.055, 0.32, suit);
+    shin.position.y = -0.18;
+    shinGroup.add(shin);
+    // Shin guard: a curved shell, open at the back.
+    const guard = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.072, 0.06, 0.27, 16, 1, true, -1.1, 2.2),
+      armour,
+    );
+    guard.position.set(0, -0.175, 0.008);
+    guard.scale.z = 1.1;
+    shinGroup.add(guard);
+
+    // Boot: a shaped shoe rather than a brick — heel, instep and a toe
+    // that rounds off, with the lit sole ring between them.
+    const boot = new THREE.Mesh(new THREE.SphereGeometry(0.075, 18, 14), armour);
+    boot.scale.set(0.95, 0.72, 1.5);
+    boot.position.set(0, -0.335, 0.03);
+    shinGroup.add(boot);
+    const instep = plate(0.105, 0.07, 0.11, armour, 0, -0.312, 0.072, 0.03);
+    instep.rotation.x = 0.22;
+    shinGroup.add(instep);
+    const toe = new THREE.Mesh(new THREE.SphereGeometry(0.055, 16, 12), armourLight);
+    toe.scale.set(1, 0.62, 1.15);
+    toe.position.set(0, -0.362, 0.132);
+    shinGroup.add(toe);
+    const heel = new THREE.Mesh(new THREE.SphereGeometry(0.05, 14, 10), armourLight);
+    heel.scale.set(1, 0.7, 0.9);
+    heel.position.set(0, -0.357, -0.045);
+    shinGroup.add(heel);
+    const sole = new THREE.Mesh(new THREE.TorusGeometry(0.042, 0.011, 8, 18), glowMat);
     sole.rotation.x = Math.PI / 2;
-    sole.position.set(0, -0.786, 0.02);
-    leg.add(sole);
+    sole.position.set(0, -0.386, 0.025);
+    shinGroup.add(sole);
   }
 
   // A soft green light inside the suit, so the glow spills onto whatever
-  // he's standing near instead of looking painted on.
-  const suitLight = new THREE.PointLight(CIRCUIT, 0.45, 2.2, 2);
-  suitLight.position.set(0, 1.2, 0.12);
-  group.add(suitLight);
+  // he's standing near instead of looking painted on. Optional — see the
+  // note on the parameter.
+  let suitLight = null;
+  if (wantSuitLight) {
+    suitLight = new THREE.PointLight(CIRCUIT, 0.45, 2.2, 2);
+    suitLight.position.set(0, 1.2, 0.12);
+    body.add(suitLight);
+  }
 
+  // --- Motion -----------------------------------------------------------------
+  // Three gaits, all posed by hand from one phase angle. There is no
+  // skeleton and no clips: every joint below is a group rotation, which
+  // is all the figure has and all it needs.
+  //
+  // Sign conventions, worked out once so the poses below read clearly.
+  // A limb hangs down its own -Y. Rotating a group by +x about X sends
+  // that -Y toward -Z, i.e. BACKWARD. So:
+  //   hip.rotation.x  < 0  → leg swings forward
+  //   shin.rotation.x > 0  → knee folds (heel toward the backside), the
+  //                          only direction a knee actually goes
+  //   shoulder.rotation.x ≈ -2.4 → hand up and forward, at a rung
   let t = 0;
-  function update(dt) {
-    t += dt;
-    // Breathing, and a slow pulse through the circuits — enough motion
-    // that he doesn't look like a statue.
+  let gait = 'idle';
+  let gaitSpeed = 0;
+  let phase = 0;
+
+  // Metres covered per full two-step cycle. Drives cadence from speed,
+  // so he takes faster steps when he runs instead of sliding along at a
+  // walk — the giveaway that a walk cycle is on a fixed timer.
+  const STRIDE = 1.6;
+  const ARM_REST_X = 0.04;
+
+  function poseIdle() {
     const breath = Math.sin(t * 1.6);
-    chest.position.y = 1.28 + breath * 0.006;
-    const pulse = 0.85 + 0.25 * Math.sin(t * 2.1);
-    armour.emissiveIntensity = 0.38 * pulse;
-    armourLight.emissiveIntensity = 0.26 * pulse;
-    suit.emissiveIntensity = 0.3 * pulse;
-    suitLight.intensity = 0.45 * pulse;
+    torso.position.y = 0.97 + breath * 0.005;
+    torso.scale.x = 1 + breath * 0.006;
+    body.position.y = 0;
+    body.rotation.z = 0;
+    for (const leg of legs) {
+      leg.hip.rotation.x = 0;
+      leg.shin.rotation.x = 0;
+    }
     for (const [i, arm] of arms.entries()) {
-      arm.rotation.x = 0.04 + Math.sin(t * 1.6 + i) * 0.012;
+      arm.shoulder.rotation.x = ARM_REST_X + Math.sin(t * 1.6 + i) * 0.012;
+      arm.shoulder.rotation.z = arm.side * 0.11;
+      arm.forearm.rotation.x = 0;
     }
   }
 
-  return { group, update, height: VEXO_HEIGHT };
+  function poseWalk(dt) {
+    // Below a slow walk the amplitude stops shrinking, or the last step
+    // before standing still turns into a shuffle.
+    const speed = Math.max(gaitSpeed, 0.4);
+    phase += (speed / STRIDE) * Math.PI * 2 * dt;
+    const amp = Math.min(1.4, 0.45 + speed / 3.2);
+
+    for (const [i, leg] of legs.entries()) {
+      const p = phase + i * Math.PI;
+      leg.hip.rotation.x = -Math.sin(p) * 0.58 * amp;
+      // The knee folds through the back half of the stride and stays
+      // straight through the front half — that asymmetry is what makes
+      // a leg read as a leg rather than a pendulum.
+      leg.shin.rotation.x = Math.max(0, -Math.sin(p + 0.5)) * 0.95 * amp;
+    }
+    for (const [i, arm] of arms.entries()) {
+      const p = phase + i * Math.PI;
+      // Opposite the leg on the same side: left arm forward with right leg.
+      arm.shoulder.rotation.x = ARM_REST_X + Math.sin(p) * 0.45 * amp;
+      arm.shoulder.rotation.z = arm.side * 0.11;
+      arm.forearm.rotation.x = 0.2 + Math.max(0, Math.sin(p)) * 0.45 * amp;
+    }
+    // Hips drop when the legs are at full split and rise over the stance
+    // leg — twice per cycle, which is why this runs at 2x phase.
+    body.position.y = -(0.5 - 0.5 * Math.cos(phase * 2)) * 0.045 * amp;
+    body.rotation.z = Math.sin(phase) * 0.025 * amp;
+    torso.position.y = 0.97;
+  }
+
+  function poseClimb(dt) {
+    // A fixed cadence: the ladder controller moves him down the rungs,
+    // this only decides which hand and foot are reaching.
+    phase += dt * 4.2;
+    for (const [i, leg] of legs.entries()) {
+      const p = phase + i * Math.PI;
+      leg.hip.rotation.x = -0.5 - Math.sin(p) * 0.4;
+      leg.shin.rotation.x = 0.95 + Math.sin(p) * 0.45;
+    }
+    for (const [i, arm] of arms.entries()) {
+      // Hands overhead on the rungs, alternating opposite the feet.
+      // Nearly straight up: at 45 degrees he reads as reaching out for
+      // something rather than hanging off a ladder above his head.
+      const p = phase + i * Math.PI + Math.PI;
+      arm.shoulder.rotation.x = -2.78 + Math.sin(p) * 0.3;
+      arm.shoulder.rotation.z = arm.side * 0.16;
+      arm.forearm.rotation.x = 0.5 - Math.max(0, Math.sin(p)) * 0.35;
+    }
+    body.position.y = 0;
+    body.rotation.z = 0;
+    torso.position.y = 0.97;
+  }
+
+  function update(dt) {
+    t += dt;
+    // The circuits pulse in every gait — it is the suit's own light,
+    // not something he does.
+    const pulse = 0.85 + 0.25 * Math.sin(t * 2.1);
+    armour.emissiveIntensity = 0.34 * pulse;
+    armourLight.emissiveIntensity = 0.22 * pulse;
+    suit.emissiveIntensity = 0.3 * pulse;
+    if (suitLight) suitLight.intensity = 0.45 * pulse;
+
+    if (gait === 'walk') poseWalk(dt);
+    else if (gait === 'climb') poseClimb(dt);
+    else poseIdle();
+  }
+
+  return {
+    group,
+    update,
+    height: VEXO_HEIGHT,
+    /**
+     * @param {'idle'|'walk'|'climb'} mode
+     * @param {number} [speed] metres per second, for 'walk' only
+     */
+    setGait(mode, speed = 0) {
+      if (mode !== gait) phase = 0;
+      gait = mode;
+      gaitSpeed = speed;
+    },
+    get gait() { return gait; },
+  };
 }

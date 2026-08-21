@@ -30,7 +30,7 @@ What is the **Mystery of the System**? You'll have to play to find out.
 
 ## Made by
 
-A project by Marco (age 12).
+A project by Marco (age 13).
 Built in JavaScript with [Three.js](https://threejs.org).
 
 ## Vexo himself
@@ -41,6 +41,13 @@ him, arrow keys to tilt. He's built from primitives in `src/world/vexo.js`
 from the concept art in `vexo_character.jpg`.
 
 `npm run character-sheet` renders a full revolution as one contact sheet.
+
+He is posed by hand rather than animated from clips — one phase angle drives an
+idle, a walk and a ladder climb (`setGait`). If you would rather see a modelled
+character, `?character=1&model=/some-model.glb` loads a rigged glTF/GLB instead:
+it is scaled to 1.8 m, stood on the floor, and any `Idle` clip in the file is
+played through an `AnimationMixer`. Without a model file the built-in Vexo is
+what you get, and a model that fails to load leaves him standing there.
 
 ## Running the game
 
@@ -56,6 +63,12 @@ Then open http://localhost:5173.
 - **A / D** — yaw left / right
 - **↑ / ↓** — pitch up / down
 - **Q / E** — roll left / right
+
+**On foot** (see below):
+- **L** — climb out, from anywhere over the town; and climb back in when
+  you're standing at the ladder
+- **W / S** — walk forward / back, **A / D** — turn
+- **Shift** — run
 
 **Gamepad controls** (USB / Bluetooth pad on desktop, or the native iOS wrapper):
 - **Left stick** — fly the ship: push up to thrust, left / right to turn
@@ -100,3 +113,39 @@ shorter houses sit on the flat. Roads and paths drape over the terrain, so the
 service road climbs its hill.
 
 Map data © OpenStreetMap contributors, [ODbL](https://osm.org/copyright).
+
+## Getting out of the ship
+
+Press **L** (or **A** on a pad) anywhere over the town. The ship flies itself
+down to the street below it and parks: the nose levels, a ladder unfolds beside
+the canopy, and Vexo climbs down it while the camera watches from the side. Any
+button skips the sequence. From 300 m up it's a long landing; from the deck
+it's almost immediate.
+
+You don't have to land first, and landing on its own doesn't get you out — you
+can put down on a lawn to look at something and take off again without a ladder
+every time you touch the grass.
+
+From then on the stick walks him instead of flying the ship — buildings, walls
+and tree trunks are solid, and the ground under him is the same terrain the
+roads drape over, so he walks up the hills. Stand on the glowing ring at the
+foot of the ladder and press **L** again to climb back in.
+
+If the ship is sitting somewhere with no room for a ladder on either side — in
+the middle of a building, say, since the ship doesn't collide with them — it
+says so and stays shut.
+
+The ship is **four times its space size** while it is down here. In space
+nothing has a known size so its 2.6 units mean nothing, but the town is real
+Castel Maggiore at a metre per unit and Vexo is a real 1.8 m — at 1× he would
+be climbing out of a spacecraft shorter than he is tall. Landing scales it to a
+believable 10.5 m fighter; leaving the atmosphere puts it back.
+
+The soft floor follows the highest ground under the whole hull rather than the
+ground under its centre, so a 10.5 m aircraft coming down on one of the hills
+doesn't bury its nose in the slope in front of it — and it parks at exactly
+that height, so climbing back in doesn't pop the ship into the air.
+
+```bash
+npm run smoke:onfoot     # flies down, climbs out, walks, hits a wall, boards
+```

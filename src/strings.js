@@ -27,7 +27,16 @@ export const strings = {
   surface: {
     town: 'CASTEL MAGGIORE · BOLOGNA',
     street: 'Via Giuseppe Impastato',
-    leaveHint: 'Climb to leave the atmosphere',
+    leaveHint: 'Descend to land · climb to leave the atmosphere',
+  },
+
+  // Getting out of the ship and walking around town (see src/onFoot.js).
+  onFoot: {
+    skip: 'Press any button to skip',
+    climbOut: 'L / A — land and climb out',
+    noRoom: 'No room to climb out here — move the ship',
+    board: 'L / A — climb back in',
+    controls: 'W A S D / stick — walk · Shift / R1 — run',
   },
 
   hud: {

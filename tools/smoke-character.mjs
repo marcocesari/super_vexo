@@ -37,6 +37,10 @@ await page.waitForTimeout(900);
 
 const build = await page.evaluate(() => {
   const viewer = window.__superVexo.characterViewer;
+  // Face him forwards first. These bounds are in world space, so
+  // measuring mid-spin swaps his width and his depth — which looked
+  // like a modelling bug the first time it happened.
+  viewer.setAngle(0);
   const root = viewer.vexo.group;
   root.updateWorldMatrix(true, true);
   // The bounds are measured by hand rather than with THREE.Box3: the

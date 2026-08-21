@@ -27,7 +27,24 @@ const LANDING_BAND = 22;
 // Climb this high above the street and you're back in orbit.
 export const LEAVE_ALTITUDE = 620;
 // The ship never sinks below this — a soft floor instead of a crash.
-const FLOOR_ALTITUDE = 2.5;
+// It is also exactly where the ship sits when parked (PARK_CLEARANCE,
+// below): if the floor were higher, boarding would pop the ship into
+// the air the instant the disembark sequence handed it back.
+const FLOOR_ALTITUDE = 1.0;
+
+// The ship is 2.6 units long, and out in space that is the only scale
+// there is — nothing up there is a known size, so the number means
+// nothing. Down here everything has a real size: the streets are the
+// real streets at a metre per unit, the houses are 8.5 m, and Vexo is
+// 1.8 m tall because he was built to stand in this town. At 1x he would
+// climb out of a spacecraft shorter than he is, so the ship is scaled
+// to a believable 10.5 m fighter for as long as it is down here.
+export const SURFACE_SHIP_SCALE = 4;
+
+// Where the ship's origin sits when parked, in metres above the street.
+// The hull's lowest point is 0.22 ship units, which at the scale above
+// is 0.88 m, so this leaves the belly a hand's width off the ground.
+export const PARK_CLEARANCE = 1.0;
 
 const SKY_COLOR = 0x9dc9ef;
 const HAZE_NEAR = 260;
@@ -87,7 +104,10 @@ export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
   banner.querySelector('.landing-banner__street').textContent = strings.surface.street;
   banner.querySelector('.landing-banner__hint').textContent = strings.surface.leaveHint;
 
+  const _euler = new THREE.Euler();
+
   let active = false;
+  let parked = false;
   let bannerTimer = 0;
   const spaceReturn = new THREE.Vector3();
   const savedBackground = scene.background;
@@ -103,6 +123,36 @@ export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
     return ship.mesh.position.y - SURFACE_ORIGIN.y;
   }
 
+  // How far out to sample the ground under the ship, in SHIP units:
+  // nose, tail and both wingtips. Multiplied by the ship's scale, which
+  // is 4 down here.
+  const HULL_SAMPLES = [[0, 0], [1.4, 0], [-1.25, 0], [0, 0.9], [0, -0.9]];
+
+  /**
+   * The HIGHEST ground under the ship's footprint, in metres above the
+   * street — not the ground under its centre.
+   *
+   * The ship is 10.5 m long with a 7.3 m span down here and the town is
+   * built on low hills, so a floor that only knows about the centre lets
+   * the nose sink into the slope in front of it. This is also exactly
+   * where the ship parks, which is what keeps boarding from popping it
+   * into the air.
+   */
+  function hullGround(ship) {
+    const euler = _euler.setFromQuaternion(ship.mesh.quaternion, 'YXZ');
+    const fx = Math.sin(euler.y);
+    const fz = Math.cos(euler.y);
+    const scale = ship.mesh.scale.x;
+    let best = -Infinity;
+    for (const [along, across] of HULL_SAMPLES) {
+      const x = ship.mesh.position.x + (fx * along + fz * across) * scale;
+      const z = ship.mesh.position.z + (fz * along - fx * across) * scale;
+      const g = town.groundHeightAt(x - SURFACE_ORIGIN.x, z - SURFACE_ORIGIN.z);
+      if (g > best) best = g;
+    }
+    return best;
+  }
+
   function enter(ship) {
     if (active) return;
     active = true;
@@ -115,6 +165,7 @@ export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
     town.group.visible = true;
     sunLight.intensity = SUN_INTENSITY;
     skyLight.intensity = SKY_INTENSITY;
+    ship.mesh.scale.setScalar(SURFACE_SHIP_SCALE);
     for (const o of spaceObjects) o.visible = false;
     scene.background = new THREE.Color(SKY_COLOR);
     // Move the existing fog in rather than creating one — see
@@ -136,6 +187,8 @@ export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
   function exit(ship) {
     if (!active) return;
     active = false;
+    parked = false;
+    ship.mesh.scale.setScalar(1);
 
     town.group.visible = false;
     sunLight.intensity = 0;
@@ -159,11 +212,23 @@ export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
 
   return {
     get active() { return active; },
+    /**
+     * True while the ship is sitting on its skids with the player out of
+     * it (or on the way out). Parking freezes the flight side of this
+     * module: no soft floor, no climb-out to space.
+     */
+    get parked() { return parked; },
     /** The town's group, for tests and screenshots. */
     town,
     enter,
     exit,
     altitude,
+    /** World Y of the highest ground under the hull. See hullGround(). */
+    hullGroundY(ship) { return SURFACE_ORIGIN.y + hullGround(ship); },
+
+    /** Hand the ship over to the disembark sequence, and take it back. */
+    park() { parked = true; },
+    unpark() { parked = false; },
 
     /**
      * Compile the surface's shaders, upload its textures, and draw the
@@ -214,15 +279,22 @@ export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
 
       town.update(dt);
 
+      // Parked: the ship belongs to the disembark sequence, which is
+      // holding it still on the ground. Nothing here may move it.
+      if (parked) {
+        if (bannerTimer > 0) {
+          bannerTimer -= dt;
+          if (bannerTimer <= 0) banner.classList.add('landing-banner--fading');
+        }
+        return;
+      }
+
       // Soft floor: skim the rooftops all you like, but the ground
       // itself stops you. No crash — this is a kid's flight sim. The
       // floor follows the terrain, so the hills under the long blocks
       // hold the ship up rather than letting it fly through them.
       const alt = altitude(ship);
-      const terrain = town.groundHeightAt(
-        ship.mesh.position.x - SURFACE_ORIGIN.x,
-        ship.mesh.position.z - SURFACE_ORIGIN.z,
-      );
+      const terrain = hullGround(ship);
       if (alt < terrain + FLOOR_ALTITUDE) {
         ship.mesh.position.y = SURFACE_ORIGIN.y + terrain + FLOOR_ALTITUDE;
         if (ship.velocity.y < 0) ship.velocity.y = 0;

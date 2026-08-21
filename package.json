@@ -17,6 +17,7 @@
     "smoke:camera": "node tools/smoke-camera.mjs",
     "smoke:landing": "node tools/smoke-landing.mjs",
     "smoke:character": "node tools/smoke-character.mjs",
+    "smoke:onfoot": "node tools/smoke-onfoot.mjs",
     "smoke:cinematic": "node tools/smoke-cinematic.mjs",
     "smoke:build": "node tools/smoke-build.mjs",
     "character-sheet": "node tools/character-sheet.mjs"

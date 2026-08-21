@@ -2,6 +2,76 @@
 
 Most recent entries on top.
 
+## 2026-08-21 — Out of the ship, on foot in Castel Maggiore
+
+- Marco asked for the character in the game: a ladder off the side of
+  the ship, Vexo climbing down it, and then walking around. Answers to
+  the design questions: buildings solid and the whole town open, board
+  by walking back to the ladder, and a watch-it-happen cutscene you can
+  skip. Two rounds of steering after the first build — first "a button
+  instead of landing on the grass", then "wherever the ship is, the
+  button is L".
+- **`src/onFoot.js`** is the whole mode, as a state machine whose states
+  are the shot list: `settle → deploy → down → stepoff → walk → up →
+  stow`. L anywhere over the town flies the ship down to the street
+  below it, parks it, unfolds the ladder, and walks the climb down; any
+  button skips to the end. L at the foot of the ladder reverses it.
+- **`src/world/ladder.js`** is the ladder, built in METRES rather than
+  ship units and parked in world space — the ship is scaled down here
+  and the man climbing it is not, so the arithmetic belongs in the same
+  units as the climber.
+- **THE SCALE PROBLEM.** The ship is 2.6 units long. In space that
+  number means nothing, because nothing up there has a known size; in
+  town, where the streets are the real streets at a metre per unit and
+  Vexo is a real 1.8 m, it means he climbs out of a spacecraft shorter
+  than he is tall. Landing now scales the ship 4x for as long as it is
+  down here — a believable 10.5 m fighter — and leaving puts it back.
+  The chase camera's boom is in ship lengths, so it scales too; without
+  that the camera sits inside its own engines.
+- **`vexo.js` grew joints.** He had a shoulder and a hip and nothing
+  below them, which is enough to stand still and not enough to walk. Now
+  an elbow and a knee group, and three gaits posed by hand off one phase
+  angle: idle, walk (cadence from actual speed, so running takes faster
+  steps, not longer slides) and a ladder climb. He also carries his own
+  environment map in the game — the file already warned that 0.62 metal
+  with nothing to reflect renders black, and it does.
+- **Walking collision** lives in `neighborhood.js`, against the same
+  polygons the walls were extruded from, plus tree trunks as circles.
+  Brute force with a bounding-box reject: thirty buildings and two
+  hundred trees a frame is nothing, and a grid would be one more thing
+  to keep in step with the geometry.
+
+Three faults the screenshots caught, all now covered by
+`tools/smoke-onfoot.mjs` (31 checks):
+
+- The soft floor only ever sampled the terrain under the ship's CENTRE.
+  Survivable at 1x; a 10.5 m aircraft with a 7.3 m span puts its nose
+  into the hill in front of it. It samples the whole hull now — and
+  parks at exactly that height, so climbing back in doesn't pop the ship
+  into the air.
+- The first ladder hung aft of the wing, at the engines. Geometrically
+  fine, nonsense as a way into an aircraft. It is beside the canopy now,
+  forward of the leading edge — the only place on this hull where a
+  vertical ladder doesn't grow through the wing.
+- The descent shot eased toward a ship falling at 22 m/s and trailed it
+  by ten metres, so the ship slid out of frame and the camera watched an
+  empty field arrive. The landing shot is locked to the ship now, no
+  easing: it holds dead still while the town rises around it.
+
+Also this session, on the turntable side:
+
+- **`src/world/characterModel.js`** loads a rigged glTF/GLB into the
+  viewer (`?character=1&model=...`): shadows on, PBR roughness/metalness
+  nudged off the export defaults, scaled to 1.8 m and stood on the
+  floor, clips driven by an `AnimationMixer`. No model file in the repo,
+  so the primitive Vexo is still what you get by default — and stays
+  standing there if a model fails to load.
+- The viewer was relit (ACES, soft shadows, key + ambient fill). Two
+  lines from the recipe don't do what they look like on three r169:
+  `outputEncoding`/`sRGBEncoding` were removed in r152 (it is
+  `outputColorSpace` now), and `shadow.radius` reaches the shader only
+  through the VSM blur pass, so it is inert under PCFSoftShadowMap.
+
 ## 2026-08-20 — Vexo in 3D: a turntable first
 
 - Marco dropped `vexo_character.jpg` into the repo and asked for it in

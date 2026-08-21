@@ -38,6 +38,7 @@ import { createChaseCamera } from './chaseCamera.js';
 import { createSurface } from './surface.js';
 import { createFrameScaler } from './perf.js';
 import { createCharacterViewer } from './characterViewer.js';
+import { createOnFoot } from './onFoot.js';
 
 // --- URL switches -----------------------------------------------------------
 // Read before anything is built, because half the setup below branches
@@ -45,11 +46,14 @@ import { createCharacterViewer } from './characterViewer.js';
 //   ?skipIntro=1   jump past the opening cinematic
 //   ?land=1        start parked over Via Giuseppe Impastato, Castel Maggiore
 //   ?character=1   show the Vexo turntable instead of the game
+//   ?model=<url>   in character mode, load a rigged glTF/GLB instead of
+//                  the primitive Vexo (e.g. ?character=1&model=/vexo.glb)
 //   ?debugPad=1    on-screen gamepad diagnostics
 const params = new URLSearchParams(window.location.search);
 const skipIntro = params.get('skipIntro') === '1';
 const startLanded = params.get('land') === '1';
 const characterMode = params.get('character') === '1';
+const characterModelUrl = params.get('model');
 
 // --- Renderer ---------------------------------------------------------------
 const container = document.getElementById('app');
@@ -152,6 +156,9 @@ hud.onUpgradesClick(() => { missionScreens.show('upgrades'); });
  * across resets.
  */
 function resetGame() {
+  // Stow the ladder and put Vexo back in the ship before anything else:
+  // it hands the ship back, which take-off below depends on.
+  onFoot.reset();
   // Take off first: leaving the surface repositions the ship, so it has
   // to happen BEFORE we put the ship back at the origin.
   surface.reset(ship);
@@ -219,7 +226,9 @@ const MENU_SCROLL_SPEED = 900;
 // CINEMATIC (opening intro) → TITLE → FLY. `?skipIntro=1` skips the cinematic.
 const STATE = { CINEMATIC: 'cinematic', TITLE: 'title', FLY: 'fly' };
 
-const characterViewer = characterMode ? createCharacterViewer({ renderer }) : null;
+const characterViewer = characterMode
+  ? createCharacterViewer({ renderer, modelUrl: characterModelUrl })
+  : null;
 const cinematic = (skipIntro || characterMode) ? null : createCinematic({ renderer });
 let state = cinematic ? STATE.CINEMATIC : STATE.TITLE;
 
@@ -232,9 +241,16 @@ const debugPad = createDebugPad();
 // Size everything now that the cinematic exists, and keep it sized.
 createViewport(renderer.domElement, applyViewportSize);
 
+// Getting out and walking around: set the ship down in town and this
+// takes the ship, the camera and the input until Vexo climbs back in.
+const onFoot = createOnFoot({ scene, camera, ship, surface, input, renderer });
+
 // Compile the landing site's shaders before anyone can fly there, so
-// the first landing doesn't stutter while it builds them.
+// the first landing doesn't stutter while it builds them. Vexo and his
+// ladder get the same treatment — he appears mid-landing, which is the
+// worst possible moment to compile a new material.
 surface.prewarm(renderer, camera);
+onFoot.prewarm(renderer, camera);
 
 function onCinematicDone() {
   state = STATE.TITLE;
@@ -366,7 +382,20 @@ function frame(now) {
       resetGame();
     }
 
-    if (fastTravel.suppressInput || missionScreens.isOpen()) {
+    // `onFoot` runs every frame, in both directions: while flying it
+    // watches for a parked ship and offers the climb-out, and once the
+    // player takes it, it owns the ship, the camera and the stick.
+    // `null` axes means the stick belongs to something else this frame.
+    const footAxes = (missionScreens.isOpen() || fastTravel.suppressInput) ? null : axes;
+
+    if (onFoot.active) {
+      // Out of the ship. `surface.update` still runs — it keeps the town
+      // animating and the banner counting down — but it returns early
+      // while parked rather than flying the ship anywhere.
+      onFoot.update(dt, footAxes);
+      surface.update(ship, dt);
+      audio.setThrottle(0);
+    } else if (fastTravel.suppressInput || missionScreens.isOpen()) {
       // Ship on rails (warp) or player is in a menu → ignore flight input.
       audio.setThrottle(0);
     } else {
@@ -384,6 +413,10 @@ function frame(now) {
       // can't give it any residual motion.
       if (ship.braking) ship.velocity.set(0, 0, 0);
     }
+
+    // Offer the climb-out (or start it) now that the ship has moved and
+    // `surface` knows whether it is sitting still on the ground.
+    if (!onFoot.active) onFoot.update(dt, footAxes);
 
     // Mission state: drive hack progress from H key OR pad L1.
     const holdHack = input.keyboard.isDown('KeyH') || input.gamepad.isButtonDown(BUTTONS.L1);
@@ -405,7 +438,9 @@ function frame(now) {
   roverApi.update(dt);
   repairFx.update(dt);
   updateStarfield(starfield, camera);
-  chaseCamera.update(ship, look, dt);
+  // On foot the camera belongs to `onFoot` — it is following a man, not
+  // a ship, and the chase camera would drag it back to the cockpit.
+  if (!onFoot.active) chaseCamera.update(ship, look, dt);
 
   renderer.render(scene, camera);
 
@@ -447,7 +482,7 @@ if (import.meta.env.DEV) {
     ship, asteroids, audio, fastTravel, physics,
     renderer, camera,
     rovers: roverApi, mission, upgrades, missionScreens, surface, frameScaler,
-    characterViewer,
+    characterViewer, onFoot,
     shipConfig, shipConfigDefaults,
     resetGame,
   };

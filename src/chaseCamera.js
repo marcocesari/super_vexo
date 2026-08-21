@@ -96,7 +96,11 @@ export function createChaseCamera(camera) {
 
       // Swing the mount point around the ship, then carry the whole thing
       // into world space with the ship's rotation.
+      // The mount is in ship lengths, not metres: the ship is scaled up
+      // on the surface (see surface.js) and a camera parked 5.5 units
+      // behind a 4x ship would be sitting inside its own engines.
       _offset.copy(CAM_OFFSET_LOCAL)
+        .multiplyScalar(ship.mesh.scale.x)
         .applyAxisAngle(AXIS_X, orbitPitch)
         .applyAxisAngle(AXIS_Y, orbitYaw)
         .applyQuaternion(ship.mesh.quaternion);

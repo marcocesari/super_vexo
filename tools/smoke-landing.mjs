@@ -132,6 +132,7 @@ const landed = await page.evaluate(async () => {
     active: sv.surface.active,
     altitude: Math.round(sv.surface.altitude(sv.ship)),
     camDist: +sv.camera.position.distanceTo(sv.ship.mesh.position).toFixed(2),
+    shipScale: sv.ship.mesh.scale.x,
     banner: !document.getElementById('landing-banner').hidden,
     street: document.querySelector('.landing-banner__street')?.textContent ?? '',
     townVisible: sv.surface.town.group.visible,
@@ -143,9 +144,12 @@ check('you arrive hovering over the street', landed.altitude > 10 && landed.alti
 check('the town is rendered', landed.townVisible);
 check('the banner names the street', /Impastato/.test(landed.street), landed.street);
 // The teleport is 20 km; without the camera cut you'd spend seconds
-// watching the ship shrink into the distance.
-check('the chase camera cuts to the new position, not flies', landed.camDist < 8,
-  `camera ${landed.camDist} units behind`);
+// watching the ship shrink into the distance. The boom is measured in
+// ship lengths, and the ship is scaled up on the surface, so the bound
+// scales with it — see chaseCamera.js.
+check('the chase camera cuts to the new position, not flies',
+  landed.camDist < 8 * landed.shipScale,
+  `camera ${landed.camDist} units behind a ${landed.shipScale}x ship`);
 
 // --- The ground stops you ----------------------------------------------------
 const floor = await page.evaluate(async () => {
