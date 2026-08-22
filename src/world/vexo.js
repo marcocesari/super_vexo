@@ -858,11 +858,13 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
   let gait = 'idle';
   let gaitSpeed = 0;
   let phase = 0;
+  // 0 = walking, 1 = sprinting. Eased, so picking up the pace shades
+  // between the two gaits instead of snapping between them.
+  let run = 0;
 
   // Metres covered per full two-step cycle. Drives cadence from speed,
   // so he takes faster steps when he runs instead of sliding along at a
   // walk — the giveaway that a walk cycle is on a fixed timer.
-  const STRIDE = 1.6;
   const ARM_REST_X = 0.04;
   // How far behind the legs the upper body runs, as a fraction of the
   // cycle. Small — 5% is about 50ms at walking pace — but it is the
@@ -923,10 +925,54 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     [0, 0], [8, -8], [30, 5], [45, 10], [58, -20], [68, -4], [80, 2], [100, 0],
   ];
 
+  // --- And the run ------------------------------------------------------------
+  // A sprint is NOT a fast walk, which is what speeding this cycle up
+  // gives you. Running is a different gait with different numbers:
+  //
+  //   * Stance shrinks to about 40% of the cycle and there is no double
+  //     support at all — for part of every cycle BOTH feet are off the
+  //     ground. A walk always has one foot down.
+  //   * The knee folds two to three times as far, to about 110 degrees,
+  //     bringing the heel up toward the backside so the leg can swing
+  //     through without dragging.
+  //   * The hip swings nearly twice as far, and the foot lands on the
+  //     FOREFOOT rather than the heel, so the ankle starts the cycle
+  //     plantarflexed instead of neutral.
+  //
+  // These are blended against the walk tables by speed, so there is no
+  // switch — he shades from one gait into the other the way a person
+  // does when they pick up the pace.
+  const RUN_HIP_CURVE = [
+    [0, 42], [10, 28], [28, 2], [42, -20], [52, -12], [68, 24], [85, 48], [100, 42],
+  ];
+  const RUN_KNEE_CURVE = [
+    [0, 22], [12, 40], [28, 26], [42, 34], [55, 74], [70, 112], [86, 52], [100, 22],
+  ];
+  const RUN_ANKLE_CURVE = [
+    [0, -6], [8, -14], [26, 6], [40, 14], [50, -26], [64, -10], [82, -4], [100, -6],
+  ];
+
+  // Where the blend runs from and to, in metres per second, and how far
+  // a stride stretches over that range. A walking stride is about 1.5 m
+  // and a sprinting one closer to 2.7 m; without that, cadence at
+  // sprint speed comes out at a comical patter.
+  const RUN_FROM = 2.8;
+  const RUN_TO = 5.4;
+  const WALK_STRIDE = 1.5;
+  const RUN_STRIDE = 2.7;
+
   /**
    * Read a keyframe table at `t` (0..1 through the cycle). Smoothstep
    * between keys so the joins don't show as ticks in the motion.
    */
+  function clamp01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
+
+  /** Read the walk table and the run table and blend by `run`. */
+  function mixCurve(walkTable, runTable, t) {
+    const a = curveAt(walkTable, t);
+    return run <= 0.001 ? a : a + (curveAt(runTable, t) - a) * run;
+  }
+
   function curveAt(table, t) {
     const p = ((t % 1) + 1) % 1 * 100;
     for (let i = 1; i < table.length; i++) {
@@ -978,7 +1024,13 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     // Below a slow walk the amplitude stops shrinking, or the last step
     // before standing still turns into a shuffle.
     const speed = Math.max(gaitSpeed, 0.4);
-    phase += (speed / STRIDE) * Math.PI * 2 * dt;
+    // How far into "running" he is, 0 at a walk and 1 at a sprint.
+    // Everything below leans on this, so the three gaits are one gait
+    // read at three points rather than three animations with seams.
+    run += (clamp01((speed - RUN_FROM) / (RUN_TO - RUN_FROM)) - run)
+      * (1 - Math.pow(2, -dt / 0.18));
+    const stride = WALK_STRIDE + (RUN_STRIDE - WALK_STRIDE) * run;
+    phase += (speed / stride) * Math.PI * 2 * dt;
     const cycle = phase / (Math.PI * 2);
     // Scale the whole pose with speed: a stroll is a small version of a
     // stride, and a run is a big one.
@@ -988,9 +1040,9 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
       // The two legs are half a cycle apart — that is the whole of what
       // makes it a walk rather than a hop.
       const t = cycle + i * 0.5;
-      const hip = curveAt(HIP_CURVE, t) * DEG * amp;
-      const knee = curveAt(KNEE_CURVE, t) * DEG * amp;
-      const ankle = curveAt(ANKLE_CURVE, t) * DEG * amp;
+      const hip = mixCurve(HIP_CURVE, RUN_HIP_CURVE, t) * DEG * amp;
+      const knee = mixCurve(KNEE_CURVE, RUN_KNEE_CURVE, t) * DEG * amp;
+      const ankle = mixCurve(ANKLE_CURVE, RUN_ANKLE_CURVE, t) * DEG * amp;
       leg.hip.rotation.x = -hip;      // negative rotation swings it forward
       // Toes out. Nobody walks with their feet parallel: the natural
       // stance turns each foot out five to ten degrees, and feet aimed
@@ -1017,7 +1069,11 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
       // Opposite the leg on the same side, and about half as far: arms
       // swing roughly 20 degrees forward and 12 back.
       const tArm = lagged + i * 0.5;
-      const swing = curveAt(HIP_CURVE, tArm) * DEG * amp * 0.5;
+      // Arms swing further and the elbows fold harder the faster he
+      // goes: a walk is 0.5 of the leg swing with a loose elbow, a
+      // sprint is 0.8 with the forearms pumping at about a right angle.
+      const swing = mixCurve(HIP_CURVE, RUN_HIP_CURVE, tArm)
+        * DEG * amp * (0.5 + run * 0.3);
       arm.shoulder.rotation.x = ARM_REST_X + swing + Math.sin(t * 0.71 + i) * 0.012;
       // The arm also swings slightly ACROSS him as it comes forward and
       // drifts out as it goes back, so the hands travel in shallow arcs
@@ -1026,8 +1082,9 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
       // Elbows lag the shoulder again — the forearm is still folding
       // while the upper arm has started back. Negative: the hand folds
       // toward the FRONT of him. An elbow is not a knee.
-      const foreSwing = curveAt(HIP_CURVE, tArm - ELBOW_LAG) * DEG * amp * 0.5;
-      arm.forearm.rotation.x = -(0.22 + Math.max(0, -foreSwing) * 1.3);
+      const foreSwing = mixCurve(HIP_CURVE, RUN_HIP_CURVE, tArm - ELBOW_LAG)
+        * DEG * amp * 0.5;
+      arm.forearm.rotation.x = -(0.22 + run * 0.85 + Math.max(0, -foreSwing) * 1.3);
     }
 
     // The body rides on top of all that — and its height is NOT authored.
@@ -1038,8 +1095,14 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     // The rise and fall falls out on its own — highest over the stance
     // leg, lowest at double support — and the foot that is down stays
     // exactly on the ground.
+    // Running has a FLIGHT PHASE — twice a cycle both feet leave the
+    // ground, which planting the lower sole on the road would forbid
+    // outright. So the plant sets the floor and a bounce lifts him off
+    // it, scaled by how much of a run this is. It can only ever raise
+    // him, so the foot that is down still can't sink through the road.
     const drop = lowestSole();
-    body.position.y = -drop;
+    const flight = Math.max(0, Math.sin(phase * 2)) * 0.055 * run;
+    body.position.y = -drop + flight;
     // Weight shifts sideways onto whichever foot is down. Once per
     // cycle, unlike the bob.
     body.position.x = Math.sin(phase) * 0.022 * amp;
@@ -1054,7 +1117,10 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     // head over the feet instead of swinging out past them.
     upper.rotation.z = -body.rotation.z * 0.55;
     // He leans into it, more the faster he goes.
-    upper.rotation.x = -Math.min(0.16, speed * 0.028) - (0.5 - 0.5 * Math.cos(phase * 2)) * 0.02;
+    // He leans into it, and much further into a sprint — a runner's
+    // chest is well ahead of his hips, which is most of what tells you
+    // at a glance that he is running rather than walking quickly.
+    upper.rotation.x = -(0.06 + run * 0.28) - (0.5 - 0.5 * Math.cos(phase * 2)) * 0.02;
     // He is still breathing while he walks. Faster than at rest, and
     // on its OWN clock — nothing about breath is locked to footfalls.
     const breath = Math.sin(t * 2.3);
@@ -1135,7 +1201,7 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
      * @param {number} [speed] metres per second, for 'walk' only
      */
     setGait(mode, speed = 0) {
-      if (mode !== gait) phase = 0;
+      if (mode !== gait) { phase = 0; if (mode !== 'walk') run = 0; }
       gait = mode;
       gaitSpeed = speed;
     },

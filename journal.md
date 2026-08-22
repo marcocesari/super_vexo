@@ -2,6 +2,48 @@
 
 Most recent entries on top.
 
+## 2026-08-22 — Walk, jog, sprint, and a stamina wheel
+
+- Marco asked for Vexo's movement to work like Link's in Tears of the
+  Kingdom, and to go and read how it does. What TotK actually does:
+  stick TILT chooses walk or jog, sprint is a separate button (hold B,
+  which sheathes the weapon), and sprinting spends a stamina wheel that
+  leaves Link winded and vulnerable for a few seconds if it empties.
+  Two details that are easy to miss and are what make the wheel
+  interesting: TAPPING the button drains faster than holding it, and
+  the wheel refills faster if you let off BEFORE it empties. It also
+  drains at half rate through its last quarter.
+- Sources: [Zelda: Tears of the Kingdom – How to
+  Run](https://gamerant.com/zelda-tears-of-the-kingdom-run-controls-sprint-guide/)
+  for the controls and the winded state, and
+  [ZeldaSpeedRuns](https://www.zeldaspeedruns.com/totk/tech/movement)
+  for the tap-versus-hold drain.
+- **Three speeds**: 1.5 m/s walking, 3.3 jogging, 6.2 sprinting, with
+  the stick's push ramping between the first two in two bands (a step
+  would double the pace between one hundredth of stick and the next).
+  Sprint is Shift, or B on the pad — the bottom face button, where
+  Link's is, since A is already the climb-out.
+- **The wheel** is `src/staminaWheel.js`: an SVG ring that rides beside
+  him rather than sitting in a corner, because it is a thing you watch
+  WHILE running and running is when you can least afford to look
+  anywhere else. It hides itself when full, and goes orange when he is
+  blown. Full wheel is ~5 seconds of sprint, or ~9 if you spend the
+  half-rate quarter.
+- **Three gaits, not one sped up.** A sprint is a different gait: stance
+  shrinks to about 40% of the cycle, the knee folds to ~110° instead of
+  60, the foot lands forefoot-first so the ankle starts plantarflexed,
+  and there is a FLIGHT PHASE where both feet are off the ground. That
+  last one fought the foot-planting from last week — the plant pins the
+  lowest sole to the road, which forbids flight outright — so the plant
+  now sets a floor and a bounce lifts him off it, scaled by how much of
+  a run it is. It can only ever raise him, so the planted foot still
+  cannot sink through the road.
+- The two sets of joint curves are blended by speed rather than switched,
+  so he shades from one gait into the other. `smoke:onfoot` is up to 48
+  checks, including that a gentle push walks, that the wheel drains and
+  shows itself, that running it dry leaves him at walking pace whatever
+  the button says, and that it comes back when he stops.
+
 ## 2026-08-21 — A spine, a neck, and the walk stops being rigid
 
 - Marco, after the gait-analysis walk landed: "Vexo walks in a rigid

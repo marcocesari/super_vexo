@@ -67,11 +67,13 @@ Then open http://localhost:5173.
 **On foot** (see below):
 - **L** — climb out, from anywhere over the town; and climb back in when
   you're standing at the ladder
-- **W A S D / left stick** — walk. The stick is a *direction* in the frame
+- **W A S D / left stick** — move. The stick is a *direction* in the frame
   you're looking at, not a steering wheel: push left and he walks left across
   the screen, turning to face the way he's going. Diagonals aren't faster, and
-  he leans into a start and carries a step into a stop
-- **Shift / R1** — run
+  he leans into a start and carries a step into a stop. How far you push picks
+  the pace — a gentle push walks (1.5 m/s), hard over jogs (3.3). A keyboard
+  has no half-press, so W alone is the jog
+- **Shift / B (hold)** — sprint (6.2 m/s), for as long as your stamina lasts
 - **Right stick, or turning the phone** — swing the camera around him. Push and
   it keeps turning; let go and it stays where you left it. Walking forward
   eases it back behind him on its own, so there's no button to press
@@ -173,6 +175,35 @@ ground under its centre, so a 10.5 m aircraft coming down on one of the hills
 doesn't bury its nose in the slope in front of it — and it parks at exactly
 that height, so climbing back in doesn't pop the ship into the air.
 
+### Stamina
+
+Sprinting spends a wheel, the way Link's does in *Tears of the Kingdom*. It
+appears beside Vexo when you start using it and fades out once it's full again,
+so it isn't on screen while you're just walking about.
+
+Three rules make it a decision rather than a timer, and all three are lifted
+from TotK:
+
+- **Emptying it is punished.** Run it dry and he's winded — walking pace only,
+  no sprint, for a couple of seconds — and it then refills at half the rate it
+  would have if you'd let off in time.
+- **The last quarter drains at half rate**, so a nearly-empty wheel stretches
+  further than it looks and running it close is worth doing.
+- **Tapping costs more than holding.** Every fresh press takes a bite out of the
+  wheel, so feathering the button is worse than committing.
+
+A full wheel is about five seconds of sprinting, or nine if you spend the last
+quarter of it.
+
+### Three gaits
+
+Walk, jog and sprint are different animations, not one animation sped up. A
+sprint is not a fast walk: stance shrinks to about 40% of the cycle, both feet
+leave the ground twice per stride, the knee folds to around 110° to swing the
+leg through, the foot lands forefoot-first, and the chest gets well ahead of the
+hips. The two sets of joint curves are blended by speed, so he shades from one
+into the other the way a person does when they pick up the pace.
+
 ```bash
-npm run smoke:onfoot     # flies down, climbs out, walks, hits a wall, boards
+npm run smoke:onfoot     # flies down, climbs out, walks, sprints, boards
 ```

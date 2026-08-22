@@ -34,13 +34,40 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { createVexo, VEXO_HEIGHT } from './world/vexo.js';
 import { createLadder } from './world/ladder.js';
+import { createStaminaWheel } from './staminaWheel.js';
 import { SURFACE_ORIGIN, PARK_CLEARANCE } from './surface.js';
 import { BUTTONS } from './input/gamepad.js';
 import { strings } from './strings.js';
 
 // --- On foot ----------------------------------------------------------------
-const WALK_SPEED = 2.4;         // m/s — a brisk walk
-const RUN_SPEED = 5.4;
+// Three speeds, the way Link has them: how far the stick is pushed
+// chooses between a walk and a jog, and sprinting is a BUTTON — hold it
+// and he goes, at the cost of stamina.
+const WALK_SPEED = 1.5;         // m/s — 5.4 km/h, an actual walking pace
+const JOG_SPEED = 3.3;          // the default with the stick hard over
+const SPRINT_SPEED = 6.2;
+// Below this much stick he walks; above it he jogs. A keyboard has no
+// in-between, so W alone is a jog and the walk belongs to the stick.
+const WALK_STICK = 0.55;
+
+// --- Stamina ------------------------------------------------------------------
+// One wheel, as in Tears of the Kingdom, and the same three rules that
+// make it interesting rather than just a timer:
+//
+//   * Emptying it is PUNISHED. Run it dry and he is winded — no sprint,
+//     walking pace only, for a couple of seconds — and it then refills
+//     more slowly than if he had let off in time.
+//   * The last quarter drains at HALF rate, so a nearly-empty wheel
+//     stretches further than you expect and there is a reason to gamble.
+//   * Tapping costs more than holding: every fresh press takes a bite
+//     out of the wheel, so feathering the button is worse than
+//     committing to the sprint.
+const STAMINA_DRAIN = 0.2;      // per second sprinting: ~5s from full
+const STAMINA_REFILL = 0.62;    // per second once he stops spending it
+const STAMINA_TIRED_REFILL = 0.3;   // …and after running it dry
+const STAMINA_LOW = 0.25;       // the last quarter, which drains at half
+const STAMINA_TAP_COST = 0.05;  // taken on each fresh press of the button
+const WINDED_TIME = 2.2;        // seconds of no sprint after emptying
 // How quickly the velocity catches up with the stick, and how quickly he
 // turns to face it. Both are half-lives in seconds rather than a
 // per-frame fraction, so the feel doesn't change with the frame rate.
@@ -192,6 +219,9 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
   prompt.hidden = true;
   document.body.appendChild(prompt);
 
+  const staminaWheel = createStaminaWheel();
+  const _screen = new THREE.Vector3();
+
   let state = 'off';
   let phaseT = 0;               // seconds inside the current state
   let hintT = 0;
@@ -220,6 +250,11 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
   // so that a held stick direction keeps meaning the same direction on
   // screen — and now, so that a view the player aimed stays aimed.
   let camPitch = 0;
+  // The stamina wheel, 0 to 1, and the seconds left of being winded
+  // after running it dry.
+  let stamina = 1;
+  let winded = 0;
+  let sprintWasHeld = false;
   let camYaw = 0;
   // Metres per second across the ground, eased toward the stick.
   const vel = new THREE.Vector3();
@@ -503,6 +538,8 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
   function enterWalk() {
     state = 'walk';
     phaseT = 0;
+    stamina = 1;
+    winded = 0;
     camPitch = 0;
     camYaw = heading;
     vel.set(0, 0, 0);
@@ -589,6 +626,7 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
       ladder.setExtension(0);
       surface.unpark();
       camInit = false;
+      staminaWheel.hide();
       detach();
     }
   }
@@ -624,16 +662,57 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
     let push = Math.hypot(moveX, moveZ);
     if (push > 1) push = 1;
 
-    const running = input.keyboard.isDown('ShiftLeft')
+    // --- Sprint and stamina ---------------------------------------------------
+    // Hold Shift, or B on the pad — the bottom face button, where Link's
+    // is. A is already the climb-out, so B is the one next to it.
+    const sprintHeld = input.keyboard.isDown('ShiftLeft')
       || input.keyboard.isDown('ShiftRight')
-      || input.gamepad.isButtonDown(BUTTONS.R1);
-    const topSpeed = running ? RUN_SPEED : WALK_SPEED;
+      || input.gamepad.isButtonDown(BUTTONS.B);
+    const wantsSprint = sprintHeld && push > 0.15;
+    if (sprintHeld && !sprintWasHeld && stamina > 0 && winded <= 0) {
+      // Tapping is dearer than holding.
+      stamina = Math.max(0, stamina - STAMINA_TAP_COST);
+    }
+    sprintWasHeld = sprintHeld;
+
+    if (winded > 0) winded -= dt;
+    const sprinting = wantsSprint && winded <= 0 && stamina > 0;
+    if (sprinting) {
+      // The last quarter goes at half rate: a nearly empty wheel lasts
+      // longer than it looks, which is what makes running it close
+      // worth doing.
+      const rate = stamina < STAMINA_LOW ? STAMINA_DRAIN * 0.5 : STAMINA_DRAIN;
+      stamina -= rate * dt;
+      if (stamina <= 0) {
+        stamina = 0;
+        winded = WINDED_TIME;
+      }
+    } else {
+      stamina = Math.min(1, stamina
+        + (winded > 0 ? STAMINA_TIRED_REFILL : STAMINA_REFILL) * dt);
+    }
+
+    // How far the stick is pushed picks the pace, in two bands: up to
+    // WALK_STICK it ramps from a standstill to a walk, and beyond it
+    // from a walk to a jog. Two bands rather than a step, or the pace
+    // doubles between one hundredth of stick and the next.
+    const paced = push < WALK_STICK
+      ? WALK_SPEED * (push / WALK_STICK)
+      : WALK_SPEED + (JOG_SPEED - WALK_SPEED)
+        * ((push - WALK_STICK) / (1 - WALK_STICK));
+    // Winded means a walk, whatever the stick says.
+    const topSpeed = winded > 0
+      ? Math.min(paced, WALK_SPEED)
+      : (sprinting ? SPRINT_SPEED : paced);
 
     if (push > 0.05) {
       // Rotate the stick into the world by the camera's yaw, then aim
       // both the walk and the man himself down that line.
       const want = camYaw + Math.atan2(moveX, moveZ);
-      _target.set(Math.sin(want), 0, Math.cos(want)).multiplyScalar(topSpeed * push);
+      // `topSpeed` already has the stick's push in it, except for the
+      // sprint — a sprint is a sprint, not something you can half-press
+      // your way into.
+      _target.set(Math.sin(want), 0, Math.cos(want)).multiplyScalar(topSpeed);
       // Shortest way round, so facing +179 and wanting -179 is a two
       // degree turn rather than a 358 degree spin.
       heading += angleDelta(heading, want) * alphaFor(dt, TURN_HALFLIFE);
@@ -700,6 +779,16 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
     foot.y = groundAt(foot.x, foot.z);
     applyVexoTransform();
 
+    // The wheel rides beside him: project his shoulder into the frame
+    // and offer that point to the ring. Behind the camera it hides
+    // itself rather than drawing a wheel over nothing.
+    _screen.copy(foot).addScaledVector(UP, VEXO_HEIGHT * 0.75).project(camera);
+    const onScreen = _screen.z < 1 && Math.abs(_screen.x) < 1.4 && Math.abs(_screen.y) < 1.4;
+    staminaWheel.update(stamina, winded > 0, dt, onScreen ? {
+      x: (_screen.x * 0.5 + 0.5) * window.innerWidth + 52,
+      y: (-_screen.y * 0.5 + 0.5) * window.innerHeight,
+    } : null);
+
     // Boarding.
     const nearLadder = Math.hypot(foot.x - ladderBase.x, foot.z - ladderBase.z) < BOARD_RANGE;
     if (nearLadder) {
@@ -732,6 +821,9 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
     vexo,
     ladder,
     get position() { return foot; },
+    /** The stamina wheel: 0 to 1, and whether he has run himself out. */
+    get stamina() { return stamina; },
+    get winded() { return winded > 0; },
 
     begin,
 
@@ -821,6 +913,7 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
       vexo.group.visible = false;
       ladder.setExtension(0);
       setPrompt(null);
+      staminaWheel.hide();
       detach();
     },
   };

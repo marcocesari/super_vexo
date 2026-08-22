@@ -483,6 +483,42 @@ canvas {
   opacity: 0.65;
 }
 
+/* The stamina wheel, which rides next to Vexo rather than sitting in a
+   corner — see staminaWheel.js. Positioned by transform every frame, so
+   it must not be in flow: `left`/`top` sit at the origin and the
+   transform does the rest. */
+#stamina-wheel {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 6;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;   /* centre it on the point it is given */
+  pointer-events: none;
+  transition: opacity 0.2s linear;
+}
+#stamina-wheel[hidden] { display: none; }
+.stamina-wheel__track {
+  fill: none;
+  stroke: rgba(6, 20, 14, 0.55);
+  stroke-width: 5;
+}
+.stamina-wheel__fill {
+  fill: none;
+  stroke: #5effa6;
+  stroke-width: 4;
+  stroke-linecap: round;
+  /* Start the ring at the top and run it clockwise. */
+  transform: rotate(-90deg);
+  transform-origin: 28px 28px;
+  filter: drop-shadow(0 0 3px rgba(94, 255, 166, 0.7));
+}
+.stamina-wheel--winded .stamina-wheel__fill {
+  stroke: #ff8a5c;
+  filter: drop-shadow(0 0 4px rgba(255, 138, 92, 0.8));
+}
+
 /* Prompt line for the on-foot mode: the skip hint during the climb-down,
    then the board hint once Vexo is walking. Same solid panel as the
    landing banner and for the same reason — a backdrop blur over the

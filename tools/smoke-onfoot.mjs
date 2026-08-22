@@ -237,13 +237,84 @@ check('there is open ground to walk in', openGround != null,
   openGround ? `14m clear at ${openGround.x},${openGround.z}` : 'none found');
 await page.waitForTimeout(500);   // let the camera settle behind him
 const walkSpeed = await walkFor(1200);
-// WALK_SPEED is 2.4 m/s; the window allows for the frame or two of
-// sampling either side of the timed loop.
-check('he walks at a walking pace', walkSpeed > 2.0 && walkSpeed < 3.0,
+// Three speeds, as in Tears of the Kingdom: how far the stick is pushed
+// picks between a walk and a jog, and sprinting is a button that spends
+// stamina. A keyboard has no half-press, so W alone is the jog.
+check('the stick hard over is a jog', walkSpeed > 2.8 && walkSpeed < 3.8,
   `${walkSpeed.toFixed(2)} m/s`);
+
+// A gentle push is a walk. Driven through update() directly, because a
+// keyboard cannot press a stick halfway.
+const gentle = await page.evaluate(async () => {
+  const f = window.__superVexo.onFoot;
+  const axes = { yaw: 0, throttle: 0, stickYaw: 0, stickThrottle: 0.35, lookX: 0, lookY: 0 };
+  for (let i = 0; i < 25; i++) f.update(0.016, axes);      // reach speed
+  const from = { x: f.position.x, z: f.position.z };
+  for (let i = 0; i < 60; i++) f.update(0.016, axes);      // ~1s of walking
+  return Math.hypot(f.position.x - from.x, f.position.z - from.z) / (60 * 0.016);
+});
+check('a gentle push is a walk', gentle > 0.7 && gentle < 1.8, `${gentle.toFixed(2)} m/s`);
+
 const runSpeed = await walkFor(1000, { run: true });
-check('Shift makes him run', runSpeed > walkSpeed + 1.2,
-  `${runSpeed.toFixed(2)} m/s vs ${walkSpeed.toFixed(2)}`);
+check('and Shift sprints', runSpeed > 5.2 && runSpeed < 7.0,
+  `${runSpeed.toFixed(2)} m/s vs ${walkSpeed.toFixed(2)} jogging`);
+
+// --- The stamina wheel --------------------------------------------------------
+const stamina = await page.evaluate(async () => {
+  const g = window.__superVexo;
+  const f = g.onFoot;
+  const wheel = () => {
+    const el = document.getElementById('stamina-wheel');
+    return el && !el.hidden;
+  };
+  const walking = { yaw: 0, throttle: 0, stickYaw: 0, stickThrottle: 1, lookX: 0, lookY: 0 };
+  // Let it top up first, then sprint it dry. Shift is held by the
+  // caller; `update` reads the real keyboard for the sprint button.
+  for (let i = 0; i < 120; i++) f.update(0.016, walking);
+  const full = f.stamina;
+  const wheelWhenFull = wheel();
+  return { full, wheelWhenFull };
+});
+check('the wheel fills up and then gets out of the way',
+  stamina.full > 0.99 && !stamina.wheelWhenFull,
+  `level ${stamina.full.toFixed(2)}, wheel ${stamina.wheelWhenFull ? 'shown' : 'hidden'}`);
+
+await page.keyboard.down('ShiftLeft');
+const spent = await page.evaluate(async () => {
+  const f = window.__superVexo.onFoot;
+  const sprinting = { yaw: 0, throttle: 0, stickYaw: 0, stickThrottle: 1, lookX: 0, lookY: 0 };
+  for (let i = 0; i < 60; i++) f.update(0.016, sprinting);        // ~1s
+  const afterASecond = f.stamina;
+  const shown = !document.getElementById('stamina-wheel').hidden;
+  // …and keep going until it is gone.
+  let dry = 0;
+  for (let i = 0; i < 600 && !f.winded; i++) { f.update(0.016, sprinting); dry = i; }
+  const windedNow = f.winded;
+  // Winded: how fast can he move now? Give the momentum from the sprint
+  // time to bleed off first, or this measures the deceleration.
+  for (let i = 0; i < 45; i++) f.update(0.016, sprinting);
+  const from = { x: f.position.x, z: f.position.z };
+  for (let i = 0; i < 60; i++) f.update(0.016, sprinting);
+  const speedWinded = Math.hypot(f.position.x - from.x, f.position.z - from.z) / (60 * 0.016);
+  return { afterASecond, shown, dry, windedNow, speedWinded };
+});
+await page.keyboard.up('ShiftLeft');
+check('sprinting spends the wheel', spent.afterASecond < 0.85,
+  `${spent.afterASecond.toFixed(2)} left after a second`);
+check('and the wheel shows while it drains', spent.shown);
+check('running it dry leaves him winded', spent.windedNow);
+// Winded is the whole point of the wheel: he can't sprint out of trouble.
+check('winded means walking pace, button or no button',
+  spent.speedWinded < 2.0, `${spent.speedWinded.toFixed(2)} m/s while blown`);
+
+const recovered = await page.evaluate(async () => {
+  const f = window.__superVexo.onFoot;
+  const still = { yaw: 0, throttle: 0, stickYaw: 0, stickThrottle: 0, lookX: 0, lookY: 0 };
+  for (let i = 0; i < 300; i++) f.update(0.016, still);     // ~5s standing
+  return { level: f.stamina, winded: f.winded };
+});
+check('and it comes back when he stops', recovered.level > 0.9 && !recovered.winded,
+  `${recovered.level.toFixed(2)} after five seconds`);
 
 // Which way is left? Not a matter of opinion: the camera's own +X axis,
 // straight out of its world matrix, is the right of the screen. Hold a
