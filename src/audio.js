@@ -11,6 +11,13 @@
 //     foot and faded out when he stops. The one thing here that is not
 //     synthesised.
 //
+// The theme file is the first SIX SECONDS of the track, cut on frame
+// boundaries by `tools/trim-mp3.mjs`. A sprint lasts about five seconds,
+// so the rest of it was never going to be heard, and trimming it took
+// the download from 333 KB to 121 KB. The whole track is kept beside it
+// as `invincibility_theme.source.mp3` — nothing imports that, so Vite
+// leaves it out of the build, and a different cut is one command away.
+//
 // The theme is a plain <audio> element rather than a buffer in the Web
 // Audio graph, deliberately. Routing it through the graph would mix it
 // with the master gain, which is tidier — but it needs

@@ -195,8 +195,17 @@ from TotK:
 A full wheel is about five seconds of sprinting, or nine if you spend the last
 quarter of it.
 
-Sprinting also plays `src/assets/invincibility_theme.mp3`, from the top each
-time and looping, fading out over a third of a second when he stops. It's the
+Sprinting also plays `src/assets/invincibility_theme.mp3` — the first six
+seconds of the track, from the top each time and looping, fading out over a
+third of a second when he stops. A sprint lasts about five seconds, so the rest
+was never going to be heard; cutting it took the download from 333 KB to 121 KB.
+The whole track sits beside it as `invincibility_theme.source.mp3`, which
+nothing imports, so it stays out of the build:
+
+```bash
+node tools/trim-mp3.mjs src/assets/invincibility_theme.source.mp3 \
+                        src/assets/invincibility_theme.mp3 6
+``` It's the
 only sound in the game that isn't synthesised on the fly — everything else in
 `src/audio.js` is oscillators and filtered noise. It's a plain `<audio>` element
 rather than a node in the Web Audio graph, because routing it through the graph

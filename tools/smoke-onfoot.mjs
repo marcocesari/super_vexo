@@ -292,8 +292,10 @@ check('sprinting starts the theme', music.plays > 0 && music.playing,
 check('the theme is the right file and it loaded',
   /invincibility_theme/.test(music.src) && music.failed === null,
   music.failed === null ? music.src.split('/').pop() : `media error ${music.failed}`);
-check('and it loops while he runs', music.loops && music.volume > 0.2,
-  `volume ${music.volume}`);
+// Just the loop flag: the volume here is whatever the fade happens to
+// be passing through when the sample lands, and asserting on that made
+// this flap between 0.18 and 0.32.
+check('and it loops while he runs', music.loops, `loop=${music.loops}`);
 
 await page.waitForTimeout(900);   // let the fade-out finish
 const musicAfter = await page.evaluate(() => {
