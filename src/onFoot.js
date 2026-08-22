@@ -255,6 +255,7 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
   let stamina = 1;
   let winded = 0;
   let sprintWasHeld = false;
+  let sprintingNow = false;
   let camYaw = 0;
   // Metres per second across the ground, eased toward the stick.
   const vel = new THREE.Vector3();
@@ -540,6 +541,7 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
     phaseT = 0;
     stamina = 1;
     winded = 0;
+    sprintingNow = false;
     camPitch = 0;
     camYaw = heading;
     vel.set(0, 0, 0);
@@ -626,6 +628,7 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
       ladder.setExtension(0);
       surface.unpark();
       camInit = false;
+      sprintingNow = false;
       staminaWheel.hide();
       detach();
     }
@@ -677,6 +680,7 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
 
     if (winded > 0) winded -= dt;
     const sprinting = wantsSprint && winded <= 0 && stamina > 0;
+    sprintingNow = sprinting;
     if (sprinting) {
       // The last quarter goes at half rate: a nearly empty wheel lasts
       // longer than it looks, which is what makes running it close
@@ -824,6 +828,8 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
     /** The stamina wheel: 0 to 1, and whether he has run himself out. */
     get stamina() { return stamina; },
     get winded() { return winded > 0; },
+    /** True only while he is actually sprinting — moving, and spending. */
+    get sprinting() { return sprintingNow; },
 
     begin,
 
@@ -913,6 +919,7 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
       vexo.group.visible = false;
       ladder.setExtension(0);
       setPrompt(null);
+      sprintingNow = false;
       staminaWheel.hide();
       detach();
     },

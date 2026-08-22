@@ -195,6 +195,14 @@ from TotK:
 A full wheel is about five seconds of sprinting, or nine if you spend the last
 quarter of it.
 
+Sprinting also plays `src/assets/invincibility_theme.mp3`, from the top each
+time and looping, fading out over a third of a second when he stops. It's the
+only sound in the game that isn't synthesised on the fly — everything else in
+`src/audio.js` is oscillators and filtered noise. It's a plain `<audio>` element
+rather than a node in the Web Audio graph, because routing it through the graph
+needs `createMediaElementSource`, and a media element loaded from a `file://`
+URL counts as cross-origin, which would silence it inside the iOS wrapper.
+
 ### Three gaits
 
 Walk, jog and sprint are different animations, not one animation sped up. A

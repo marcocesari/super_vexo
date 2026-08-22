@@ -25,6 +25,20 @@ function check(label, ok, detail = '') {
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 900, height: 640 } });
+// Watch any <audio> the game builds, so the sprint theme can be checked
+// without the audio module having to expose itself for the test.
+await page.addInitScript(() => {
+  window.__audio = { made: [], plays: 0, el: null };
+  const Real = window.Audio;
+  window.Audio = function (src) {
+    const el = new Real(src);
+    window.__audio.made.push(el.src);
+    window.__audio.el = el;
+    const play = el.play.bind(el);
+    el.play = () => { window.__audio.plays += 1; return play(); };
+    return el;
+  };
+});
 page.on('console', (m) => {
   const t = m.text();
   if (isNoise(t)) return;
@@ -258,6 +272,37 @@ check('a gentle push is a walk', gentle > 0.7 && gentle < 1.8, `${gentle.toFixed
 const runSpeed = await walkFor(1000, { run: true });
 check('and Shift sprints', runSpeed > 5.2 && runSpeed < 7.0,
   `${runSpeed.toFixed(2)} m/s vs ${walkSpeed.toFixed(2)} jogging`);
+
+// The sprint theme. Checked through a wrapped Audio constructor rather
+// than by listening, and it matters that it is LAZY: nothing should be
+// downloaded until the first sprint.
+const music = await page.evaluate(() => {
+  const a = window.__audio;
+  const el = a.el;
+  return {
+    made: a.made.length, plays: a.plays, src: a.made[0] ?? '',
+    playing: el ? !el.paused : false,
+    volume: el ? +el.volume.toFixed(2) : 0,
+    loops: el ? el.loop : false,
+    failed: el?.error?.code ?? null,
+  };
+});
+check('sprinting starts the theme', music.plays > 0 && music.playing,
+  `${music.plays} play(s), ${music.playing ? 'playing' : 'silent'}`);
+check('the theme is the right file and it loaded',
+  /invincibility_theme/.test(music.src) && music.failed === null,
+  music.failed === null ? music.src.split('/').pop() : `media error ${music.failed}`);
+check('and it loops while he runs', music.loops && music.volume > 0.2,
+  `volume ${music.volume}`);
+
+await page.waitForTimeout(900);   // let the fade-out finish
+const musicAfter = await page.evaluate(() => {
+  const el = window.__audio.el;
+  return { paused: el ? el.paused : true, volume: el ? +el.volume.toFixed(2) : 0 };
+});
+check('and it stops when he stops sprinting',
+  musicAfter.paused && musicAfter.volume === 0,
+  `${musicAfter.paused ? 'paused' : 'still playing'} at volume ${musicAfter.volume}`);
 
 // --- The stamina wheel --------------------------------------------------------
 const stamina = await page.evaluate(async () => {

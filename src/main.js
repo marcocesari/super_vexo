@@ -399,6 +399,9 @@ function frame(now) {
       onFoot.update(dt, footAxes);
       surface.update(ship, dt);
       audio.setThrottle(0);
+      // The sprint theme plays while he is actually running — moving and
+      // spending stamina, not merely holding the button.
+      audio.setSprinting(onFoot.sprinting);
     } else if (fastTravel.suppressInput || missionScreens.isOpen()) {
       // Ship on rails (warp) or player is in a menu → ignore flight input.
       audio.setThrottle(0);
@@ -420,7 +423,10 @@ function frame(now) {
 
     // Offer the climb-out (or start it) now that the ship has moved and
     // `surface` knows whether it is sitting still on the ground.
-    if (!onFoot.active) onFoot.update(dt, footAxes);
+    if (!onFoot.active) {
+      onFoot.update(dt, footAxes);
+      audio.setSprinting(false);
+    }
 
     // Mission state: drive hack progress from H key OR pad L1.
     const holdHack = input.keyboard.isDown('KeyH') || input.gamepad.isButtonDown(BUTTONS.L1);

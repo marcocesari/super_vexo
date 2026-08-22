@@ -1,16 +1,28 @@
-// Procedural audio with the Web Audio API. No asset files.
+// Procedural audio with the Web Audio API, plus one piece of music.
 //
-// Two voices:
+// Three voices:
 //   - **Ambient hum**: two detuned sine/triangle oscillators through a
 //     low-pass filter. The detuning makes a slow beat ("wow-wow-wow"),
 //     which sounds way more "ship-like" than a pure tone.
 //   - **Thrust**: looped white-noise buffer through a band-pass filter,
 //     gain modulated by how much throttle the player is asking for.
 //     Pitch rises slightly with throttle so it feels "engine spooling".
+//   - **Sprint theme**: an actual mp3, played while Vexo is sprinting on
+//     foot and faded out when he stops. The one thing here that is not
+//     synthesised.
+//
+// The theme is a plain <audio> element rather than a buffer in the Web
+// Audio graph, deliberately. Routing it through the graph would mix it
+// with the master gain, which is tidier — but it needs
+// createMediaElementSource, and a media element loaded from a file://
+// URL counts as cross-origin, which silences that route in the native
+// iOS wrapper. An element's own `volume` works everywhere.
 //
 // Audio contexts can only START in response to a user gesture (browser
 // autoplay policy). `start()` must be called from a click/keydown.
 // Outside of that gesture we silently do nothing.
+
+import sprintThemeUrl from './assets/invincibility_theme.mp3';
 
 const HUM_BASE_HZ = 80;
 const HUM_DETUNE_CENTS = 18;
@@ -22,8 +34,16 @@ const THRUST_FILTER_RANGE_HZ = 520;
 const THRUST_MAX_GAIN = 0.18;
 const THRUST_GAIN_HALFLIFE = 0.18; // smoothing on throttle changes
 
+const THEME_GAIN = 0.45;
+const THEME_FADE_S = 0.3;          // seconds to fade in and out
+
 export function createAudio() {
   let ctx = null;
+  // The sprint theme. Built on first use rather than at load: a 333 KB
+  // download nobody has asked for yet is not worth blocking anything.
+  let themeEl = null;
+  let themeWanted = false;
+  let themeLevel = 0;
   let started = false;
   let masterGain = null;
   let hum = null;
@@ -53,7 +73,46 @@ export function createAudio() {
     lastThrottle = Math.min(1, Math.abs(value));
   }
 
+  /**
+   * Play the theme while this is true, fade it out when it goes false.
+   * Called every frame by the game loop, so it must be cheap and must
+   * not restart anything it is already doing.
+   */
+  function setSprinting(on) {
+    themeWanted = on;
+    if (!on) return;
+    if (!themeEl) {
+      themeEl = new Audio(sprintThemeUrl);
+      themeEl.loop = true;
+      themeEl.preload = 'auto';
+      themeEl.volume = 0;
+    }
+    if (themeEl.paused) {
+      // From the top every time, the way a power-up theme should be.
+      // A sprint is five seconds; picking up where it left off would
+      // give you a different fragment of the tune each time.
+      themeEl.currentTime = 0;
+      // Rejected play() is not worth a console error: it means the
+      // browser has not been given a gesture yet, and the next sprint
+      // will have had one.
+      themeEl.play().catch(() => {});
+    }
+  }
+
+  function updateTheme(dt) {
+    if (!themeEl) return;
+    const target = themeWanted ? THEME_GAIN : 0;
+    const step = (dt / THEME_FADE_S) * THEME_GAIN;
+    themeLevel = target > themeLevel
+      ? Math.min(target, themeLevel + step)
+      : Math.max(target, themeLevel - step);
+    themeEl.volume = themeLevel;
+    // Faded right out: stop it, so it isn't decoding audio nobody hears.
+    if (themeLevel === 0 && !themeEl.paused) themeEl.pause();
+  }
+
   function update(dt) {
+    updateTheme(dt);
     if (!started) return;
     // Frame-rate-independent smoothing of thrust gain toward |throttle|.
     const alpha = 1 - Math.pow(2, -dt / THRUST_GAIN_HALFLIFE);
@@ -68,6 +127,12 @@ export function createAudio() {
 
   /** Stop and release. Optional — useful for tests / teardown. */
   function dispose() {
+    if (themeEl) {
+      themeEl.pause();
+      themeEl = null;
+      themeWanted = false;
+      themeLevel = 0;
+    }
     if (!started) return;
     try { hum.osc1.stop(); hum.osc2.stop(); } catch {}
     try { thrust.source.stop(); } catch {}
@@ -105,6 +170,7 @@ export function createAudio() {
 
   return {
     start,
+    setSprinting,
     update,
     setThrottle,
     chirp,
