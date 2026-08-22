@@ -30,6 +30,7 @@
 // tall with his feet at y = 0, so he can be dropped into Castel
 // Maggiore at its own one-unit-per-metre scale.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 export const VEXO_HEIGHT = 1.8;
 
@@ -352,90 +353,138 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     body.add(ear);
   }
 
-  // Hair. Two layers, because one wasn't working.
+  // Hair. Three layers, and all of it ONE mesh.
   //
-  // The blobs alone — which is all this used to be — give volume and a
-  // smooth silhouette, and a smooth silhouette is a swimming cap. The
-  // art has it messy: clumps that separate and point, a fringe hanging
-  // over the visor, the whole lot swept across the head rather than
-  // sitting on it symmetrically.
+  // Layers, because each does a job the others can't. BLOBS give the
+  // mass. CLUMPS — flattened lozenges laid nearly tangential to the
+  // skull — break the mass into strands that overlap and sweep. SPIKES
+  // are three-sided pyramids at the ends of the clumps, and they are
+  // what makes it frizzy: a hard triangular tip catches the light on
+  // one facet and goes dark on the next, so the outline reads as hair
+  // ends rather than as a surface.
   //
-  // So the blobs are smaller now and only do the bulk, and the shape
-  // comes from LOCKS laid over them: short tapered spikes standing off
-  // the skull, each aimed outward from the centre of the head and then
-  // biased toward the sweep direction, so they lie the same way instead
-  // of bristling like a sea urchin. The jitter is a written-down table
-  // rather than Math.random, so his outline is the same every time the
-  // page loads — the smoke test measures how tall he is.
-  const hairSeeds = [
-    [0, 1.732, -0.012, 0.09], [-0.06, 1.722, 0.028, 0.066],
-    [0.06, 1.726, 0.024, 0.068], [0, 1.71, -0.07, 0.076],
-    [-0.082, 1.7, -0.024, 0.062], [0.084, 1.703, -0.02, 0.06],
-    [0.026, 1.757, -0.005, 0.05], [-0.032, 1.752, -0.036, 0.048],
-    [-0.056, 1.692, 0.056, 0.046], [0.058, 1.694, 0.053, 0.044],
-  ];
-  for (const [i, [x, y, z, r]] of hairSeeds.entries()) {
-    const tuft = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 9), hairMat);
-    tuft.position.set(x, y, z);
-    tuft.scale.set(1.12, 0.72, 1.1);
-    tuft.rotation.set((i % 3) * 0.18, i * 0.7, ((i % 5) - 2) * 0.12);
-    body.add(tuft);
+  // Two wrong turns before this shape, both the same mistake, and both
+  // worth keeping written down. Aiming spikes straight out from the
+  // middle of the skull gives a stegosaurus. Making them thin and long
+  // instead gives a sea urchin. Anything that STANDS OFF a smooth ball
+  // reads as a spine whatever its proportions — hair doesn't stick out
+  // of a head, it lies along it and separates into points at the ends.
+  // Which is why every spike below grows out of a clump, pointing the
+  // way that clump already sweeps.
+  //
+  // One mesh, because none of it moves independently of the skull. Forty
+  // pieces of hair merged into a single geometry is one draw call, where
+  // the twelve smooth blobs this replaced were twelve.
+  const hairParts = [];
+  const _hairM = new THREE.Matrix4();
+  const _hairQ = new THREE.Quaternion();
+  const _hairP = new THREE.Vector3();
+  const _hairS = new THREE.Vector3();
+  const _hairDir = new THREE.Vector3();
+  const UP_Y = new THREE.Vector3(0, 1, 0);
+  const FORWARD_Z = new THREE.Vector3(0, 0, 1);
+
+  /** Place a geometry and keep it for the merge. */
+  function addHair(geom, pos, quat, scale) {
+    geom.applyMatrix4(_hairM.compose(pos, quat, scale));
+    hairParts.push(geom);
   }
 
-  // The clumps that make it messy.
-  //
-  // Two wrong turns before this, both worth writing down. Aiming spikes
-  // straight out from the middle of the skull gives a stegosaurus.
-  // Making them thin and long instead gives a sea urchin. The lesson is
-  // the same both times: anything that STANDS OFF a smooth ball reads as
-  // a spine, whatever its proportions, because hair doesn't stick out of
-  // a head — it LIES ALONG it and separates into clumps at the ends.
-  //
-  // So these are flattened lozenges laid nearly tangential to the skull,
-  // sweeping back and across, each overlapping its neighbours and the
-  // blobs beneath. What breaks the outline is a clump's tapered END,
-  // not a pole. Same sphere primitive as the blobs, so they blend into
-  // each other instead of looking bolted on.
-  //
-  // The table is written down rather than randomised so his outline is
-  // identical every time the page loads — the smoke test measures how
-  // tall he is, and hair that rolls its own dice fails it one run in ten.
-  const FORWARD_Z = new THREE.Vector3(0, 0, 1);
-  const _strandDir = new THREE.Vector3();
+  // --- The mass -----------------------------------------------------------
+  const hairSeeds = [
+    [0, 1.732, -0.012, 0.088], [-0.06, 1.722, 0.028, 0.064],
+    [0.06, 1.726, 0.024, 0.066], [0, 1.71, -0.07, 0.074],
+    [-0.082, 1.7, -0.024, 0.06], [0.084, 1.703, -0.02, 0.058],
+    [0.026, 1.757, -0.005, 0.048], [-0.032, 1.752, -0.036, 0.046],
+    [-0.056, 1.692, 0.056, 0.044], [0.058, 1.694, 0.053, 0.042],
+  ];
+  for (const [i, [x, y, z, r]] of hairSeeds.entries()) {
+    addHair(
+      new THREE.SphereGeometry(r, 10, 8),
+      _hairP.set(x, y, z),
+      _hairQ.setFromEuler(new THREE.Euler((i % 3) * 0.18, i * 0.7, ((i % 5) - 2) * 0.12)),
+      _hairS.set(1.12, 0.72, 1.1),
+    );
+  }
+
+  // --- Strands, and a triangular tip on the end of each --------------------
   // [x, y, z, size, long, dirX, dirY, dirZ]  — dir is where the clump POINTS
   const CLUMPS = [
     // Fringe: sweeping down and across the forehead, over the visor.
-    [-0.05, 1.736, 0.055, 0.05, 1.5, 0.35, -0.6, 0.72],
-    [-0.008, 1.744, 0.062, 0.052, 1.55, 0.3, -0.45, 0.84],
-    [0.038, 1.74, 0.056, 0.048, 1.45, 0.55, -0.5, 0.67],
-    [0.074, 1.728, 0.03, 0.042, 1.35, 0.85, -0.35, 0.4],
-    // Crown: laid back over the top, one clump crossing another — and
-    // two standing up out of it, which is what the art has and what
-    // stops the top being a dome again.
-    [-0.03, 1.764, 0.03, 0.05, 1.5, -0.25, 0.25, 0.94],
-    [0.028, 1.768, 0.012, 0.052, 1.6, 0.42, 0.62, 0.66],
-    [-0.02, 1.766, -0.03, 0.05, 1.5, -0.3, 0.6, -0.74],
-    [0.042, 1.756, -0.036, 0.046, 1.45, 0.5, 0.15, -0.85],
+    [-0.05, 1.736, 0.055, 0.048, 1.5, 0.35, -0.6, 0.72],
+    [-0.008, 1.744, 0.062, 0.05, 1.55, 0.3, -0.45, 0.84],
+    [0.038, 1.74, 0.056, 0.046, 1.45, 0.55, -0.5, 0.67],
+    [0.074, 1.728, 0.03, 0.04, 1.35, 0.85, -0.35, 0.4],
+    // Crown: laid back over the top, with two standing up out of it.
+    [-0.03, 1.764, 0.03, 0.048, 1.5, -0.25, 0.25, 0.94],
+    [0.028, 1.768, 0.012, 0.05, 1.6, 0.42, 0.62, 0.66],
+    [-0.02, 1.766, -0.03, 0.048, 1.5, -0.3, 0.6, -0.74],
+    [0.042, 1.756, -0.036, 0.044, 1.45, 0.5, 0.15, -0.85],
     // Sides: lying over the ears, sweeping back.
-    [-0.084, 1.72, 0.014, 0.046, 1.5, -0.5, -0.1, 0.86],
-    [-0.086, 1.712, -0.038, 0.044, 1.45, -0.45, -0.05, -0.89],
-    [0.086, 1.722, 0.01, 0.048, 1.5, 0.5, -0.05, 0.86],
-    [0.088, 1.714, -0.036, 0.044, 1.45, 0.45, -0.1, -0.89],
+    [-0.084, 1.72, 0.014, 0.044, 1.5, -0.5, -0.1, 0.86],
+    [-0.086, 1.712, -0.038, 0.042, 1.45, -0.45, -0.05, -0.89],
+    [0.086, 1.722, 0.01, 0.046, 1.5, 0.5, -0.05, 0.86],
+    [0.088, 1.714, -0.036, 0.042, 1.45, 0.45, -0.1, -0.89],
     // Back: sticking out where it was slept on.
-    [-0.032, 1.72, -0.078, 0.048, 1.55, -0.2, 0.05, -0.98],
-    [0.03, 1.724, -0.08, 0.05, 1.6, 0.2, 0.15, -0.97],
-    [0.0, 1.7, -0.082, 0.044, 1.4, 0.0, -0.35, -0.94],
+    [-0.032, 1.72, -0.078, 0.046, 1.55, -0.2, 0.05, -0.98],
+    [0.03, 1.724, -0.08, 0.048, 1.6, 0.2, 0.15, -0.97],
+    [0.0, 1.7, -0.082, 0.042, 1.4, 0.0, -0.35, -0.94],
   ];
-  for (const [x, y, z, size, long, dx, dy, dz] of CLUMPS) {
-    const clump = new THREE.Mesh(new THREE.SphereGeometry(size, 10, 8), hairMat);
-    // Flattened against the head and drawn out along its own length:
-    // a strand of hair is wider than it is thick and longer than both.
-    clump.scale.set(0.62, 0.44, long);
-    clump.position.set(x, y, z);
-    _strandDir.set(dx, dy, dz).normalize();
-    clump.quaternion.setFromUnitVectors(FORWARD_Z, _strandDir);
-    body.add(clump);
+  for (const [i, [x, y, z, size, long, dx, dy, dz]] of CLUMPS.entries()) {
+    _hairDir.set(dx, dy, dz).normalize();
+    addHair(
+      new THREE.SphereGeometry(size, 10, 8),
+      _hairP.set(x, y, z),
+      _hairQ.setFromUnitVectors(FORWARD_Z, _hairDir),
+      _hairS.set(0.62, 0.44, long),
+    );
+
+    // The tip: a three-sided pyramid carrying on where the clump ends,
+    // squashed flat in the same plane so it reads as the end of a
+    // strand and not as a horn stuck on it. Alternate lengths so the
+    // outline is ragged rather than evenly serrated.
+    // Overlapping the clump, not perched on the end of it: at the full
+    // reach the tips float free and read as thorns stuck into the hair.
+    const reach = size * long * 0.66;
+    const len = (i % 3 === 0 ? 0.052 : (i % 3 === 1 ? 0.04 : 0.032));
+    const tip = new THREE.ConeGeometry(size * 0.62, len, 3);
+    tip.translate(0, len * 0.42, 0);          // grow from the base, not the middle
+    addHair(
+      tip,
+      _hairP.set(x, y, z).addScaledVector(_hairDir, reach),
+      _hairQ.setFromUnitVectors(UP_Y, _hairDir),
+      _hairS.set(0.85, 1, 0.5),
+    );
   }
+
+  // --- Loose frizz ----------------------------------------------------------
+  // Odd hairs that belong to no clump, so the silhouette isn't a tidy
+  // row of matching points. Small, and pointing every which way.
+  // [x, y, z, length, dirX, dirY, dirZ]
+  const FRIZZ = [
+    [-0.07, 1.75, 0.0, 0.042, -0.5, 0.75, 0.44],
+    [0.012, 1.782, -0.01, 0.046, 0.15, 0.95, -0.28],
+    [0.066, 1.756, 0.02, 0.038, 0.7, 0.66, 0.28],
+    [-0.05, 1.73, 0.072, 0.034, -0.1, 0.3, 0.95],
+    [0.05, 1.736, -0.07, 0.04, 0.35, 0.45, -0.82],
+    [-0.088, 1.73, -0.01, 0.036, -0.85, 0.42, 0.3],
+    [0.03, 1.706, -0.094, 0.032, 0.2, -0.1, -0.97],
+    [-0.026, 1.776, 0.03, 0.04, -0.2, 0.85, 0.49],
+  ];
+  for (const [x, y, z, len, dx, dy, dz] of FRIZZ) {
+    _hairDir.set(dx, dy, dz).normalize();
+    const wisp = new THREE.ConeGeometry(0.014, len, 3);
+    wisp.translate(0, len * 0.4, 0);
+    addHair(
+      wisp,
+      _hairP.set(x, y, z),
+      _hairQ.setFromUnitVectors(UP_Y, _hairDir),
+      _hairS.set(0.9, 1, 0.55),
+    );
+  }
+
+  const hair = new THREE.Mesh(mergeGeometries(hairParts), hairMat);
+  body.add(hair);
 
   // Visor: a shallow band wrapped across the eyes. Built as a section of
   // a cylinder — a torus ring kept sliding round the skull and reading
