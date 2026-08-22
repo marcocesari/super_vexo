@@ -88,6 +88,59 @@ check('he has depth as well as width', build.depth > 0.25 && build.width > 0.45,
 check('shoulders are wider than he is deep', build.width > build.depth,
   `${build.width} vs ${build.depth}`);
 
+// --- His hair belongs to his head --------------------------------------------
+// The hair is one merged mesh, and a merged mesh has its vertices baked
+// in — so if it is left at the origin, the code that sorts parts onto
+// the spine and the neck reads it as part of the CHEST. It then swings
+// around the waist every time the chest twists, which at a walk slid it
+// far enough across his skull to show scalp. Nothing throws; he just
+// goes bald in motion. Hence a test.
+const hairHold = await page.evaluate(() => {
+  const v = window.__superVexo.characterViewer;
+  const root = v.vexo.group;
+  let hair = null;
+  let head = null;
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const hex = o.material.color?.getHexString?.();
+    if (hex === '3a2418' && !hair) hair = o;            // HAIR
+    if (hex === 'd8a684' && o.geometry.type === 'SphereGeometry' && !head) head = o;  // SKIN
+  });
+  if (!hair || !head) return null;
+  const V = root.position.constructor;
+  const a = new V();
+  const b = new V();
+  const gap = () => {
+    root.updateWorldMatrix(true, true);
+    hair.getWorldPosition(a);
+    head.getWorldPosition(b);
+    return a.distanceTo(b);
+  };
+  const seen = [];
+  v.vexo.setGait('idle');
+  v.vexo.update(0.016);
+  seen.push(gap());
+  // Through a walk and a sprint, where the chest twists and leans most.
+  for (const speed of [3.3, 6.2]) {
+    v.vexo.setGait('walk', speed);
+    for (let i = 0; i < 40; i++) {
+      v.vexo.update(0.016);
+      if (i % 8 === 0) seen.push(gap());
+    }
+  }
+  return {
+    spread: +(Math.max(...seen) - Math.min(...seen)).toFixed(4),
+    samples: seen.length,
+    sameParent: hair.parent === head.parent,
+  };
+});
+check('his hair is attached to his head, not his chest',
+  hairHold != null && hairHold.sameParent,
+  hairHold ? `parent ${hairHold.sameParent ? 'matches' : 'DIFFERS'}` : 'hair or head not found');
+check('and it does not slide about while he moves',
+  hairHold != null && hairHold.spread < 0.002,
+  hairHold ? `${(hairHold.spread * 1000).toFixed(1)}mm of drift over ${hairHold.samples} samples` : '');
+
 // --- The turntable turns -----------------------------------------------------
 const turning = await page.evaluate(async () => {
   const viewer = window.__superVexo.characterViewer;

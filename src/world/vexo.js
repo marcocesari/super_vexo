@@ -483,7 +483,22 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     );
   }
 
-  const hair = new THREE.Mesh(mergeGeometries(hairParts), hairMat);
+  // Bake the merged geometry relative to the SKULL and give the mesh a
+  // position up there, rather than leaving it at the origin with
+  // absolute coordinates inside it.
+  //
+  // This is not tidiness. The reparenting further down sorts parts onto
+  // the spine and the neck BY THEIR POSITION, so a hair mesh sitting at
+  // the origin was classified as belonging to the chest — and since the
+  // vertices were absolute, every degree the chest twisted swung the
+  // whole head of hair around the waist, seventy centimetres below it.
+  // At a walk that slid it far enough across his skull to show scalp.
+  // Hair has to be welded to the head, and this is what welds it.
+  const HAIR_PIVOT_Y = 1.706;
+  const hairGeometry = mergeGeometries(hairParts);
+  hairGeometry.translate(0, -HAIR_PIVOT_Y, 0);
+  const hair = new THREE.Mesh(hairGeometry, hairMat);
+  hair.position.y = HAIR_PIVOT_Y;
   body.add(hair);
 
   // Visor: a shallow band wrapped across the eyes. Built as a section of
