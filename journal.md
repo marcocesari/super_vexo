@@ -2,6 +2,43 @@
 
 Most recent entries on top.
 
+## 2026-08-22 — Bokoblins, camps, and something to shoot them with
+
+- Marco asked for monsters like Tears of the Kingdom's bokoblins, and
+  answered the four questions that decide the shape: they chase AND hit,
+  they live in camps, hearts with a real losing state, and Vexo draws
+  the pistol he has been carrying since the kit went on.
+- Sources for what a bokoblin is:
+  [KeenGamer's creature guide](https://www.keengamer.com/articles/guides/tears-of-the-kingdom-creature-guide-bokoblins/)
+  and [Zelda Dungeon](https://www.zeldadungeon.net/wiki/Bokoblin) —
+  pig-snouted, hunched, one horn, ears out sideways, colour tiers red →
+  blue → black → silver, camped round fires, and they flee or rally
+  around a boss.
+- **The model took three passes.** First was a pig-bear: small head on
+  an enormous belly, upright. What fixed it was proportion and posture —
+  a BIG head thrust FORWARD of the shoulders, a modest pot belly, skinny
+  bow legs, and everything built round a spine that leans fifteen
+  degrees. Then the eyes were invisible because the brow ridge stuck out
+  further than they did.
+- Six meshes a monster, merged by material, because sixteen of them at
+  thirty pieces each is not a thing a phone should be asked to draw.
+- **Balance was the real work.** First playable: four monsters swinging
+  freely killed him in four seconds. Three things fixed it, all standard
+  and all necessary — an ATTACK TOKEN (only two of a camp may swing at
+  once, the rest circle), KNOCKBACK away from the blow, and a mercy
+  window of a second and a half. It reads as a fight now rather than a
+  mob.
+- **And aiming.** He shoots where he FACES, and the first version put
+  the shot exactly there — which meant standing in a ring of monsters
+  and hitting none of them, because they circle. A soft lock takes
+  anything within forty degrees and turns him to it. Measured before:
+  eight shots, zero hits, nearest monster 54-72 degrees off the muzzle.
+- `smoke:monsters` is 17 checks, because almost none of this shows up in
+  a screenshot: a monster that never notices you, one that notices you
+  through a wall, a camp that doesn't alert as one, a missing mercy
+  window, a shot that passes through a bokoblin — all of it looks like a
+  working game until you play it for a while.
+
 ## 2026-08-22 — Walk, jog, sprint, and a stamina wheel
 
 - Marco asked for Vexo's movement to work like Link's in Tears of the

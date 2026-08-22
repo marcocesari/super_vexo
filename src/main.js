@@ -35,10 +35,12 @@ import { BUTTONS } from './input/gamepad.js';
 import { createDebugPad } from './debugPad.js';
 import { createViewport } from './viewport.js';
 import { createChaseCamera } from './chaseCamera.js';
-import { createSurface } from './surface.js';
+import { createSurface, SURFACE_ORIGIN } from './surface.js';
 import { createFrameScaler } from './perf.js';
 import { createCharacterViewer } from './characterViewer.js';
 import { createOnFoot } from './onFoot.js';
+import { createMonsters } from './monsters.js';
+import { createTracers } from './world/tracers.js';
 
 // --- URL switches -----------------------------------------------------------
 // Read before anything is built, because half the setup below branches
@@ -227,7 +229,7 @@ const MENU_SCROLL_SPEED = 900;
 const STATE = { CINEMATIC: 'cinematic', TITLE: 'title', FLY: 'fly' };
 
 const characterViewer = characterMode
-  ? createCharacterViewer({ renderer, modelUrl: characterModelUrl })
+  ? createCharacterViewer({ renderer, modelUrl: characterModelUrl, who: params.get('who') ?? 'vexo' })
   : null;
 const cinematic = (skipIntro || characterMode) ? null : createCinematic({ renderer });
 let state = cinematic ? STATE.CINEMATIC : STATE.TITLE;
@@ -241,9 +243,22 @@ const debugPad = createDebugPad();
 // Size everything now that the cinematic exists, and keep it sized.
 createViewport(renderer.domElement, applyViewportSize);
 
+// Bokoblin camps, out in the town. Built once at load like the town
+// itself, hidden until somebody lands.
+const monsters = createMonsters({ scene, town: surface.town, origin: SURFACE_ORIGIN });
+const tracers = createTracers(scene);
+
 // Getting out and walking around: set the ship down in town and this
 // takes the ship, the camera and the input until Vexo climbs back in.
-const onFoot = createOnFoot({ scene, camera, ship, surface, input, renderer });
+const onFoot = createOnFoot({
+  scene, camera, ship, surface, input, renderer, monsters,
+  onShot: (from, direction, hit) => {
+    tracers.fire(from, direction, hit ? 0xffd27a : 0x9fd8ff);
+    audio.chirp(hit
+      ? { fromHz: 900, toHz: 260, durationS: 0.16, peakGain: 0.16 }
+      : { fromHz: 1400, toHz: 700, durationS: 0.08, peakGain: 0.09 });
+  },
+});
 
 // Compile the landing site's shaders before anyone can fly there, so
 // the first landing doesn't stutter while it builds them. Vexo and his
@@ -398,6 +413,10 @@ function frame(now) {
       // while parked rather than flying the ship anywhere.
       onFoot.update(dt, footAxes);
       surface.update(ship, dt);
+      // The camps hunt whoever is out there; `quarry` is null while he
+      // is climbing, down, or back in the seat.
+      monsters.update(dt, onFoot.quarry,
+        (damage, fromX, fromZ) => onFoot.takeHit(damage, fromX, fromZ));
       audio.setThrottle(0);
       // The sprint theme plays while he is actually running — moving and
       // spending stamina, not merely holding the button.
@@ -438,6 +457,11 @@ function frame(now) {
       dt,
     });
   }
+
+  // Monsters and their camps exist only while somebody is down there.
+  monsters.setActive(surface.active);
+  if (surface.active && !onFoot.active) monsters.update(dt, null, () => {});
+  tracers.update(dt);
 
   fastTravel.update(dt);
   audio.update(dt);
@@ -492,7 +516,7 @@ if (import.meta.env.DEV) {
     ship, asteroids, audio, fastTravel, physics,
     renderer, camera,
     rovers: roverApi, mission, upgrades, missionScreens, surface, frameScaler,
-    characterViewer, onFoot,
+    characterViewer, onFoot, monsters,
     shipConfig, shipConfigDefaults,
     resetGame,
   };

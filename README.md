@@ -74,6 +74,8 @@ Then open http://localhost:5173.
   the pace — a gentle push walks (1.5 m/s), hard over jogs (3.3). A keyboard
   has no half-press, so W alone is the jog
 - **Shift / B (hold)** — sprint (6.2 m/s), for as long as your stamina lasts
+- **Space / X** — shoot. He draws the pistol off his thigh and holsters it again
+  a few seconds after the last shot
 - **Right stick, or turning the phone** — swing the camera around him. Push and
   it keeps turning; let go and it stays where you left it. Walking forward
   eases it back behind him on its own, so there's no button to press
@@ -224,3 +226,41 @@ into the other the way a person does when they pick up the pace.
 ```bash
 npm run smoke:onfoot     # flies down, climbs out, walks, sprints, boards
 ```
+
+## Bokoblins
+
+Four camps around the neighbourhood, laid out the way *Tears of the Kingdom*
+lays them out: a fire, some crates, three monsters and a bigger one in charge.
+Red, blue and black, in that order of nastiness, and the black ones are the
+bosses — bigger, and worth four times the shooting. You can see a camp from
+across a field and decide whether to go round it, which is the whole reason
+they're in camps rather than scattered: a wandering monster is a jump scare, a
+camp is a decision.
+
+They see about 24 m in a cone in front of them, and hear anything within 7 m
+whichever way they're facing. One spotting you brings the whole camp — that's
+the horn. They chase at 4.5 m/s, which is faster than your jog and slower than
+your sprint, so escaping costs stamina and standing still doesn't work. They
+give up after eight seconds of losing you and walk home.
+
+If one reaches you it winds up and swings. That's a heart (two from a boss), a
+shove backwards, and your stamina wheel emptied so you can't simply sprint out
+of a mistake. There's a mercy window of a second and a half, and only two of a
+camp may be swinging at once — without either, four of them delete you in about
+four seconds, and that isn't a fight, it's a mob.
+
+Lose all five hearts and Vexo goes down, and wakes up back in the ship with his
+hearts refilled and the camps back where they were. Nothing else in this game
+has a losing screen and this didn't seem the place to introduce one.
+
+Shooting has a soft lock: anything within about forty degrees of where he's
+facing gets shot at, and he turns to it. Aiming is still yours — a monster
+circling behind you needs turning to — but lining up a moving target with a
+thumbstick on a phone is more dexterity than this game should ask for.
+
+```bash
+npm run smoke:monsters   # camps, being spotted, being hit, shooting back, losing
+```
+
+`?character=1&who=boko` puts one on the turntable — `who=boko-blue`,
+`boko-black` and `boko-silver` for the other tiers.

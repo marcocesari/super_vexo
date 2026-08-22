@@ -676,6 +676,14 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
   // Every length below hangs off a hip at y = 0.8 and is budgeted so the
   // soles land on y = 0. Get it wrong and he stands shin-deep in the
   // floor — which is exactly what the first turntable render showed.
+  // The pistol, and where it hangs when it isn't in his hand. Named
+  // `holsterMount` and not `holster`: the leg loop below already has a
+  // `holster`, which is the shell it sits in, and the shadowing turned
+  // an assignment here into a write to that const.
+  let pistol = null;
+  let holsterMount = null;
+  let armed = false;
+
   const legs = [];
   for (const side of [-1, 1]) {
     const leg = new THREE.Group();
@@ -709,6 +717,12 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
       gun.position.set(side * 0.088, -0.16, 0.006);
       gun.rotation.set(0.18, side * 0.3, side * 0.12);
       leg.add(gun);
+      // Kept, so it can be drawn: `setArmed` moves this very group into
+      // his hand rather than building a second pistol. One gun, in one
+      // place at a time, which is also how you avoid the bug where the
+      // holster still looks full while he is shooting.
+      pistol = gun;
+      holsterMount = leg;
       // Slide, mostly buried in the holster.
       const slide = plate(0.026, 0.1, 0.036, armour, 0, -0.03, 0, 0.006);
       gun.add(slide);
@@ -807,6 +821,26 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     suitLight = new THREE.PointLight(CIRCUIT, 0.45, 2.2, 2);
     suitLight.position.set(0, 1.2, 0.12);
     body.add(suitLight);
+  }
+
+  /**
+   * Draw the pistol, or put it away. The gun group is REPARENTED into
+   * the hand on the same side as the holster — a cross-draw looks
+   * ridiculous on a figure whose arms don't cross the body.
+   */
+  function setArmed(on) {
+    if (on === armed || !pistol) return;
+    armed = on;
+    const gunArm = arms.find((a) => a.side > 0);
+    if (on) {
+      gunArm.forearm.add(pistol);
+      pistol.position.set(0, -0.3, 0.06);
+      pistol.rotation.set(-1.5, 0, 0);
+    } else {
+      holsterMount.add(pistol);
+      pistol.position.set(0.088, -0.16, 0.006);
+      pistol.rotation.set(0.18, 0.3, 0.12);
+    }
   }
 
   // --- A spine and a neck -----------------------------------------------------
@@ -1205,12 +1239,28 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     if (gait === 'walk') poseWalk(dt);
     else if (gait === 'climb') poseClimb(dt);
     else poseIdle();
+
+    // Aiming overrides whatever the gait did with that arm: pistol up,
+    // pointed where he is facing, and held still while everything else
+    // carries on underneath it.
+    if (armed) {
+      const gunArm = arms.find((a) => a.side > 0);
+      gunArm.shoulder.rotation.x = -1.42;
+      gunArm.shoulder.rotation.z = gunArm.side * 0.06;
+      gunArm.forearm.rotation.x = -0.16;
+      // The other arm tucks in rather than swinging about.
+      const other = arms.find((a) => a.side < 0);
+      other.shoulder.rotation.x = Math.min(other.shoulder.rotation.x, -0.35);
+      other.forearm.rotation.x = -0.9;
+    }
   }
 
   return {
     group,
     update,
     height: VEXO_HEIGHT,
+    setArmed,
+
     /**
      * @param {'idle'|'walk'|'climb'} mode
      * @param {number} [speed] metres per second, for 'walk' only

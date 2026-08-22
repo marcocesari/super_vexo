@@ -35,6 +35,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { createVexo, VEXO_HEIGHT } from './world/vexo.js';
 import { createLadder } from './world/ladder.js';
 import { createStaminaWheel } from './staminaWheel.js';
+import { createHearts } from './hearts.js';
 import { SURFACE_ORIGIN, PARK_CLEARANCE } from './surface.js';
 import { BUTTONS } from './input/gamepad.js';
 import { strings } from './strings.js';
@@ -137,6 +138,23 @@ const BOOM_MIN = 2.0;
 const SHIP_CAM_CLEAR = 6.2;
 
 const CONTROLS_HINT_TIME = 5;
+
+// --- Fighting back --------------------------------------------------------------
+// He has a pistol on his thigh; this is what draws it. Aim is where he
+// is FACING, not where the camera points: the camera can be swung round
+// to look at him, and a shot that came out of the back of his head
+// because the player was admiring the view would be indefensible.
+const MAX_HEARTS = 5;
+const SHOT_INTERVAL = 0.32;     // seconds between shots
+const SHOT_RANGE = 55;
+const AIM_CONE = 0.7;           // radians either side of his nose (~40 degrees)
+const HOLSTER_AFTER = 4;        // seconds of peace before he puts it away
+// A mercy window after a hit, and a shove away from whatever landed it.
+// Both exist for the same reason: without them a ring of monsters is not
+// a fight you can lose well, it is a fight you cannot leave.
+const HURT_INVULNERABLE = 1.5;
+const KNOCKBACK = 3.4;          // m/s, away from the blow
+const DYING_TIME = 2.4;         // collapse, then wake up in the ship
 // How long "no room here" stays up after a refused climb-out.
 const REFUSED_TIME = 2.5;
 
@@ -174,7 +192,10 @@ function angleDelta(a, b) {
  * @param {THREE.WebGLRenderer} deps.renderer  only to pre-filter the
  *        environment his armour reflects; nothing here draws.
  */
-export function createOnFoot({ scene, camera, ship, surface, input, renderer }) {
+export function createOnFoot({
+  scene, camera, ship, surface, input, renderer,
+  monsters = null, onShot = () => {},
+}) {
   // Something for the armour to reflect. A small box of lit panels,
   // pre-filtered once at startup: his plates are 0.62 metal, and metal
   // with nothing to reflect is black. It belongs to his materials
@@ -220,7 +241,10 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
   document.body.appendChild(prompt);
 
   const staminaWheel = createStaminaWheel();
+  const hearts = createHearts();
   const _screen = new THREE.Vector3();
+  const _muzzle = new THREE.Vector3();
+  const _aim = new THREE.Vector3();
 
   let state = 'off';
   let phaseT = 0;               // seconds inside the current state
@@ -256,6 +280,12 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
   let winded = 0;
   let sprintWasHeld = false;
   let sprintingNow = false;
+  // Health, the pistol, and dying.
+  let heartsLeft = MAX_HEARTS;
+  let hurtCooldown = 0;
+  let shotCooldown = 0;
+  let drawnFor = 0;               // seconds since the pistol was last used
+  let dying = 0;
   let camYaw = 0;
   // Metres per second across the ground, eased toward the stick.
   const vel = new THREE.Vector3();
@@ -536,12 +566,57 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
     enterWalk();
   }
 
+  /** A club landed. `fromX/fromZ` is who swung it, for the knockback. */
+  function takeHit(damage, fromX = null, fromZ = null) {
+    if (state !== 'walk' || hurtCooldown > 0 || dying > 0) return;
+    hurtCooldown = HURT_INVULNERABLE;
+    if (fromX != null) {
+      const dx = foot.x - fromX;
+      const dz = foot.z - fromZ;
+      const d = Math.hypot(dx, dz) || 1;
+      vel.x = (dx / d) * KNOCKBACK;
+      vel.z = (dz / d) * KNOCKBACK;
+    }
+    heartsLeft = Math.max(0, heartsLeft - damage);
+    hearts.set(heartsLeft, MAX_HEARTS);
+    hearts.flash();
+    // Being hit knocks the wind out of him: the wheel empties, so you
+    // cannot simply sprint away from a mistake.
+    stamina = 0;
+    winded = WINDED_TIME;
+    if (heartsLeft <= 0) {
+      dying = DYING_TIME;
+      vexo.setGait('idle');
+      setPrompt(strings.onFoot.down);
+    }
+  }
+
+  /** Out cold, and waking up back in the ship with everything reset. */
+  function revive() {
+    heartsLeft = MAX_HEARTS;
+    hearts.set(heartsLeft, MAX_HEARTS);
+    stamina = 1;
+    winded = 0;
+    if (monsters) monsters.reset();
+    // Straight back into the seat: the ladder folds and the ship is his
+    // again. Nothing else in this game has a losing screen and this is
+    // not the place to introduce one.
+    state = 'stow';
+    phaseT = 0;
+    vexo.group.visible = false;
+    setPrompt(null);
+  }
+
   function enterWalk() {
     state = 'walk';
     phaseT = 0;
     stamina = 1;
     winded = 0;
     sprintingNow = false;
+    heartsLeft = MAX_HEARTS;
+    hurtCooldown = 0;
+    dying = 0;
+    hearts.set(heartsLeft, MAX_HEARTS);
     camPitch = 0;
     camYaw = heading;
     vel.set(0, 0, 0);
@@ -630,6 +705,7 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
       camInit = false;
       sprintingNow = false;
       staminaWheel.hide();
+      hearts.hide();
       detach();
     }
   }
@@ -793,6 +869,34 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
       y: (-_screen.y * 0.5 + 0.5) * window.innerHeight,
     } : null);
 
+    // --- Shooting -------------------------------------------------------------
+    if (shotCooldown > 0) shotCooldown -= dt;
+    if (drawnFor > 0) drawnFor -= dt;
+    const firing = input.keyboard.isDown('Space')
+      || input.gamepad.isButtonDown(BUTTONS.R2)
+      || input.gamepad.isButtonDown(BUTTONS.X);
+    if (firing && shotCooldown <= 0 && monsters) {
+      shotCooldown = SHOT_INTERVAL;
+      drawnFor = HOLSTER_AFTER;
+      _muzzle.copy(foot).addScaledVector(UP, VEXO_HEIGHT * 0.62);
+      // Soft lock: anything within thirty degrees of where he is facing
+      // gets shot AT, rather than requiring the player to line a moving
+      // target up with a thumbstick.
+      const locked = monsters.aimAt(_muzzle, heading, AIM_CONE, SHOT_RANGE);
+      if (locked) {
+        _aim.copy(locked).sub(_muzzle).normalize();
+        // And he turns to it, so the shot doesn't come out sideways.
+        heading += angleDelta(heading, Math.atan2(_aim.x, _aim.z)) * 0.6;
+      } else {
+        _aim.set(Math.sin(heading), 0, Math.cos(heading));
+      }
+      _muzzle.addScaledVector(_aim, 0.35);
+      const hit = monsters.shoot(_muzzle, _aim, SHOT_RANGE);
+      onShot(_muzzle, _aim, hit);
+    }
+    // Pistol out while he is shooting or has just shot; away otherwise.
+    vexo.setArmed(drawnFor > 0, heading);
+
     // Boarding.
     const nearLadder = Math.hypot(foot.x - ladderBase.x, foot.z - ladderBase.z) < BOARD_RANGE;
     if (nearLadder) {
@@ -830,6 +934,15 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
     get winded() { return winded > 0; },
     /** True only while he is actually sprinting — moving, and spending. */
     get sprinting() { return sprintingNow; },
+    /** Hearts left, for the HUD and the tests. */
+    get hearts() { return heartsLeft; },
+    get maxHearts() { return MAX_HEARTS; },
+    /** True while he is flat on his back after losing the last one. */
+    get down() { return dying > 0; },
+    /** Where the monsters should hunt, or null if he is not out here. */
+    get quarry() { return state === 'walk' && dying <= 0 ? foot : null; },
+    /** A club landed on him. */
+    takeHit,
 
     begin,
 
@@ -877,6 +990,11 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
         default: break;
       }
 
+      if (hurtCooldown > 0) hurtCooldown -= dt;
+      if (dying > 0) {
+        dying -= dt;
+        if (dying <= 0) revive();
+      }
       vexo.update(dt);
       if (state !== 'off') updateCamera(dt);
       // The walk state decides its own line (board hint / controls);
@@ -921,6 +1039,7 @@ export function createOnFoot({ scene, camera, ship, surface, input, renderer }) 
       setPrompt(null);
       sprintingNow = false;
       staminaWheel.hide();
+      hearts.hide();
       detach();
     },
   };

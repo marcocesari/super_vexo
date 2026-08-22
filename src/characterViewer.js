@@ -16,12 +16,37 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { createVexo, VEXO_HEIGHT } from './world/vexo.js';
+import { createBokoblin } from './world/bokoblin.js';
 import { loadCharacterModel } from './world/characterModel.js';
 
 const TURNTABLE_SPEED = 0.45;   // radians per second
+
+/**
+ * A bokoblin dressed up as something the viewer can drive: it wants an
+ * `update` and a `setGait` it doesn't have, and `?who=boko-blue` and
+ * friends pick the colour tier.
+ */
+function bokoblinOnAPedestal(who) {
+  const tier = who.split('-')[1] ?? 'red';
+  const boko = createBokoblin({ tier });
+  let t = 0;
+  return {
+    ...boko,
+    update(dt) {
+      t += dt;
+      // Just breathing, until there is an AI to drive him.
+      boko.body.position.y = Math.sin(t * 1.8) * 0.006;
+      for (const [i, arm] of boko.arms.entries()) {
+        arm.group.rotation.x = 0.12 + Math.sin(t * 1.8 + i) * 0.03;
+        arm.group.rotation.z = arm.side * 0.18;
+      }
+    },
+    setGait() {},
+  };
+}
 const RESUME_DELAY_S = 1.5;     // how long a hand-spin holds before it drifts on
 
-export function createCharacterViewer({ renderer, modelUrl = null }) {
+export function createCharacterViewer({ renderer, modelUrl = null, who = 'vexo' }) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0a0e16);
 
@@ -136,7 +161,12 @@ export function createCharacterViewer({ renderer, modelUrl = null }) {
   const table = new THREE.Group();
   scene.add(table);
 
-  const vexo = createVexo();
+  // `?character=1&who=boko` puts a bokoblin on the pedestal instead —
+  // the same turntable, because a monster needs looking at from every
+  // side just as much as the hero does.
+  const vexo = who.startsWith('boko')
+    ? bokoblinOnAPedestal(who)
+    : createVexo();
   table.add(vexo.group);
   // The primitive build is authored without shadow flags — out in the
   // world nothing casts — so opt his pieces in here, where the pedestal

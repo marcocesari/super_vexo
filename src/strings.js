@@ -36,6 +36,8 @@ export const strings = {
     climbOut: 'L / A — land and climb out',
     noRoom: 'No room to climb out here — move the ship',
     board: 'L / A — climb back in',
+    down: 'Down! Hauling him back to the ship…',
+    shoot: 'Space / X — shoot · they hit back',
     controls: 'W A S D / stick — walk · Shift / B — sprint',
   },
 
