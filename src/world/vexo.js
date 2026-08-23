@@ -31,6 +31,7 @@
 // Maggiore at its own one-unit-per-metre scale.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { createPistol } from './pistol.js';
 
 export const VEXO_HEIGHT = 1.8;
 
@@ -713,34 +714,17 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
 
       // The pistol itself, sitting in it: butt up and canted back, the
       // way it has to be to draw. Only the top half shows.
-      const gun = new THREE.Group();
-      gun.position.set(side * 0.088, -0.16, 0.006);
-      gun.rotation.set(0.18, side * 0.3, side * 0.12);
-      leg.add(gun);
-      // Kept, so it can be drawn: `setArmed` moves this very group into
-      // his hand rather than building a second pistol. One gun, in one
-      // place at a time, which is also how you avoid the bug where the
-      // holster still looks full while he is shooting.
+      //
+      // The model is `world/pistol.js`, built to a real compact pistol's
+      // proportions with its parts under their real names. It is one
+      // gun: `setArmed` reparents THIS group into his hand rather than
+      // building a second one, which is also how you avoid the holster
+      // still looking full while he is shooting.
+      const gun = createPistol({ metal: armour, polymer: suit, glow: panelMat });
       pistol = gun;
       holsterMount = leg;
-      // Slide, mostly buried in the holster.
-      const slide = plate(0.026, 0.1, 0.036, armour, 0, -0.03, 0, 0.006);
-      gun.add(slide);
-      // Grip, angled back off the frame.
-      const grip = plate(0.024, 0.062, 0.032, suit, 0, 0.034, -0.019, 0.008);
-      grip.rotation.x = -0.32;
-      gun.add(grip);
-      // Trigger guard: the loop under the frame is most of a pistol's
-      // silhouette, and it is two triangles' worth of geometry.
-      const guard = new THREE.Mesh(new THREE.TorusGeometry(0.014, 0.004, 6, 12, Math.PI), armour);
-      guard.rotation.set(0, Math.PI / 2, -0.4);
-      guard.position.set(0, 0.006, 0.004);
-      gun.add(guard);
-      // A green pip on the back of the slide — the sight, and the same
-      // green as everything else he carries.
-      const sight = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.006, 0.004), panelMat);
-      sight.position.set(0, 0.014, 0.016);
-      gun.add(sight);
+      stowPistol();
+      leg.add(gun.group);
     } else {
       // Magazine pouches: two slabs, as in the art.
       for (const [i, y] of [-0.185, -0.245].entries()) {
@@ -824,6 +808,18 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
   }
 
   /**
+   * Holstered: muzzle down along the thigh, butt up and canted back so
+   * a hand could actually take it. The model points +Z, so "down the
+   * leg" is a quarter turn about X.
+   */
+  function stowPistol() {
+    // Muzzle down the thigh, butt up and back where a hand can reach it,
+    // and tucked in against the leg rather than hovering beside it.
+    pistol.group.position.set(0.078, -0.175, 0.014);
+    pistol.group.rotation.set(Math.PI / 2 + 0.3, 0.34, 0.06);
+  }
+
+  /**
    * Draw the pistol, or put it away. The gun group is REPARENTED into
    * the hand on the same side as the holster — a cross-draw looks
    * ridiculous on a figure whose arms don't cross the body.
@@ -833,14 +829,20 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     armed = on;
     const gunArm = arms.find((a) => a.side > 0);
     if (on) {
-      gunArm.forearm.add(pistol);
-      pistol.position.set(0, -0.3, 0.06);
-      pistol.rotation.set(-1.5, 0, 0);
+      gunArm.forearm.add(pistol.group);
+      // In the fist, muzzle along the forearm. The arm is raised by the
+      // aiming pose, so the gun only has to sit straight in the hand.
+      pistol.group.position.set(0, -0.305, 0.035);
+      pistol.group.rotation.set(1.35, 0, 0);
     } else {
-      holsterMount.add(pistol);
-      pistol.position.set(0.088, -0.16, 0.006);
-      pistol.rotation.set(0.18, 0.3, 0.12);
+      holsterMount.add(pistol.group);
+      stowPistol();
     }
+  }
+
+  /** A round went off: muzzle flash. */
+  function firePistol() {
+    if (pistol) pistol.fire();
   }
 
   // --- A spine and a neck -----------------------------------------------------
@@ -1236,6 +1238,7 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     suit.emissiveIntensity = 0.3 * pulse;
     if (suitLight) suitLight.intensity = 0.45 * pulse;
 
+    if (pistol) pistol.update(dt);
     if (gait === 'walk') poseWalk(dt);
     else if (gait === 'climb') poseClimb(dt);
     else poseIdle();
@@ -1260,6 +1263,9 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     update,
     height: VEXO_HEIGHT,
     setArmed,
+    fire: firePistol,
+    /** The sidearm, for tests and for anything that wants to inspect it. */
+    get pistol() { return pistol; },
 
     /**
      * @param {'idle'|'walk'|'climb'} mode

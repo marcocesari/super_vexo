@@ -892,6 +892,7 @@ export function createOnFoot({
       }
       _muzzle.addScaledVector(_aim, 0.35);
       const hit = monsters.shoot(_muzzle, _aim, SHOT_RANGE);
+      vexo.fire();                      // muzzle flash on the gun itself
       onShot(_muzzle, _aim, hit);
     }
     // Pistol out while he is shooting or has just shot; away otherwise.

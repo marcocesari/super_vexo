@@ -141,6 +141,37 @@ check('and it does not slide about while he moves',
   hairHold != null && hairHold.spread < 0.002,
   hairHold ? `${(hairHold.spread * 1000).toFixed(1)}mm of drift over ${hairHold.samples} samples` : '');
 
+// --- The pistol ----------------------------------------------------------------
+// There is one gun, and drawing it MOVES it: the same group is
+// reparented from the thigh into the hand. Build a second one by mistake
+// and the holster stays full while he shoots, which looks like nothing
+// at all until you notice he has two.
+const pistol = await page.evaluate(() => {
+  const v = window.__superVexo.characterViewer;
+  const root = v.vexo.group;
+  v.vexo.setArmed(false);
+  v.vexo.update(0.016);
+  const gun = v.vexo.pistol?.group;
+  if (!gun) return null;
+  const stowedUnder = gun.parent.uuid;
+  v.vexo.setArmed(true);
+  v.vexo.update(0.016);
+  const drawnUnder = gun.parent.uuid;
+  const guns = [];
+  root.traverse((o) => { if (o === gun) guns.push(o); });
+  v.vexo.setArmed(false);
+  v.vexo.update(0.016);
+  return {
+    moved: stowedUnder !== drawnUnder,
+    backHome: gun.parent.uuid === stowedUnder,
+    copies: guns.length,
+  };
+});
+check('he has a pistol', pistol != null);
+check('drawing it moves the one he has', pistol != null && pistol.moved && pistol.copies === 1,
+  pistol ? `${pistol.copies} gun(s), moved=${pistol.moved}` : '');
+check('and holstering puts it back', pistol != null && pistol.backHome);
+
 // --- The turntable turns -----------------------------------------------------
 const turning = await page.evaluate(async () => {
   const viewer = window.__superVexo.characterViewer;

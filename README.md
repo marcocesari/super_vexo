@@ -253,6 +253,16 @@ Lose all five hearts and Vexo goes down, and wakes up back in the ship with his
 hearts refilled and the camps back where they were. Nothing else in this game
 has a losing screen and this didn't seem the place to introduce one.
 
+The pistol itself is `src/world/pistol.js`, built to a real compact pistol's
+proportions — 181 mm long, 130 mm tall, 32 mm wide, with a 99 mm barrel — and
+its parts carry their real names: slide, serrations, ejection port, barrel,
+frame, accessory rail, trigger guard, trigger, grip at about twenty degrees off
+vertical, magazine baseplate, and front and rear sights with a sight radius
+between them. The sci-fi is only skin deep: a lit strip down each side of the
+slide and a cell in the magazine well, in the same green as his suit. There is
+exactly one gun — drawing it reparents that group from his thigh into his hand
+rather than building a second one — and it flashes at the muzzle when it fires.
+
 Shooting has a soft lock: anything within about forty degrees of where he's
 facing gets shot at, and he turns to it. Aiming is still yours — a monster
 circling behind you needs turning to — but lining up a moving target with a
