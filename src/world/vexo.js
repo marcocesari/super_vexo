@@ -547,6 +547,12 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
   mic.position.set(-0.048, 1.588, 0.097);
   body.add(mic);
 
+  // Hands, kept so they can be posed. A hand at rest and a hand closed
+  // round a pistol grip are different shapes, and the difference is
+  // most of what tells you he is holding something.
+  const hands = [];
+  const handGroups = [];
+
   // --- Arms -----------------------------------------------------------------
   // Two groups per arm, not one: the shoulder swings the whole arm and
   // the elbow swings everything below it. A single group can only make
@@ -623,6 +629,7 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     hand.position.set(0, -0.28, 0.004);
     hand.rotation.y = -side * 1.15;
     forearm.add(hand);
+    handGroups.push(hand);
 
     const palm = plate(0.056, 0.078, 0.032, suit, 0, 0.004, 0, 0.018);
     palm.rotation.x = 0.06;
@@ -635,33 +642,28 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     hand.add(knuckles);
 
     // index → little: longer to shorter, straighter to more curled.
+    // Two curls per finger: `open` is a hand hanging at rest, `grip` is
+    // the same hand closed round a pistol. Index closes least of the
+    // four, because it is not on the grip at all — it is on the trigger.
     const FINGERS = [
-      { len: 0.044, r: 0.0078, curl: 0.30, splay: 0.05 },
-      { len: 0.047, r: 0.0080, curl: 0.36, splay: 0.02 },
-      { len: 0.043, r: 0.0075, curl: 0.44, splay: -0.02 },
-      { len: 0.035, r: 0.0068, curl: 0.52, splay: -0.06 },
+      { len: 0.044, r: 0.0078, open: 0.30, grip: 1.15, splay: 0.05 },
+      { len: 0.047, r: 0.0080, open: 0.36, grip: 1.75, splay: 0.02 },
+      { len: 0.043, r: 0.0075, open: 0.44, grip: 1.85, splay: -0.02 },
+      { len: 0.035, r: 0.0068, open: 0.52, grip: 1.9, splay: -0.06 },
     ];
+    const fingerParts = [];
     for (const [f, spec] of FINGERS.entries()) {
       const finger = new THREE.Mesh(
         new THREE.CapsuleGeometry(spec.r, spec.len, 3, 8), suit,
       );
-      // Hung from the knuckle rather than placed by their middles, so
-      // the curl swings the tip and not the whole finger.
-      const reach = spec.len / 2 + 0.006;
-      finger.position.set(
-        (f - 1.5) * 0.0165 * side,
-        -0.037 - Math.cos(spec.curl) * reach,
-        0.003 + Math.sin(spec.curl) * reach,
-      );
-      finger.rotation.set(spec.curl, 0, spec.splay * side);
+      fingerParts.push({ mesh: finger, spec, index: f, side });
       hand.add(finger);
     }
     // Thumb: out on the leading edge of the palm and swung across it —
     // which, once the wrist is turned, is the front of the hand.
     const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.0092, 0.032, 3, 8), suit);
-    thumb.position.set(side * 0.028, -0.016, 0.014);
-    thumb.rotation.set(0.5, 0, -side * 0.7);
     hand.add(thumb);
+    hands.push({ group: hand, fingers: fingerParts, thumb, side });
 
     // The lit panel on the outside of the gauntlet.
     const panel = plate(0.034, 0.052, 0.008, panelMat, side * 0.055, -0.145, 0.004, 0.008);
@@ -808,6 +810,42 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
   }
 
   /**
+   * Pose one hand between hanging open (0) and closed round a grip (1).
+   *
+   * From the photographs Marco took of a hand on a pistol: three fingers
+   * wrap the front of the grip and close TIGHT, the index goes forward
+   * onto the trigger rather than round the grip, and the thumb lies
+   * along the far side of the frame pointing at the target. The web
+   * between thumb and index sits high against the back of the grip,
+   * which is why the gun is mounted where it is below.
+   */
+  function poseHand(hand, grip) {
+    for (const { mesh, spec, index, side } of hand.fingers) {
+      const curl = spec.open + (spec.grip - spec.open) * grip;
+      // Placed from the knuckle by the curl, so closing swings the tip
+      // in rather than sliding the whole finger through the palm.
+      const reach = spec.len / 2 + 0.006;
+      mesh.position.set(
+        (index - 1.5) * 0.0165 * side,
+        -0.037 - Math.cos(curl) * reach,
+        0.003 + Math.sin(curl) * reach,
+      );
+      mesh.rotation.set(curl, 0, spec.splay * side * (1 - grip * 0.6));
+    }
+    const t = hand.thumb;
+    const side = hand.side;
+    // Rest: out to the side of the palm. Gripping: laid forward along
+    // the frame, which is what stops the hand reading as a fist with a
+    // gun stuck through it.
+    t.position.set(
+      side * (0.028 - 0.006 * grip),
+      -0.016 - 0.012 * grip,
+      0.014 + 0.022 * grip,
+    );
+    t.rotation.set(0.5 + grip * 0.85, 0, -side * (0.7 - grip * 0.45));
+  }
+
+  /**
    * Holstered: muzzle down along the thigh, butt up and canted back so
    * a hand could actually take it. The model points +Z, so "down the
    * leg" is a quarter turn about X.
@@ -827,18 +865,38 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
   function setArmed(on) {
     if (on === armed || !pistol) return;
     armed = on;
-    const gunArm = arms.find((a) => a.side > 0);
+    const gunHand = hands.find((h) => h.side > 0);
     if (on) {
-      gunArm.forearm.add(pistol.group);
-      // In the fist, muzzle along the forearm. The arm is raised by the
-      // aiming pose, so the gun only has to sit straight in the hand.
-      pistol.group.position.set(0, -0.305, 0.035);
-      pistol.group.rotation.set(1.35, 0, 0);
+      // Into the HAND, not the forearm. The pistol's origin is the top
+      // of its grip — the point the web of the hand closes on — so it
+      // belongs at the palm, with the slide riding above the knuckles
+      // and the barrel carrying on down the line of the forearm. Hung
+      // off the forearm instead, as it was, the gun floats out past the
+      // fist and nothing is holding it.
+      // On the FOREARM, at the point the fist closes, rather than on the
+      // hand itself: the wrist is turned three-quarters over, and a gun
+      // parented through that rotation has to be aligned by trial. The
+      // forearm's axes are plain — -Y runs down the arm — so the barrel
+      // is one quarter turn from lying along it.
+      //
+      // The pistol's origin is the top of its grip, the point the web of
+      // the hand closes on, so putting that origin AT the fist is what
+      // makes the slide ride above the knuckles and the grip sit inside
+      // the fingers. Hung further out, as it was, the gun floats past
+      // the hand and nothing is holding it.
+      gunArmOf(gunHand).forearm.add(pistol.group);
+      pistol.group.position.set(gunHand.side * 0.006, -0.288, 0.012);
+      pistol.group.rotation.set(Math.PI / 2, 0, -gunHand.side * 0.12);
+      poseHand(gunHand, 1);
     } else {
       holsterMount.add(pistol.group);
       stowPistol();
+      poseHand(gunHand, 0);
     }
   }
+
+  /** The arm a given hand belongs to. */
+  function gunArmOf(hand) { return arms.find((a) => a.side === hand.side); }
 
   /** A round went off: muzzle flash. */
   function firePistol() {
@@ -1247,6 +1305,10 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     // pointed where he is facing, and held still while everything else
     // carries on underneath it.
     if (armed) {
+      // The wrist turns a little further over when he grips: a hand on
+      // a pistol is not the hand that hangs beside a thigh.
+      const gunHand = hands.find((h) => h.side > 0);
+      gunHand.group.rotation.y = -gunHand.side * 1.45;
       const gunArm = arms.find((a) => a.side > 0);
       gunArm.shoulder.rotation.x = -1.42;
       gunArm.shoulder.rotation.z = gunArm.side * 0.06;
@@ -1255,6 +1317,9 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
       const other = arms.find((a) => a.side < 0);
       other.shoulder.rotation.x = Math.min(other.shoulder.rotation.x, -0.35);
       other.forearm.rotation.x = -0.9;
+    } else {
+      const gunHand = hands.find((h) => h.side > 0);
+      gunHand.group.rotation.y = -gunHand.side * 1.15;
     }
   }
 

@@ -172,6 +172,39 @@ check('drawing it moves the one he has', pistol != null && pistol.moved && pisto
   pistol ? `${pistol.copies} gun(s), moved=${pistol.moved}` : '');
 check('and holstering puts it back', pistol != null && pistol.backHome);
 
+// Marco photographed a hand on a pistol to show how it should be held:
+// three fingers wrapped tight round the grip, the index forward on the
+// trigger, the web of the hand high on the back of it. So drawing has to
+// CLOSE the hand — a gun floating in an open palm is the thing those
+// photographs were about.
+const grip = await page.evaluate(() => {
+  const v = window.__superVexo.characterViewer;
+  // Search the whole figure: the pistol starts in the holster, so its
+  // parent is a leg at this point, not the arm.
+  const fingers = [];
+  v.vexo.group.traverse((o) => {
+    if (o.isMesh && o.geometry.type === 'CapsuleGeometry'
+        && o.geometry.parameters.radius < 0.009) fingers.push(o);
+  });
+  const snapshot = () => fingers.map((f) => +f.position.z.toFixed(4));
+  v.vexo.setArmed(false);
+  v.vexo.update(0.016);
+  const open = snapshot();
+  v.vexo.setArmed(true);
+  v.vexo.update(0.016);
+  const closed = snapshot();
+  v.vexo.setArmed(false);
+  return {
+    fingers: fingers.length,
+    // Curling swings the tips forward, so every one of them should have
+    // moved, and all in the same direction.
+    moved: open.filter((z, i) => closed[i] - z > 0.005).length,
+  };
+});
+check('drawing closes his hand round the grip',
+  grip.fingers >= 4 && grip.moved >= 4,
+  `${grip.moved} of ${grip.fingers} fingers curled in`);
+
 // --- The turntable turns -----------------------------------------------------
 const turning = await page.evaluate(async () => {
   const viewer = window.__superVexo.characterViewer;
