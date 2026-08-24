@@ -547,6 +547,9 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
   mic.position.set(-0.048, 1.588, 0.097);
   body.add(mic);
 
+  // See the note where the hands are built.
+  const HAND_SCALE = 1.25;
+
   // Hands, kept so they can be posed. A hand at rest and a hand closed
   // round a pistol grip are different shapes, and the difference is
   // most of what tells you he is holding something.
@@ -628,6 +631,14 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     const hand = new THREE.Group();
     hand.position.set(0, -0.28, 0.004);
     hand.rotation.y = -side * 1.15;
+    // His hands were built at about two thirds of life size: 44 mm
+    // fingers on a 1.8 m man, where a real one has 80 to 100. It never
+    // showed while they hung empty — and then he picked up a pistol
+    // built to a real one's dimensions and could not close a fist round
+    // it. A closed fist that small makes a tunnel 14 mm deep and the
+    // grip is 32 mm, so no amount of moving the gun about was ever
+    // going to look like a hold.
+    hand.scale.setScalar(HAND_SCALE);
     forearm.add(hand);
     handGroups.push(hand);
 
@@ -651,13 +662,23 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
       { len: 0.043, r: 0.0075, open: 0.44, grip: 1.85, splay: -0.02 },
       { len: 0.035, r: 0.0068, open: 0.52, grip: 1.9, splay: -0.06 },
     ];
+    // TWO BONES a finger, not one. A rigid finger cannot wrap anything:
+    // the best it can do is lie tangent to the grip and stick out past
+    // it, which is precisely what "the hand still isn't on it" looked
+    // like. With a second joint the near bone crosses the front of the
+    // grip and the far one turns back toward the palm, which is what a
+    // hand closed on something actually does.
     const fingerParts = [];
     for (const [f, spec] of FINGERS.entries()) {
-      const finger = new THREE.Mesh(
-        new THREE.CapsuleGeometry(spec.r, spec.len, 3, 8), suit,
+      const near = new THREE.Mesh(
+        new THREE.CapsuleGeometry(spec.r, spec.len * 0.55, 3, 8), suit,
       );
-      fingerParts.push({ mesh: finger, spec, index: f, side });
-      hand.add(finger);
+      const far = new THREE.Mesh(
+        new THREE.CapsuleGeometry(spec.r * 0.86, spec.len * 0.42, 3, 8), suit,
+      );
+      fingerParts.push({ near, far, spec, index: f, side });
+      hand.add(near);
+      hand.add(far);
     }
     // Thumb: out on the leading edge of the palm and swung across it —
     // which, once the wrist is turned, is the front of the hand.
@@ -820,17 +841,36 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
    * which is why the gun is mounted where it is below.
    */
   function poseHand(hand, grip) {
-    for (const { mesh, spec, index, side } of hand.fingers) {
-      const curl = spec.open + (spec.grip - spec.open) * grip;
-      // Placed from the knuckle by the curl, so closing swings the tip
-      // in rather than sliding the whole finger through the palm.
-      const reach = spec.len / 2 + 0.006;
-      mesh.position.set(
-        (index - 1.5) * 0.0165 * side,
-        -0.037 - Math.cos(curl) * reach,
-        0.003 + Math.sin(curl) * reach,
+    for (const { near, far, spec, index, side } of hand.fingers) {
+      // The knuckle each finger swings from.
+      const kx = (index - 1.5) * 0.0165 * side;
+      const ky = -0.037;
+      const kz = 0.003;
+      const bendA = spec.open + (spec.grip - spec.open) * grip;
+      // The second joint follows the first and then some — a closed
+      // hand folds harder at the middle knuckle than at the base.
+      const bendB = bendA + (0.35 + 1.15 * grip);
+      const lenA = spec.len * 0.55;
+      const lenB = spec.len * 0.42;
+
+      // Near bone: hung from the knuckle, so the bend swings the far end
+      // rather than sliding the whole bone through the palm.
+      near.position.set(
+        kx,
+        ky - Math.cos(bendA) * lenA * 0.5,
+        kz + Math.sin(bendA) * lenA * 0.5,
       );
-      mesh.rotation.set(curl, 0, spec.splay * side * (1 - grip * 0.6));
+      near.rotation.set(bendA, 0, spec.splay * side * (1 - grip * 0.6));
+
+      // Far bone: hung from the end of the near one, folded further.
+      const jointY = ky - Math.cos(bendA) * lenA;
+      const jointZ = kz + Math.sin(bendA) * lenA;
+      far.position.set(
+        kx,
+        jointY - Math.cos(bendB) * lenB * 0.5,
+        jointZ + Math.sin(bendB) * lenB * 0.5,
+      );
+      far.rotation.set(bendB, 0, spec.splay * side * (1 - grip * 0.6));
     }
     const t = hand.thumb;
     const side = hand.side;
@@ -873,30 +913,59 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
       // and the barrel carrying on down the line of the forearm. Hung
       // off the forearm instead, as it was, the gun floats out past the
       // fist and nothing is holding it.
-      // On the FOREARM, at the point the fist closes, rather than on the
-      // hand itself: the wrist is turned three-quarters over, and a gun
-      // parented through that rotation has to be aligned by trial. The
-      // forearm's axes are plain — -Y runs down the arm — so the barrel
-      // is one quarter turn from lying along it.
+      // The gun goes in the HAND, and the WRIST turns to hold it.
       //
-      // The pistol's origin is the top of its grip, the point the web of
-      // the hand closes on, so putting that origin AT the fist is what
-      // makes the slide ride above the knuckles and the grip sit inside
-      // the fingers. Hung further out, as it was, the gun floats past
-      // the hand and nothing is holding it.
-      gunArmOf(gunHand).forearm.add(pistol.group);
-      pistol.group.position.set(gunHand.side * 0.006, -0.288, 0.012);
-      pistol.group.rotation.set(Math.PI / 2, 0, -gunHand.side * 0.12);
+      // This is the correction Marco's photographs were about, and it is
+      // not a nudge. A hand hanging by a thigh has its fingers pointing
+      // DOWN THE ARM; a hand on a pistol has them wrapped ACROSS the
+      // grip, perpendicular to the barrel, with the palm pressed to the
+      // back of the grip and the thumb along the frame. Hung off the
+      // forearm as it was, the fingers closed on the slide and the grip
+      // dangled past them with nothing holding it.
+      //
+      // So both are set from a basis rather than by guessing at Euler
+      // angles. In the raised arm the forearm's axes come out as
+      // -Y forward, +Z up, +X across; from there:
+      //
+      //   the fingers (hand -Y) must point ACROSS      → hand +Y ↦ +X
+      //   the palm (hand +Z) must face the muzzle      → hand +Z ↦ -Y
+      //   which leaves                                    hand +X ↦ -Z
+      //
+      // and then the gun sits in that hand as a quarter turn about Z:
+      // barrel along the palm's normal, grip down across the fingers.
+      gunHand.group.quaternion.setFromRotationMatrix(
+        _basis.makeBasis(GRIP_X, GRIP_Y, GRIP_Z),
+      );
+      gunHand.group.add(pistol.group);
+      // The hand is scaled up; the gun is not. Undo the parent's scale
+      // so the pistol stays the size of a pistol.
+      pistol.group.scale.setScalar(1 / HAND_SCALE);
+      // Sat so the grip runs THROUGH THE TUNNEL the curled fingers make
+      // with the palm, rather than resting on top of it. In hand space
+      // the grip runs along +X, so its axis stays at one (y, z) — and
+      // that point has to be the middle of the curl, not the middle of
+      // the palm. Measured: the knuckles are at y -0.037, the fingertips
+      // come up to z 0.030, so the tunnel's centre is about (-0.030,
+      // 0.018). Two centimetres higher, which is where this was, and the
+      // fingers close underneath the gun and hold nothing.
+      // In the hand's own (scaled) units, so the numbers are smaller
+      // than the metres they end up as.
+      pistol.group.position.set(-0.030, -0.024, 0.019);
+      pistol.group.rotation.set(0, 0, Math.PI / 2);
       poseHand(gunHand, 1);
     } else {
       holsterMount.add(pistol.group);
+      pistol.group.scale.setScalar(1);
       stowPistol();
       poseHand(gunHand, 0);
     }
   }
 
-  /** The arm a given hand belongs to. */
-  function gunArmOf(hand) { return arms.find((a) => a.side === hand.side); }
+  // The wrist, as a basis rather than as Euler angles — see setArmed.
+  const GRIP_X = new THREE.Vector3(0, 0, -1);
+  const GRIP_Y = new THREE.Vector3(1, 0, 0);
+  const GRIP_Z = new THREE.Vector3(0, -1, 0);
+  const _basis = new THREE.Matrix4();
 
   /** A round went off: muzzle flash. */
   function firePistol() {
@@ -1305,10 +1374,8 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     // pointed where he is facing, and held still while everything else
     // carries on underneath it.
     if (armed) {
-      // The wrist turns a little further over when he grips: a hand on
-      // a pistol is not the hand that hangs beside a thigh.
-      const gunHand = hands.find((h) => h.side > 0);
-      gunHand.group.rotation.y = -gunHand.side * 1.45;
+      // The wrist stays where setArmed put it — the grip basis — while
+      // the arm swings underneath.
       const gunArm = arms.find((a) => a.side > 0);
       gunArm.shoulder.rotation.x = -1.42;
       gunArm.shoulder.rotation.z = gunArm.side * 0.06;
@@ -1319,7 +1386,7 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
       other.forearm.rotation.x = -0.9;
     } else {
       const gunHand = hands.find((h) => h.side > 0);
-      gunHand.group.rotation.y = -gunHand.side * 1.15;
+      gunHand.group.rotation.set(0, -gunHand.side * 1.15, 0);
     }
   }
 
