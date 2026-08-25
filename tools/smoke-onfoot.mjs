@@ -306,6 +306,45 @@ check('and it stops when he stops sprinting',
   musicAfter.paused && musicAfter.volume === 0,
   `${musicAfter.paused ? 'paused' : 'still playing'} at volume ${musicAfter.volume}`);
 
+// --- Shots come out of the gun ------------------------------------------------
+// They used to start at a point on his chest, because that is what the
+// code picked when it needed somewhere to draw from. Nothing about
+// aiming fixes where a line STARTS, and it is obvious the moment you
+// fire: a tracer out of his sternum.
+await page.keyboard.down('Space');
+const shotFrom = await page.evaluate(async () => {
+  const g = window.__superVexo;
+  const f = g.onFoot;
+  const V = f.position.constructor;
+  const muzzle = new V();
+  let start = null;
+  let atMuzzle = null;
+  // Tracers live 90ms, so watch a few frames rather than sampling one.
+  for (let i = 0; i < 120 && !start; i++) {
+    await new Promise((r) => requestAnimationFrame(r));
+    for (const line of g.tracers.group.children) {
+      if (!line.visible || start) continue;
+      const p = line.geometry.attributes.position;
+      start = new V(p.getX(0), p.getY(0), p.getZ(0));
+      atMuzzle = f.vexo.getMuzzle(muzzle) ? muzzle.clone() : null;
+    }
+  }
+  if (!start || !atMuzzle) return null;
+  const chest = f.position.clone();
+  chest.y += 1.12;
+  return {
+    fromMuzzle: +start.distanceTo(atMuzzle).toFixed(3),
+    fromChest: +start.distanceTo(chest).toFixed(3),
+  };
+});
+await page.keyboard.up('Space');
+check('the shot comes out of the muzzle',
+  shotFrom != null && shotFrom.fromMuzzle < 0.05,
+  shotFrom ? `${shotFrom.fromMuzzle}m from the barrel` : 'no tracer seen');
+check('and not out of his chest',
+  shotFrom != null && shotFrom.fromChest > 0.3,
+  shotFrom ? `${shotFrom.fromChest}m from where it used to start` : '');
+
 // --- The stamina wheel --------------------------------------------------------
 const stamina = await page.evaluate(async () => {
   const g = window.__superVexo;

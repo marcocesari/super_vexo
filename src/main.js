@@ -516,7 +516,7 @@ if (import.meta.env.DEV) {
     ship, asteroids, audio, fastTravel, physics,
     renderer, camera,
     rovers: roverApi, mission, upgrades, missionScreens, surface, frameScaler,
-    characterViewer, onFoot, monsters,
+    characterViewer, onFoot, monsters, tracers,
     shipConfig, shipConfigDefaults,
     resetGame,
   };

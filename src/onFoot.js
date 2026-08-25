@@ -878,7 +878,17 @@ export function createOnFoot({
     if (firing && shotCooldown <= 0 && monsters) {
       shotCooldown = SHOT_INTERVAL;
       drawnFor = HOLSTER_AFTER;
-      _muzzle.copy(foot).addScaledVector(UP, VEXO_HEIGHT * 0.62);
+      // From the END OF THE BARREL, which the gun can be asked for.
+      // Taking a point on his chest instead — which is what this did —
+      // draws every tracer out of his sternum, and no amount of aiming
+      // fixes where a line starts.
+      //
+      // He may not have the gun up yet on the first shot of a burst, so
+      // fall back to the chest for that one frame rather than skipping
+      // the shot.
+      if (!vexo.getMuzzle(_muzzle)) {
+        _muzzle.copy(foot).addScaledVector(UP, VEXO_HEIGHT * 0.62);
+      }
       // Soft lock: anything within thirty degrees of where he is facing
       // gets shot AT, rather than requiring the player to line a moving
       // target up with a thumbstick.
@@ -890,7 +900,6 @@ export function createOnFoot({
       } else {
         _aim.set(Math.sin(heading), 0, Math.cos(heading));
       }
-      _muzzle.addScaledVector(_aim, 0.35);
       const hit = monsters.shoot(_muzzle, _aim, SHOT_RANGE);
       vexo.fire();                      // muzzle flash on the gun itself
       onShot(_muzzle, _aim, hit);

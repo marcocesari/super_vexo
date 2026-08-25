@@ -134,9 +134,28 @@ export function createPistol({ metal, polymer, glow }) {
   group.add(flash);
 
   let flashLeft = 0;
+  // Where the bullet leaves, in the gun's own space: the end of the
+  // barrel, on its centreline.
+  const MUZZLE = new THREE.Vector3(0, 0.022, LENGTH * 0.5);
 
   return {
     group,
+    /**
+     * The muzzle in WORLD space. Whatever draws the shot should start
+     * here — the alternative is picking a point on the character and
+     * hoping, which is how you end up with tracers coming out of his
+     * chest.
+     */
+    getMuzzle(out) {
+      group.updateWorldMatrix(true, false);
+      return out.copy(MUZZLE).applyMatrix4(group.matrixWorld);
+    },
+    /** Which way the barrel is pointing, in world space. */
+    getAim(out) {
+      group.updateWorldMatrix(true, false);
+      const e = group.matrixWorld.elements;
+      return out.set(e[8], e[9], e[10]).normalize();
+    },
     /** Called when a shot goes off. */
     fire() {
       flashLeft = 0.055;

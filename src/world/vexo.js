@@ -1398,6 +1398,15 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     fire: firePistol,
     /** The sidearm, for tests and for anything that wants to inspect it. */
     get pistol() { return pistol; },
+    /**
+     * Where a shot comes out, in world space. Armed, that is the end of
+     * the barrel; unarmed there is no muzzle, so callers get null and
+     * can decide for themselves.
+     */
+    getMuzzle(out) {
+      if (!armed || !pistol) return null;
+      return pistol.getMuzzle(out);
+    },
 
     /**
      * @param {'idle'|'walk'|'climb'} mode
