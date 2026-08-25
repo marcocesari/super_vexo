@@ -40,6 +40,8 @@ import { createFrameScaler } from './perf.js';
 import { createCharacterViewer } from './characterViewer.js';
 import { createOnFoot } from './onFoot.js';
 import { createMonsters } from './monsters.js';
+import { createInventory } from './inventory.js';
+import { strings } from './strings.js';
 import { createTracers } from './world/tracers.js';
 
 // --- URL switches -----------------------------------------------------------
@@ -248,6 +250,12 @@ createViewport(renderer.domElement, applyViewportSize);
 const monsters = createMonsters({ scene, town: surface.town, origin: SURFACE_ORIGIN });
 const tracers = createTracers(scene);
 
+// The inventory: what he is carrying, and Vexo himself to turn round.
+const inventory = createInventory({ renderer, input });
+inventory.setItems([
+  { name: strings.inventory.starterGun, note: strings.inventory.starterGunNote, held: true },
+]);
+
 // Getting out and walking around: set the ship down in town and this
 // takes the ship, the camera and the input until Vexo climbs back in.
 const onFoot = createOnFoot({
@@ -396,8 +404,21 @@ function frame(now) {
       const dir = stick || dpad;
       if (dir) missionScreens.scrollBy(dir * MENU_SCROLL_SPEED * dt);
     }
-    // Reset: R key or pad Start.
-    if (input.keyboard.consumeJustPressed(['KeyR']) || input.gamepad.consumeJustPressed(BUTTONS.Start)) {
+    // Inventory: E, or "+" on a pad — which is Start, where a Nintendo
+    // pad prints the plus. Reset moved off Start to make room and lives
+    // on L3 (click the left stick) as well as R.
+    if (input.keyboard.consumeJustPressed(['KeyE'])
+        || input.gamepad.consumeJustPressed(BUTTONS.Start)) {
+      inventory.toggle();
+    }
+    // Closing it with the same button everything else closes with.
+    if (inventory.isOpen
+        && (input.gamepad.consumeJustPressed(BUTTONS.B)
+            || input.keyboard.consumeJustPressed(['Escape']))) {
+      inventory.close();
+    }
+    // Reset: R key, or clicking the left stick.
+    if (input.keyboard.consumeJustPressed(['KeyR']) || input.gamepad.consumeJustPressed(BUTTONS.L3)) {
       resetGame();
     }
 
@@ -407,7 +428,14 @@ function frame(now) {
     // `null` axes means the stick belongs to something else this frame.
     const footAxes = (missionScreens.isOpen() || fastTravel.suppressInput) ? null : axes;
 
-    if (onFoot.active) {
+    // With the inventory up, the stick turns the figure and nothing
+    // else: no flying, no walking, no shooting.
+    if (inventory.isOpen) {
+      inventory.update(dt, axes);
+      audio.setThrottle(0);
+      audio.setSprinting(false);
+      if (surface.active) surface.update(ship, dt);
+    } else if (onFoot.active) {
       // Out of the ship. `surface.update` still runs — it keeps the town
       // animating and the banner counting down — but it returns early
       // while parked rather than flying the ship anywhere.
@@ -477,6 +505,9 @@ function frame(now) {
   if (!onFoot.active) chaseCamera.update(ship, look, dt);
 
   renderer.render(scene, camera);
+  // …and the inventory's own figure over the top of it, into its corner
+  // of the same canvas.
+  inventory.render();
 
   // HUD reflects state every frame so values are live.
   _euler.setFromQuaternion(ship.mesh.quaternion, 'YXZ');
@@ -516,7 +547,7 @@ if (import.meta.env.DEV) {
     ship, asteroids, audio, fastTravel, physics,
     renderer, camera,
     rovers: roverApi, mission, upgrades, missionScreens, surface, frameScaler,
-    characterViewer, onFoot, monsters, tracers,
+    characterViewer, onFoot, monsters, tracers, inventory,
     shipConfig, shipConfigDefaults,
     resetGame,
   };

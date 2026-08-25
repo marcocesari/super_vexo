@@ -707,6 +707,11 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
   let pistol = null;
   let holsterMount = null;
   let armed = false;
+  // Armed and AIMING is arm-out, level, pointed at something. Armed and
+  // not aiming is the gun in his hand by his side — which is how you
+  // want him standing in a menu, where an outstretched arm reads as a
+  // man about to shoot the furniture.
+  let aim = true;
 
   const legs = [];
   for (const side of [-1, 1]) {
@@ -902,7 +907,8 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
    * the hand on the same side as the holster — a cross-draw looks
    * ridiculous on a figure whose arms don't cross the body.
    */
-  function setArmed(on) {
+  function setArmed(on, aiming = true) {
+    aim = aiming;
     if (on === armed || !pistol) return;
     armed = on;
     const gunHand = hands.find((h) => h.side > 0);
@@ -1377,13 +1383,15 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
       // The wrist stays where setArmed put it — the grip basis — while
       // the arm swings underneath.
       const gunArm = arms.find((a) => a.side > 0);
-      gunArm.shoulder.rotation.x = -1.42;
-      gunArm.shoulder.rotation.z = gunArm.side * 0.06;
-      gunArm.forearm.rotation.x = -0.16;
+      gunArm.shoulder.rotation.x = aim ? -1.42 : -0.28;
+      gunArm.shoulder.rotation.z = gunArm.side * (aim ? 0.06 : 0.13);
+      gunArm.forearm.rotation.x = aim ? -0.16 : -0.55;
       // The other arm tucks in rather than swinging about.
-      const other = arms.find((a) => a.side < 0);
-      other.shoulder.rotation.x = Math.min(other.shoulder.rotation.x, -0.35);
-      other.forearm.rotation.x = -0.9;
+      if (aim) {
+        const other = arms.find((a) => a.side < 0);
+        other.shoulder.rotation.x = Math.min(other.shoulder.rotation.x, -0.35);
+        other.forearm.rotation.x = -0.9;
+      }
     } else {
       const gunHand = hands.find((h) => h.side > 0);
       gunHand.group.rotation.set(0, -gunHand.side * 1.15, 0);

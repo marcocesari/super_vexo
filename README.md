@@ -76,6 +76,11 @@ Then open http://localhost:5173.
 - **Shift / B (hold)** — sprint (6.2 m/s), for as long as your stamina lasts
 - **Space / X** — shoot. He draws the pistol off his thigh and holsters it again
   a few seconds after the last shot
+- **E, or + on a pad** — the inventory. Weapons down the left, and Vexo on the
+  right: drag him, or hold A / D, to turn him round and look at his kit from any
+  side. He's a real model in a real scene, drawn into that corner of the game's
+  own canvas, so he can never go stale the way a picture of him would. Escape or
+  B closes it
 - **Right stick, or turning the phone** — swing the camera around him. Push and
   it keeps turning; let go and it stays where you left it. Walking forward
   eases it back behind him on its own, so there's no button to press

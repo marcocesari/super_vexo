@@ -41,6 +41,17 @@ export const strings = {
     controls: 'W A S D / stick — walk · Shift / B — sprint',
   },
 
+  // The inventory screen (E, or + on a pad).
+  inventory: {
+    title: 'GEAR',
+    weapons: 'Weapons',
+    empty: 'Nothing yet.',
+    hint: 'E / + — close · B / Esc — back',
+    turnHint: 'Drag, or A / D, to turn him',
+    starterGun: 'Sidearm',
+    starterGunNote: 'Equipped',
+  },
+
   hud: {
     appName: 'Tablet',
     velocity: 'VEL',
@@ -69,7 +80,7 @@ export const strings = {
     missionCompleteCta: 'Open Upgrades',
     missionCompleteClose: 'Continue Flying',
 
-    resetHint: 'Start / R = reset',
+    resetHint: 'L3 / R = reset',
 
     tabletHint: '− / T = Tablet',
   },
