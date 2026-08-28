@@ -581,10 +581,17 @@ export function createMonsters({ scene, world, origin }) {
       }
     },
 
-    /** Everything back where it started — used when the player dies. */
+    /**
+     * Everything back where it started — used when the player dies.
+     *
+     * The camps stay where they are. They belong to squares of the
+     * world, not to this list, so "back where it started" means the
+     * monsters standing round their fires again with their health back,
+     * not the camps moving. Clearing the squares here left the camps
+     * with no position at all until the player next moved far enough to
+     * re-pitch them.
+     */
     reset() {
-      for (const camp of camps) camp.cell = null;
-      lastFocus.set(Infinity, Infinity);
       for (const m of monsters) {
         m.pos.copy(m.home);
         m.state = 'idle';

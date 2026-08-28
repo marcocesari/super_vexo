@@ -8,29 +8,48 @@
 // Instead it carries a patch of ground around with the player, in four
 // rings of decreasing detail:
 //
-//   ring 0    64 m tiles, a vertex every 4 m   — what he walks on
-//   ring 1   256 m tiles, a vertex every 16 m  — the near distance
-//   ring 2  1024 m tiles, a vertex every 64 m  — the far distance
-//   ring 3  4096 m tiles, a vertex every 256 m — the horizon
+//   ring 0    64 m tiles, a vertex every  4 m  — what he walks on
+//   ring 1   128 m tiles, a vertex every  8 m
+//   ring 2   256 m tiles, a vertex every 16 m  — the near distance
+//    ...                                        each twice the last
+//   ring 6  4096 m tiles, a vertex every 256 m — the horizon
 //
 // Each ring is the same number of tiles, so each costs the same to draw
-// while covering sixteen times the ground of the one inside it: the
-// whole thing reaches twenty kilometres for about sixty thousand
-// triangles. When the player moves far enough that a ring's centre
+// while covering four times the ground of the one inside it: the whole
+// thing reaches twelve kilometres for about thirty thousand triangles.
+// Doubling rather than quadrupling matters — see the note on hollow
+// rings below, which only works if a ring's hole is big enough to be
+// worth cutting. When the player moves far enough that a ring's centre
 // shifts by one tile, only the tiles that actually changed place are
 // refilled — moving one tile east rebuilds seven tiles, not forty-nine.
+//
+// The rings are HOLLOW: a ring does not draw the tiles that the finer
+// ring inside it already covers. That is not an optimisation, it is the
+// whole reason the ground stops flickering. Four sheets of ground lying
+// on top of one another look fine on a plain and fall apart on a hill:
+// a coarse sheet joins two points 16 m apart with a straight line, and
+// in a hollow that line passes ABOVE the fine ground it is supposed to
+// be under, so patches of the wrong surface show through and slide
+// about as you fly. Marco saw exactly that and called it glitchy. With
+// the middle cut out of every ring there is only ever one sheet.
 import * as THREE from 'three';
 import { createTerrain, BIOME, GROUND_COLOR, SEA_LEVEL, fromReal } from './terrain.js';
 
 // Tiles across each ring, odd so there is a middle one.
-const RING_TILES = 7;
+const RING_TILES = 6;
 // Vertices along a tile's edge. 17 gives 512 triangles a tile, and at
 // ring 0 that is a vertex every four metres — fine enough that a man
 // 1.8 m tall walks up a slope rather than up a staircase.
 const TILE_VERTS = 17;
 const RING0_TILE = 64;
-const RINGS = 4;
-const RING_STEP = 4;         // each ring's tiles are this many times bigger
+const RINGS = 7;
+// Each ring's tiles are twice the size of the one inside it. Four was
+// the first choice and it is what made the hollow rings pointless: with
+// tiles four times the size, the ring inside covers less than two of
+// them, so almost nothing can be cut out and the sheets went on lying
+// on top of one another. At two, the inner ring covers exactly three
+// tiles across, and the middle nine come out.
+const RING_STEP = 2;
 
 /** How far the drawn world reaches, in metres. */
 export const WORLD_REACH = (RING0_TILE * RING_STEP ** (RINGS - 1) * RING_TILES) / 2;
@@ -39,6 +58,13 @@ export const WORLD_REACH = (RING0_TILE * RING_STEP ** (RINGS - 1) * RING_TILES) 
 // does not become a forest across one triangle.
 const _c = new THREE.Color();
 const _c2 = new THREE.Color();
+// Filled in per vertex rather than allocated: a tile has 289 of them and
+// this runs while somebody is flying.
+const _sample = { height: 0, slopeDeg: 0, region: null };
+// How long a frame may spend building new ground. Three milliseconds of
+// a sixteen millisecond frame is enough to keep up with the ship and
+// small enough that nobody can see it go.
+const BUILD_BUDGET_MS = 3;
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const smooth = (a, b, v) => {
   const t = clamp01((v - a) / (b - a));
@@ -77,19 +103,26 @@ export function createPlanet({ seed = 20260827 } = {}) {
       step: tileSize / (TILE_VERTS - 1),
       // Which tile the middle of this ring sits on. Nothing yet.
       centre: { i: NaN, j: NaN },
+      holeKey: null,
       tiles: [],
+      spare: [],
       group: new THREE.Group(),
     };
     // Rings further out are drawn first, so the near ground paints over
     // the coarse ground it overlaps rather than fighting it.
     ring.group.renderOrder = RINGS - r;
-    for (let n = 0; n < RING_TILES * RING_TILES; n++) {
+    // A few more tiles than the ring needs. The extras are what let a
+    // new tile be built before the one it replaces is taken away.
+    for (let n = 0; n < RING_TILES * RING_TILES + 12; n++) {
       const geom = new THREE.PlaneGeometry(tileSize, tileSize, TILE_VERTS - 1, TILE_VERTS - 1);
       geom.rotateX(-Math.PI / 2);
       geom.setAttribute('color', new THREE.BufferAttribute(
         new Float32Array(TILE_VERTS * TILE_VERTS * 3), 3,
       ));
       const mesh = new THREE.Mesh(geom, groundMat);
+      // Named so tests can tell a piece of ground from the sea, which is
+      // also a big flat plane in this group.
+      mesh.name = `ground-r${r}`;
       mesh.receiveShadow = true;
       mesh.frustumCulled = true;
       mesh.matrixAutoUpdate = false;
@@ -100,10 +133,20 @@ export function createPlanet({ seed = 20260827 } = {}) {
     group.add(ring.group);
   }
 
-  // The inner rings sit on top of the coarse ones, and where they meet,
-  // the two disagree by a metre or so. Sinking each ring slightly as it
-  // gets coarser hides the seam: the fine ground always wins.
-  for (let r = 1; r < RINGS; r++) rings[r].group.position.y = -0.25 * r;
+  // Every ring covers the same ground as the ones inside it, so four
+  // sheets of ground lie on top of one another and the finest must
+  // always win. How far a ring can be wrong is set by how far apart its
+  // vertices are — a ring with a vertex every 256 m cuts corners off
+  // hills by tens of metres, not by a quarter of one — so each is sunk
+  // in proportion to its own spacing. A flat 0.25 m was nowhere near
+  // enough: the coarse ground poked up through the fine ground in
+  // patches that flickered as you flew.
+  // The rings no longer lie on top of one another, so this is only about
+  // the seam where two of them meet: the coarse side is sunk a little so
+  // that where they disagree, the finer ground is the one you see.
+  for (let r = 1; r < RINGS; r++) {
+    rings[r].group.position.y = -0.05 * rings[r].step;
+  }
 
   // --- The sea -----------------------------------------------------------------
   // One plane, kept under the player. Sea level is zero everywhere, so
@@ -182,48 +225,112 @@ export function createPlanet({ seed = 20260827 } = {}) {
     return out;
   }
 
-  /** Fill one tile with the ground at (i, j) of its ring. */
+  // Heights for one tile, with a two-vertex border all round, so a
+  // vertex on the tile's edge can still look at its neighbours. Scratch
+  // space, filled and re-filled: this runs while somebody is flying.
+  const BORDER = 2;
+  const GRID = TILE_VERTS + BORDER * 2;
+  const _grid = new Float64Array(GRID * GRID);
+
+  /**
+   * Fill one tile with the ground at (i, j) of its ring.
+   *
+   * The heights are sampled ONCE onto a grid and everything else is read
+   * back off it. The first version asked the terrain five separate
+   * questions per vertex — a height, and four more for the normal — and
+   * building a tile cost five times what it needed to. At speed the
+   * queue could not keep up and new ground arrived late.
+   */
   function fillTile(ring, tile, i, j) {
     const originX = i * ring.tileSize;
     const originZ = j * ring.tileSize;
     const pos = tile.mesh.geometry.attributes.position;
     const col = tile.mesh.geometry.attributes.color;
+    const nrm = tile.mesh.geometry.attributes.normal;
     const arr = pos.array;
     const carr = col.array;
-    // The plane's own vertices run -size/2..+size/2; the mesh is then
-    // placed at the tile's centre.
-    for (let v = 0, k = 0; v < TILE_VERTS * TILE_VERTS; v++, k += 3) {
-      const x = originX + arr[k];
-      const z = originZ + arr[k + 2];
-      // Slope is measured at the spacing this ring is actually drawn
-      // at, so a coarse ring does not report cliffs it cannot show.
-      const s = terrain.sampleAt(x, z, Math.max(2, ring.step * 0.5));
-      arr[k + 1] = s.height;
-      // The colour is worked out at a FIXED spacing, never the ring's.
-      // Steepness decides how much rock shows through, and a coarse
-      // ring reads the same hillside as gentler than a fine one does —
-      // so the same ground came out two different colours either side
-      // of a ring boundary, and every seam in the world was visible as
-      // a staircase of pale steps.
-      s.slopeDeg = COLOR_SLOPE_STEP === ring.step
-        ? s.slopeDeg
-        : terrain.sampleAt(x, z, COLOR_SLOPE_STEP).slopeDeg;
-      colorAt(x, z, s, _c);
-      carr[k] = _c.r;
-      carr[k + 1] = _c.g;
-      carr[k + 2] = _c.b;
+    const narr = nrm.array;
+    const step = ring.step;
+    const x0 = originX - ring.tileSize / 2;
+    const z0 = originZ - ring.tileSize / 2;
+
+    for (let b = 0; b < GRID; b++) {
+      const z = z0 + (b - BORDER) * step;
+      for (let a = 0; a < GRID; a++) {
+        _grid[b * GRID + a] = terrain.heightAt(x0 + (a - BORDER) * step, z);
+      }
+    }
+
+    // How many grid cells apart to look when asking which way the ground
+    // faces. Rings 0 and 1 both come out at eight metres, so the seam
+    // between them — the one boundary anyone is close enough to notice —
+    // is shaded identically on both sides.
+    const span = Math.max(1, Math.min(BORDER, Math.round(COLOR_SLOPE_STEP / step)));
+    const run = 2 * span * step;
+
+    for (let b = 0; b < TILE_VERTS; b++) {
+      for (let a = 0; a < TILE_VERTS; a++) {
+        const v = b * TILE_VERTS + a;
+        const k = v * 3;
+        const ga = a + BORDER;
+        const gb = b + BORDER;
+        const x = x0 + a * step;
+        const z = z0 + b * step;
+        const height = _grid[gb * GRID + ga];
+        arr[k] = x - originX;
+        arr[k + 1] = height;
+        arr[k + 2] = z - originZ;
+
+        // The way the ground FACES, taken from the terrain rather than
+        // from the triangles.
+        //
+        // This used to be `computeVertexNormals()`, which works a
+        // vertex's normal out from the triangles around it — and a tile
+        // knows nothing about its neighbours, so every vertex on a
+        // tile's edge got a normal from only half of them. The result
+        // was a hard line of wrong lighting along every seam in the
+        // world, and because tiles are recycled as you move, those lines
+        // slid about while you flew. The terrain gives the same answer
+        // on both sides of any seam.
+        const nx = (_grid[gb * GRID + ga + span] - _grid[gb * GRID + ga - span]) / run;
+        const nz = (_grid[(gb + span) * GRID + ga] - _grid[(gb - span) * GRID + ga]) / run;
+        const nlen = Math.hypot(nx, 1, nz);
+        narr[k] = -nx / nlen;
+        narr[k + 1] = 1 / nlen;
+        narr[k + 2] = -nz / nlen;
+
+        // Steepness falls out of the normal rather than costing another
+        // four height lookups. It matters that it is measured the same
+        // way on both sides of a seam: steepness decides how much rock
+        // shows through the soil, so a ring that reads a hillside as
+        // gentler paints it a different colour.
+        _sample.height = height;
+        _sample.slopeDeg = (Math.atan(Math.hypot(nx, nz)) * 180) / Math.PI;
+        _sample.region = terrain.regionAt(x, z);
+        colorAt(x, z, _sample, _c);
+        carr[k] = _c.r;
+        carr[k + 1] = _c.g;
+        carr[k + 2] = _c.b;
+      }
     }
     pos.needsUpdate = true;
     col.needsUpdate = true;
-    tile.mesh.geometry.computeVertexNormals();
+    nrm.needsUpdate = true;
     tile.mesh.geometry.computeBoundingSphere();
     tile.mesh.position.set(originX, 0, originZ);
+    tile.mesh.visible = true;
     tile.mesh.updateMatrix();
     tile.i = i;
     tile.j = j;
   }
 
   let built = 0;
+  // How long the last frame spent building ground, and how much is still
+  // owed. Reported rather than inferred from frame times, which on a
+  // machine drawing in software tell you nothing about this.
+  let buildMs = 0;
+  // Tiles waiting to be filled, nearest first.
+  const queue = [];
 
   /**
    * Move the world under the player.
@@ -234,17 +341,51 @@ export function createPlanet({ seed = 20260827 } = {}) {
    * hundred metres.
    */
   function setFocus(x, z) {
+    // The rectangle the ring inside this one covers, so this one can
+    // leave a hole exactly there. It has to be the inner ring's REAL
+    // rectangle, not one worked out from the player's position: each
+    // ring snaps to its own grid, so the two are rarely centred on the
+    // same spot, and a hole cut around the wrong centre leaves a gap
+    // down one side of the world.
+    let inner = null;
     for (const ring of rings) {
       const ci = Math.round(x / ring.tileSize);
       const cj = Math.round(z / ring.tileSize);
-      if (ci === ring.centre.i && cj === ring.centre.j) continue;
+      const hole = inner;
+      inner = {
+        x: ci * ring.tileSize,
+        z: cj * ring.tileSize,
+        half: (RING_TILES * ring.tileSize) / 2,
+      };
+      // Recompute when the ring itself has moved OR when the hole in the
+      // middle of it has. The hole belongs to the ring inside, which
+      // moves twice as often — and skipping the check when only the hole
+      // had moved was what kept the rings overlapping: ring 1 went on
+      // drawing tiles that ring 0 had just moved over, so the coarse
+      // ground and the fine ground lay on top of one another again.
+      const holeKey = hole ? `${hole.x},${hole.z}` : '';
+      if (ci === ring.centre.i && cj === ring.centre.j && holeKey === ring.holeKey) continue;
       ring.centre.i = ci;
       ring.centre.j = cj;
+      ring.holeKey = holeKey;
       const half = (RING_TILES - 1) / 2;
       // Which squares of ground does this ring need now?
       const need = new Set();
       for (let dj = -half; dj <= half; dj++) {
-        for (let di = -half; di <= half; di++) need.add(`${ci + di},${cj + dj}`);
+        for (let di = -half; di <= half; di++) {
+          // Skip the ones the finer ring already draws — but only if
+          // this tile is COMPLETELY inside it. A tile that straddles the
+          // boundary is still needed, or there would be a hole in the
+          // world.
+          if (hole) {
+            const tx = (ci + di) * ring.tileSize;
+            const tz = (cj + dj) * ring.tileSize;
+            const r = ring.tileSize / 2;
+            if (Math.abs(tx - hole.x) + r <= hole.half
+                && Math.abs(tz - hole.z) + r <= hole.half) continue;
+          }
+          need.add(`${ci + di},${cj + dj}`);
+        }
       }
       // Any tile already standing on a square we still want stays put;
       // everything else is free to be moved. Keeping the kept ones in a
@@ -259,17 +400,69 @@ export function createPlanet({ seed = 20260827 } = {}) {
         if (need.has(key) && !keeping.has(key)) keeping.add(key);
         else spare.push(t);
       }
+      // The work is not done here. Filling every new tile the moment it
+      // is wanted is what made the world judder: crossing one boundary
+      // at speed cost a 200 ms frame, and the ground appeared to jump.
+      // The jobs go on a queue and get done a few milliseconds at a
+      // time. Nearest first, because that is what anyone is looking at.
+      // Put the unwanted ones away NOW rather than when the queue next
+      // runs dry. While you are flying, the queue never runs dry — a new
+      // row of tiles is wanted every few frames — so "later" meant
+      // "never", and tiles nobody wanted carried on drawing a coarse
+      // copy of ground the finer ring was already drawing. Every one of
+      // them is either inside the hole in the middle of this ring or off
+      // its outer edge, and in both cases the ring next door has it
+      // covered.
+      for (const t of spare) {
+        t.mesh.visible = false;
+        t.i = NaN;
+        t.j = NaN;
+      }
+      ring.spare = spare;
+      // Throw away this ring's outstanding jobs before queueing the new
+      // ones. Without this the same square gets queued again on every
+      // frame it is still missing, and at speed the queue fills with
+      // duplicates — which is not merely wasted work: each duplicate
+      // builds ANOTHER tile on ground that already has one, so the ring
+      // ends up drawing its whole pool of tiles, on top of each other,
+      // which is precisely the overlap all of this is meant to prevent.
+      for (let n = queue.length - 1; n >= 0; n--) {
+        if (queue[n].ring === ring) queue.splice(n, 1);
+      }
       for (const key of need) {
         if (keeping.has(key)) continue;
-        const tile = spare.pop();
-        if (!tile) break;
         const [i, j] = key.split(',').map(Number);
-        fillTile(ring, tile, i, j);
+        queue.push({
+          ring, i, j,
+          d2: (i * ring.tileSize - x) ** 2 + (j * ring.tileSize - z) ** 2,
+        });
+      }
+    }
+    queue.sort((a, b) => a.d2 - b.d2);
+    sea.position.x = x;
+    sea.position.z = z;
+    work(BUILD_BUDGET_MS);
+  }
+
+  /**
+   * Build queued ground for a few milliseconds, then stop.
+   *
+   * A tile being replaced is left standing until its replacement is
+   * ready, which is why each ring keeps a handful of spare tiles: a hole
+   * in the ground is worse to look at than a tile of slightly stale
+   * ground at the edge of a ring, and this way there is neither.
+   */
+  function work(budgetMs) {
+    const started = performance.now();
+    while (queue.length && performance.now() - started < budgetMs) {
+      const job = queue.shift();
+      const tile = job.ring.spare.pop();
+      if (tile) {
+        fillTile(job.ring, tile, job.i, job.j);
         built++;
       }
     }
-    sea.position.x = x;
-    sea.position.z = z;
+    buildMs = performance.now() - started;
   }
 
   // --- What the rest of the game asks the ground ---------------------------------
@@ -339,6 +532,8 @@ export function createPlanet({ seed = 20260827 } = {}) {
     group,
     terrain,
     setFocus,
+    /** Build everything outstanding now — for landing and for tests. */
+    flush() { work(Infinity); },
     /** Nothing animates in the ground itself — yet. */
     update() {},
     groundHeightAt,
@@ -352,6 +547,8 @@ export function createPlanet({ seed = 20260827 } = {}) {
       name: 'an unnamed world',
       biomeAt: (x, z) => terrain.biomeAt(x, z),
       get tilesBuilt() { return built; },
+      /** What building the ground cost last frame, and what is left. */
+      get build() { return { ms: +buildMs.toFixed(2), queued: queue.length }; },
       reach: WORLD_REACH,
     },
   };

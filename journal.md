@@ -2,6 +2,62 @@
 
 Most recent entries on top.
 
+## 2026-08-28 — "the land moves in a glitchy way"
+
+Marco flew across the new world and said the ground glitched as it
+moved. He was right, and it was not one fault but five. Each was
+invisible in the code and obvious the moment it was measured.
+
+- **Lighting broke at every seam.** The normals came from
+  `computeVertexNormals()`, which works a vertex's normal out from the
+  triangles around it — and a tile knows nothing about its neighbours,
+  so every vertex on a tile's edge got a normal from half its triangles.
+  Hard lines of wrong lighting along every seam, sliding about as the
+  tiles recycled. Normals now come from the terrain itself, which gives
+  the same answer on both sides of any join.
+- **The rings all covered the same ground.** Four sheets deep. A coarse
+  sheet joins two points 16 m apart with a straight line, and in a
+  hollow that line passes ABOVE the fine ground it is supposed to be
+  under — so patches of the wrong surface showed through, lens-shaped,
+  flickering. The rings are hollow now: a ring does not draw what the
+  finer ring inside it already covers. That needed the rings to DOUBLE
+  in size rather than quadruple, because at four times the size the
+  inner ring covers less than two tiles of the outer one and there is
+  nothing worth cutting out.
+- **The hole never moved when the ring inside it did.** A ring was only
+  recomputed when its own centre changed, and the hole belongs to the
+  ring inside, which moves twice as often. So ring 1 went on drawing
+  tiles that ring 0 had already moved over.
+- **The queue filled with duplicates.** New tiles are built a few
+  milliseconds at a time rather than all at once; a square still missing
+  was queued again on every frame it was missing. Not merely wasted
+  work: each duplicate built ANOTHER tile on ground that already had
+  one, so a ring ended up drawing its whole pool of 48 tiles instead of
+  30, on top of each other — the very overlap all of this was meant to
+  stop. Measured: 100% of sampled points drawn twice. Now 24%, all of it
+  the unavoidable band where a coarse tile straddles the hole's rim.
+- **And it juddered.** Crossing a tile boundary at speed built every new
+  tile in one frame: 209 ms, worst case. Two fixes. The work is now done
+  on a 3 ms budget per frame, with a few spare tiles per ring so nothing
+  is taken away before its replacement is ready. And filling a tile got
+  four times cheaper: the heights are sampled once onto a grid with a
+  two-vertex border, and the normals and the steepness are read back off
+  that grid instead of costing five more terrain lookups per vertex.
+  In the game: worst frame 19.1 ms, and the build queue empty while
+  flying at full speed.
+
+`smoke:world` is new and exists so none of this can come back. It paints
+the sky magenta and counts anything showing through the ground (holes),
+counts how much ground is drawn more than once (overlap), and measures
+the time spent building — not the frame time, which on a browser drawing
+in software says more about the browser than about this code.
+
+Two of its checks were wrong the first time and passed for the wrong
+reason, which is worth remembering: the hole test measured nothing at
+all until the scene's own sky was taken away, and the overlap test
+counted the sea — a plane that covers everything — so every point looked
+as though it were drawn twice whatever the rings did.
+
 ## 2026-08-28 — A new world, measured off the real one
 
 - Marco: delete the world and build a whole new one — but *"you should

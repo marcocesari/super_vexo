@@ -201,8 +201,11 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
     everLanded = true;
     // Build the ground BEFORE the ship is put on it: the height under
     // the ship is asked for on the same frame, and an empty world
-    // answers zero, which drops you into the sea.
+    // answers zero, which drops you into the sea. `flush` because the
+    // ground is normally built a few milliseconds at a time, and
+    // arriving is the one moment that cannot wait.
     world.setFocus(site.x, site.z);
+    world.flush();
     ship.mesh.position.set(
       site.x, world.groundHeightAt(site.x, site.z) + 90, site.z,
     ).add(SURFACE_ORIGIN);
@@ -291,6 +294,7 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
      */
     prewarm(renderer, camera) {
       world.setFocus(world.spawn.x, world.spawn.z);
+      world.flush();
       world.group.visible = true;
       sunLight.intensity = SUN_INTENSITY;
       skyLight.intensity = SKY_INTENSITY;

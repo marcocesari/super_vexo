@@ -288,10 +288,23 @@ Piazze mall were deleted along with the rest of the old world. Landing
 sets you down on open ground, and where that is depends on where you
 came down. Leave and come back and you return to the same spot.
 
-`src/world/planet.js` draws it, in four rings of tiles that travel with
-the player: 64 m tiles with a vertex every 4 m under his feet, out to
-4 km tiles on the horizon. Twenty kilometres of world for about 30,000
-triangles. To fly around it with none of the game in the way, start
+`src/world/planet.js` draws it, in seven rings of tiles that travel with
+the player: 64 m tiles with a vertex every 4 m under his feet, each ring
+out twice the size of the last, to 4 km tiles on the horizon. Twelve
+kilometres of world for about 40,000 triangles.
+
+The rings are **hollow** — a ring doesn't draw what the finer ring inside
+it already covers — and that isn't an optimisation, it's what stops the
+ground flickering. Four sheets of ground lying on top of one another look
+fine on a plain and fall apart on a hill, because a coarse sheet joins
+two points 16 m apart with a straight line, and in a hollow that line
+passes above the fine ground it's meant to be under. New tiles are built
+a few milliseconds at a time rather than all at once, so crossing a
+boundary at speed doesn't cost a frame.
+
+```bash
+npm run smoke:world      # holes, overlap, and the cost of building ground
+``` To fly around it with none of the game in the way, start
 `npm run dev` and open
 [/tools/world-preview.html](http://localhost:5173/tools/world-preview.html)
 — drag to look, W and S to fly, Shift to go faster.

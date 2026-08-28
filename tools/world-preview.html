@@ -133,7 +133,7 @@ function frame(now) {
     + `   camera ${Math.round(pos.y)} m\n${s.biome}   slope ${s.slopeDeg.toFixed(1)}°`
     + `   ${fps} fps   ${renderer.info.render.triangles / 1000 | 0}k tris`
     + `   ${renderer.info.render.calls} calls`;
-  window.__preview = { planet, pos, fps, renderer, sample: s };
+  window.__preview = { planet, pos, fps, renderer, scene, camera, sample: s };
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
