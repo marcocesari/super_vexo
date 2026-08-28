@@ -20,19 +20,31 @@ export function createTitleCard() {
   `;
   document.body.appendChild(root);
 
+  // The removal that `dismiss` schedules, so `show` can call it off.
+  let removal = null;
+
   return {
     /** Instant hide (no fade) — used while the cinematic plays. */
     hide() {
       root.style.opacity = '0';
     },
+    /**
+     * Put it back up. Not only for the first frame any more: choosing
+     * NO at Game Over comes back here, and `dismiss` takes the card out
+     * of the document altogether — so a card that only reset its opacity
+     * would leave the player looking at an empty title screen.
+     */
     show() {
+      if (removal) { clearTimeout(removal); removal = null; }
+      root.classList.remove('title-card--hidden');
       root.style.opacity = '';
+      if (!root.isConnected) document.body.appendChild(root);
     },
     /** Hide with a quick fade. */
     dismiss() {
       root.classList.add('title-card--hidden');
       // Remove after the fade so it doesn't intercept events.
-      setTimeout(() => root.remove(), 500);
+      removal = setTimeout(() => { root.remove(); removal = null; }, 500);
     },
   };
 }

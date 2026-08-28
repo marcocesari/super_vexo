@@ -12,8 +12,15 @@
 // from the one walking about in the town, so opening the inventory can
 // never disturb what the game is doing.
 //
-// Only weapons for now. The panel is built as a list so that armour,
-// upgrades and whatever else follows can be tabs beside it later.
+// Laid out the way Tears of the Kingdom lays its pause menu out: a row
+// of tabs, and the LAST one on the right is System, whose first entry is
+// Save. That is where a TotK player's thumb goes — hold R to the end of
+// the row and the cog is waiting — so that is where the save button
+// belongs here too.
+//
+// Only weapons and system for now; the row is built from a list so the
+// tabs TotK has and this game doesn't yet (armour, materials, key items)
+// can be dropped in beside them.
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { createVexo, VEXO_HEIGHT } from './world/vexo.js';
@@ -23,7 +30,13 @@ const TURN_RATE = 2.2;          // radians per second on the stick or keys
 const DRAG_SCALE = 0.011;       // radians per pixel dragged
 const SPIN_IDLE = 0.25;         // he turns slowly on his own until touched
 
-export function createInventory({ renderer, input }) {
+// Only the three buttons this screen uses, rather than importing the
+// whole pad map for them.
+const BUTTONS_A = 0;
+const BUTTONS_L1 = 4;
+const BUTTONS_R1 = 5;
+
+export function createInventory({ renderer, input, saves = null }) {
   // --- The panel ---------------------------------------------------------------
   const root = document.createElement('div');
   root.id = 'inventory';
@@ -33,10 +46,12 @@ export function createInventory({ renderer, input }) {
     <div class="inventory__panel">
       <div class="inventory__list">
         <h2 class="screen-card__title">${strings.inventory.title}</h2>
-        <div class="inventory__tabs">
-          <span class="inventory__tab inventory__tab--on">${strings.inventory.weapons}</span>
-        </div>
+        <div class="inventory__tabs" data-tabs></div>
         <ul class="inventory__items" data-items></ul>
+        <div class="inventory__system" data-system hidden>
+          <button class="inventory__save" data-save>${strings.inventory.save}</button>
+          <p class="inventory__saved" data-saved></p>
+        </div>
         <p class="screen-card__hint">${strings.inventory.hint}</p>
       </div>
       <div class="inventory__figure">
@@ -46,7 +61,18 @@ export function createInventory({ renderer, input }) {
   `;
   document.body.appendChild(root);
   const itemsEl = root.querySelector('[data-items]');
+  const tabsEl = root.querySelector('[data-tabs]');
+  const systemEl = root.querySelector('[data-system]');
+  const saveBtn = root.querySelector('[data-save]');
+  const savedEl = root.querySelector('[data-saved]');
   const figureEl = root.querySelector('.inventory__figure');
+
+  // The row. System is last on purpose — see the note at the top.
+  const TABS = [
+    { id: 'weapons', label: strings.inventory.weapons },
+    { id: 'system', label: strings.inventory.system },
+  ];
+  let tab = 0;
 
   // --- The figure ----------------------------------------------------------------
   const scene = new THREE.Scene();
@@ -118,7 +144,32 @@ export function createInventory({ renderer, input }) {
   /** @type {{name: string, note: string, held: boolean}[]} */
   let items = [];
 
+  function drawTabs() {
+    tabsEl.innerHTML = '';
+    for (const [i, t] of TABS.entries()) {
+      const el = document.createElement('span');
+      el.className = i === tab ? 'inventory__tab inventory__tab--on' : 'inventory__tab';
+      el.textContent = t.label;
+      el.addEventListener('click', () => { tab = i; drawTabs(); draw(); });
+      tabsEl.appendChild(el);
+    }
+  }
+
+  /** Move along the row, TotK's L and R. */
+  function step(by) {
+    tab = (tab + by + TABS.length) % TABS.length;
+    drawTabs();
+    draw();
+  }
+
   function draw() {
+    const onSystem = TABS[tab].id === 'system';
+    itemsEl.hidden = onSystem;
+    systemEl.hidden = !onSystem;
+    if (onSystem) {
+      savedEl.textContent = savedNote();
+      return;
+    }
     itemsEl.innerHTML = '';
     for (const item of items) {
       const li = document.createElement('li');
@@ -137,6 +188,23 @@ export function createInventory({ renderer, input }) {
     }
   }
 
+  /** "Saved a moment ago", or what there is to say about it. */
+  function savedNote() {
+    const latest = saves?.latest;
+    if (!latest) return strings.inventory.neverSaved;
+    const ago = Math.max(0, Date.now() - latest.at);
+    if (ago < 8000) return strings.inventory.savedJustNow;
+    const mins = Math.round(ago / 60000);
+    return mins < 1
+      ? strings.inventory.savedSecondsAgo
+      : strings.inventory.savedMinutesAgo.replace('{n}', String(mins));
+  }
+
+  saveBtn.addEventListener('click', () => {
+    const ok = saves?.saveManual();
+    savedEl.textContent = ok ? strings.inventory.savedJustNow : strings.inventory.saveFailed;
+  });
+
   return {
     get isOpen() { return open; },
 
@@ -145,6 +213,9 @@ export function createInventory({ renderer, input }) {
       items = list.map((i) => ({ held: false, ...i }));
       draw();
     },
+
+    /** Which tab is showing, for tests. */
+    get tab() { return TABS[tab].id; },
 
     toggle() { return open ? this.close() : this.show(); },
 
@@ -159,6 +230,8 @@ export function createInventory({ renderer, input }) {
       // to see what he has, and a man with his arm out straight in a
       // menu looks like he is about to shoot the furniture.
       vexo.setArmed(true, false);
+      drawTabs();
+      draw();
       vexo.setGait('idle');
       return true;
     },
@@ -177,6 +250,19 @@ export function createInventory({ renderer, input }) {
       const stick = (axes?.stickYaw ?? axes?.yaw ?? 0);
       const keys = (input.keyboard.isDown('KeyA') ? 1 : 0)
         - (input.keyboard.isDown('KeyD') ? 1 : 0);
+      // Along the tabs: the shoulder buttons, as in TotK, and the
+      // arrow keys for anyone without a pad.
+      if (input.gamepad.consumeJustPressed(BUTTONS_R1)
+          || input.keyboard.consumeJustPressed(['ArrowRight'])) step(1);
+      if (input.gamepad.consumeJustPressed(BUTTONS_L1)
+          || input.keyboard.consumeJustPressed(['ArrowLeft'])) step(-1);
+      // Saving from the pad, when the System tab is up.
+      if (TABS[tab].id === 'system'
+          && input.gamepad.consumeJustPressed(BUTTONS_A)) {
+        const ok = saves?.saveManual();
+        savedEl.textContent = ok ? strings.inventory.savedJustNow : strings.inventory.saveFailed;
+      }
+
       const turn = stick || keys;
       if (turn) {
         idleSpin = false;

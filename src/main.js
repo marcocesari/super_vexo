@@ -41,6 +41,8 @@ import { createCharacterViewer } from './characterViewer.js';
 import { createOnFoot } from './onFoot.js';
 import { createMonsters } from './monsters.js';
 import { createInventory } from './inventory.js';
+import { createSaves } from './save.js';
+import { createGameOver } from './gameOver.js';
 import { strings } from './strings.js';
 import { createTracers } from './world/tracers.js';
 
@@ -57,6 +59,11 @@ const params = new URLSearchParams(window.location.search);
 const skipIntro = params.get('skipIntro') === '1';
 const startLanded = params.get('land') === '1';
 const characterMode = params.get('character') === '1';
+// `?peaceful=1` keeps the camps empty. For the on-foot tests, which
+// measure walking speeds and ladders and have no business being
+// interrupted by a bokoblin — and for anyone who wants to look at the
+// town without being chased around it.
+const peaceful = params.get('peaceful') === '1';
 const characterModelUrl = params.get('model');
 
 // --- Renderer ---------------------------------------------------------------
@@ -94,15 +101,19 @@ scene.add(repairFx.points);
 // scene so the ship isn't rendered there anyway.)
 ship.mesh.visible = true;
 
-// Landing site. Fly into Earth and the game swaps space for the real
-// streets of Castel Maggiore; everything in `spaceObjects` is hidden
-// while you're down there. See src/surface.js for why it's a teleport.
+// The world. Fly into the planet and the game swaps space for real
+// ground — generated, endless, and measured off Earth (see
+// src/world/terrain.js). Everything in `spaceObjects` is hidden while
+// you're down there. See src/surface.js for why it's a teleport.
 const surface = createSurface(
   scene,
   [
     starfield, asteroids.mesh, mars.mesh, earth.mesh, sun.sprite,
     repairFx.points, ...roverApi.rovers.map((r) => r.mesh),
   ],
+  // The camera's far plane has to reach much further down there than it
+  // does in space, so the surface borrows it while it has it.
+  camera,
   // Landing and taking off move the ship 20 km in one frame; without
   // this the camera would spend the next few seconds flying there.
   () => chaseCamera.reset(),
@@ -175,6 +186,9 @@ function resetGame() {
   mission.reset();
   roverApi.reset();
   upgrades.reset();
+  // The camps back on their feet: a new run should not start in a town
+  // that has already been half-cleared.
+  monsters.reset();
   resetShipConfig();
 
   missionScreens.hideAll();
@@ -247,26 +261,58 @@ createViewport(renderer.domElement, applyViewportSize);
 
 // Bokoblin camps, out in the town. Built once at load like the town
 // itself, hidden until somebody lands.
-const monsters = createMonsters({ scene, town: surface.town, origin: SURFACE_ORIGIN });
+const monsters = createMonsters({ scene, world: surface.world, origin: SURFACE_ORIGIN });
 const tracers = createTracers(scene);
-
-// The inventory: what he is carrying, and Vexo himself to turn round.
-const inventory = createInventory({ renderer, input });
-inventory.setItems([
-  { name: strings.inventory.starterGun, note: strings.inventory.starterGunNote, held: true },
-]);
 
 // Getting out and walking around: set the ship down in town and this
 // takes the ship, the camera and the input until Vexo climbs back in.
 const onFoot = createOnFoot({
   scene, camera, ship, surface, input, renderer, monsters,
+  // He has finished falling over.
+  onDown: () => gameOver.show(saves.has),
+  // Two of the three moments worth coming back from; the third is a
+  // camp being cleared, below in `onShot`.
+  onLanded: () => saves.saveAuto('landed'),
+  onAboard: () => saves.saveAuto('aboard'),
   onShot: (from, direction, hit) => {
     tracers.fire(from, direction, hit ? 0xffd27a : 0x9fd8ff);
     audio.chirp(hit
       ? { fromHz: 900, toHz: 260, durationS: 0.16, peakGain: 0.16 }
       : { fromHz: 1400, toHz: 700, durationS: 0.08, peakGain: 0.09 });
+    // Clearing a camp is an achievement worth not having to repeat.
+    if (hit && hit.camp.members.every((m) => m.state === 'dead')) {
+      audio.fanfare();
+      saves.saveAuto('camp cleared');
+    }
   },
 });
+
+// Saving: a manual slot for the button in the inventory's System tab,
+// and an auto slot the game writes at moments worth returning from.
+const saves = createSaves({
+  ship, surface, onFoot, monsters, mission, upgrades, rovers: roverApi,
+});
+
+// GAME OVER, once he has finished falling over.
+const gameOver = createGameOver({
+  onContinue: () => {
+    const data = saves.latest;
+    resetGame();
+    saves.restore(data);
+    state = STATE.FLY;
+  },
+  onTitle: () => {
+    resetGame();
+    state = STATE.TITLE;
+    titleCard.show();
+  },
+});
+
+// The inventory: what he is carrying, and Vexo himself to turn round.
+const inventory = createInventory({ renderer, input, saves });
+inventory.setItems([
+  { name: strings.inventory.starterGun, note: strings.inventory.starterGunNote, held: true },
+]);
 
 // Compile the landing site's shaders before anyone can fly there, so
 // the first landing doesn't stutter while it builds them. Vexo and his
@@ -406,9 +452,11 @@ function frame(now) {
     }
     // Inventory: E, or "+" on a pad — which is Start, where a Nintendo
     // pad prints the plus. Reset moved off Start to make room and lives
-    // on L3 (click the left stick) as well as R.
-    if (input.keyboard.consumeJustPressed(['KeyE'])
-        || input.gamepad.consumeJustPressed(BUTTONS.Start)) {
+    // on L3 (click the left stick) as well as R. No menus over the top
+    // of GAME OVER.
+    if (!gameOver.isOpen
+        && (input.keyboard.consumeJustPressed(['KeyE'])
+            || input.gamepad.consumeJustPressed(BUTTONS.Start))) {
       inventory.toggle();
     }
     // Closing it with the same button everything else closes with.
@@ -428,9 +476,12 @@ function frame(now) {
     // `null` axes means the stick belongs to something else this frame.
     const footAxes = (missionScreens.isOpen() || fastTravel.suppressInput) ? null : axes;
 
-    // With the inventory up, the stick turns the figure and nothing
-    // else: no flying, no walking, no shooting.
-    if (inventory.isOpen) {
+    // GAME OVER takes everything: no flying, no walking, no menus.
+    if (gameOver.isOpen) {
+      gameOver.update(input, BUTTONS);
+      audio.setThrottle(0);
+      audio.setSprinting(false);
+    } else if (inventory.isOpen) {
       inventory.update(dt, axes);
       audio.setThrottle(0);
       audio.setSprinting(false);
@@ -486,8 +537,16 @@ function frame(now) {
     });
   }
 
-  // Monsters and their camps exist only while somebody is down there.
-  monsters.setActive(surface.active);
+  // Monsters and their camps exist only while somebody is down there —
+  // and the world has no edges, so they are pitched around wherever
+  // that is rather than living at fixed addresses.
+  monsters.setActive(surface.active && !peaceful);
+  if (surface.active) {
+    monsters.focus(
+      ship.mesh.position.x - SURFACE_ORIGIN.x,
+      ship.mesh.position.z - SURFACE_ORIGIN.z,
+    );
+  }
   if (surface.active && !onFoot.active) monsters.update(dt, null, () => {});
   tracers.update(dt);
 
@@ -547,8 +606,10 @@ if (import.meta.env.DEV) {
     ship, asteroids, audio, fastTravel, physics,
     renderer, camera,
     rovers: roverApi, mission, upgrades, missionScreens, surface, frameScaler,
-    characterViewer, onFoot, monsters, tracers, inventory,
+    characterViewer, onFoot, monsters, tracers, inventory, saves, gameOver,
     shipConfig, shipConfigDefaults,
     resetGame,
+    /** Which of title / fly / cinematic the game is in. */
+    get state() { return state; },
   };
 }

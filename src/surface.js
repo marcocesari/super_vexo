@@ -1,31 +1,38 @@
-// Landing on Earth.
+// Landing on a world.
 //
-// Fly into the planet and the game drops you onto the real streets of
-// Castel Maggiore instead of bouncing you off a sphere. Space and the
-// surface share one scene and one camera — swapping between them is a
-// matter of moving the ship somewhere else and changing the weather.
+// Fly into the planet and the game drops you onto real ground instead of
+// bouncing you off a sphere. Space and the surface share one scene and
+// one camera — swapping between them is a matter of moving the ship
+// somewhere else and changing the weather.
 //
-// Why a teleport rather than a second scene: the town is life-size
-// (1 unit = 1 metre) and 1.5 km across, while the whole game Earth is
-// only 112 units wide. The two simply cannot coexist at the same
-// scale — so the town lives far below the solar system, out past the
-// camera's far plane, where nothing from space can be seen. Landing
-// moves the ship down to it; climbing out moves the ship back. From
-// the player's seat it reads as descending through cloud.
+// Why a teleport rather than a second scene: the world is life-size
+// (1 unit = 1 metre) and has no edges, while the whole game Earth is
+// only 112 units wide. The two cannot coexist at the same scale — so
+// the world lives far below the solar system, out past the camera's far
+// plane, where nothing from space can be seen. Landing moves the ship
+// down to it; climbing out moves the ship back. From the player's seat
+// it reads as descending through cloud.
+//
+// The ground itself is generated and endless (see world/terrain.js), so
+// this module no longer owns a place. It owns a POSITION in a world that
+// carries on in every direction, and it remembers where you left off.
 import * as THREE from 'three';
-import { createNeighborhood } from './world/neighborhood.js';
+import { createPlanet } from './world/planet.js';
 import { EARTH_POSITION, EARTH_RADIUS } from './world/earth.js';
 import { SPACE_FOG_NEAR, SPACE_FOG_FAR } from './scene.js';
 import { strings } from './strings.js';
 
-// Where the town sits. Far enough below that FAR (5000) can't reach
-// anything in space from down there, and vice versa.
+// Where the world sits. Far enough below that nothing in space can be
+// seen from down there, and vice versa.
 export const SURFACE_ORIGIN = new THREE.Vector3(0, -20000, 0);
 
 // Touch the atmosphere this close to the surface and you land.
 const LANDING_BAND = 22;
-// Climb this high above the street and you're back in orbit.
-export const LEAVE_ALTITUDE = 620;
+// Climb this high above the ground and you're back in orbit. It has to
+// clear the tallest ground in the world with room to spare: mountains
+// here reach about 520 m, and a ceiling below them would throw you into
+// space every time you crossed a range.
+export const LEAVE_ALTITUDE = 1500;
 // The ship never sinks below this — a soft floor instead of a crash.
 // It is also exactly where the ship sits when parked (PARK_CLEARANCE,
 // below): if the floor were higher, boarding would pop the ship into
@@ -36,7 +43,7 @@ const FLOOR_ALTITUDE = 1.0;
 // there is — nothing up there is a known size, so the number means
 // nothing. Down here everything has a real size: the streets are the
 // real streets at a metre per unit, the houses are 8.5 m, and Vexo is
-// 1.8 m tall because he was built to stand in this town. At 1x he would
+// 1.8 m tall because that is how tall a person is. At 1x he would
 // climb out of a spacecraft shorter than he is, so the ship is scaled
 // to a believable 10.5 m fighter for as long as it is down here.
 export const SURFACE_SHIP_SCALE = 4;
@@ -47,8 +54,15 @@ export const SURFACE_SHIP_SCALE = 4;
 export const PARK_CLEARANCE = 1.0;
 
 const SKY_COLOR = 0x9dc9ef;
-const HAZE_NEAR = 260;
-const HAZE_FAR = 1250;
+// Air haze. Far enough out to show a mountain range on the horizon —
+// the old figures were built for a town 1.5 km across and would now
+// buried the whole world in fog a field away.
+const HAZE_NEAR = 700;
+const HAZE_FAR = 11000;
+// While we are down here the camera has to see much further than it does
+// in space. This is a uniform, not a #define, so changing it is free —
+// unlike the number of lights, which recompiles every shader in the game.
+const SURFACE_CAMERA_FAR = 24000;
 
 /**
  * @param {THREE.Scene} scene
@@ -57,14 +71,21 @@ const HAZE_FAR = 1250;
  *        discontinuously, so the chase camera can cut instead of
  *        flying the 20 km between space and the surface itself.
  */
-export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
-  // Built once at load: ~30 buildings, the streets and a few hundred
-  // trees. Doing it here costs a beat on startup, where nobody minds;
-  // doing it on the first landing would hitch mid-flight.
-  const town = createNeighborhood();
-  town.group.position.copy(SURFACE_ORIGIN);
-  town.group.visible = false;
-  scene.add(town.group);
+export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}) {
+  // The world. Nothing is built until somebody asks for a piece of it,
+  // so this costs almost nothing at load — the ground appears as the
+  // ship approaches and travels with it afterwards.
+  const world = createPlanet();
+  world.group.position.copy(SURFACE_ORIGIN);
+  world.group.visible = false;
+  scene.add(world.group);
+
+  // Where the ship was standing when it last left the ground. The world
+  // has no edges and no landmarks to come back to, so leaving and
+  // returning should put you where you were rather than at the start.
+  const lastPlace = new THREE.Vector3().copy(world.spawn);
+  let everLanded = false;
+  const spaceCameraFar = camera.far;
 
   // Daylight for the surface. Space is lit for drama — one hard sun and
   // a dim blue fill — which on a summer afternoon in Emilia-Romagna
@@ -82,7 +103,7 @@ export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
   sunLight.position.set(-260, 420, 180).add(SURFACE_ORIGIN);
   // A directional light points at its TARGET, which defaults to the
   // world origin — 20 km straight up from here, which would light the
-  // town from underneath. Aim it at the town instead.
+  // ground from underneath. Aim it at the world instead.
   sunLight.target.position.copy(SURFACE_ORIGIN);
   scene.add(sunLight.target);
   scene.add(sunLight);
@@ -132,9 +153,9 @@ export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
    * The HIGHEST ground under the ship's footprint, in metres above the
    * street — not the ground under its centre.
    *
-   * The ship is 10.5 m long with a 7.3 m span down here and the town is
-   * built on low hills, so a floor that only knows about the centre lets
-   * the nose sink into the slope in front of it. This is also exactly
+   * The ship is 10.5 m long with a 7.3 m span down here and the world is
+   * all slopes, so a floor that only knows about the centre lets the
+   * nose sink into the hill in front of it. This is also exactly
    * where the ship parks, which is what keeps boarding from popping it
    * into the air.
    */
@@ -147,7 +168,7 @@ export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
     for (const [along, across] of HULL_SAMPLES) {
       const x = ship.mesh.position.x + (fx * along + fz * across) * scale;
       const z = ship.mesh.position.z + (fz * along - fx * across) * scale;
-      const g = town.groundHeightAt(x - SURFACE_ORIGIN.x, z - SURFACE_ORIGIN.z);
+      const g = world.groundHeightAt(x - SURFACE_ORIGIN.x, z - SURFACE_ORIGIN.z);
       if (g > best) best = g;
     }
     return best;
@@ -162,7 +183,7 @@ export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
     spaceReturn.copy(ship.mesh.position).sub(EARTH_POSITION)
       .setLength(EARTH_RADIUS + 60).add(EARTH_POSITION);
 
-    town.group.visible = true;
+    world.group.visible = true;
     sunLight.intensity = SUN_INTENSITY;
     skyLight.intensity = SKY_INTENSITY;
     ship.mesh.scale.setScalar(SURFACE_SHIP_SCALE);
@@ -174,11 +195,25 @@ export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
     scene.fog.near = HAZE_NEAR;
     scene.fog.far = HAZE_FAR;
 
-    ship.mesh.position.copy(town.spawn).add(SURFACE_ORIGIN);
-    ship.mesh.quaternion.setFromEuler(new THREE.Euler(0, town.heading, 0, 'YXZ'));
+    // Come down where you left off, or — the first time — at a flat, dry
+    // spot the world picked out for you.
+    const site = everLanded ? lastPlace : world.spawn;
+    everLanded = true;
+    // Build the ground BEFORE the ship is put on it: the height under
+    // the ship is asked for on the same frame, and an empty world
+    // answers zero, which drops you into the sea.
+    world.setFocus(site.x, site.z);
+    ship.mesh.position.set(
+      site.x, world.groundHeightAt(site.x, site.z) + 90, site.z,
+    ).add(SURFACE_ORIGIN);
+    ship.mesh.quaternion.setFromEuler(new THREE.Euler(0, world.heading, 0, 'YXZ'));
     ship.velocity.set(0, 0, 0);
+    camera.far = SURFACE_CAMERA_FAR;
+    camera.updateProjectionMatrix();
     onTeleport();
 
+    banner.querySelector('.landing-banner__street').textContent =
+      strings.surface.ground[world.info.biomeAt(site.x, site.z)] ?? strings.surface.street;
     banner.hidden = false;
     banner.classList.remove('landing-banner--fading');
     bannerTimer = 6;
@@ -189,8 +224,13 @@ export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
     active = false;
     parked = false;
     ship.mesh.scale.setScalar(1);
+    lastPlace.set(
+      ship.mesh.position.x - SURFACE_ORIGIN.x, 0, ship.mesh.position.z - SURFACE_ORIGIN.z,
+    );
+    camera.far = spaceCameraFar;
+    camera.updateProjectionMatrix();
 
-    town.group.visible = false;
+    world.group.visible = false;
     sunLight.intensity = 0;
     skyLight.intensity = 0;
     for (const o of spaceObjects) o.visible = true;
@@ -218,8 +258,8 @@ export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
      * module: no soft floor, no climb-out to space.
      */
     get parked() { return parked; },
-    /** The town's group, for tests and screenshots. */
-    town,
+    /** The world: its ground, and everything that can be asked of it. */
+    world,
     enter,
     exit,
     altitude,
@@ -232,13 +272,13 @@ export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
 
     /**
      * Compile the surface's shaders, upload its textures, and draw the
-     * town once for real — all while the game is still loading.
+     * ground once for real — all while the game is still loading.
      *
      * Three steps, and all three turned out to be necessary:
      *
      *   1. `renderer.compile()` links the programs.
      *   2. Drivers defer their real work until a program is used in a
-     *        draw call, so the town is actually rendered once.
+     *        draw call, so the ground is actually rendered once.
      *   3. That render must go to the CANVAS, not to an offscreen
      *        target. The canvas is multisampled (antialias: true) and
      *        an 8x8 plain target is not, so a draw there specialises
@@ -246,21 +286,23 @@ export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
      *        back — measured at 1.5s on the first landing.
      *
      * The canvas is composited once, after this whole task finishes, so
-     * painting the town and then painting space over it inside the same
+     * painting the ground and then painting space over it inside the same
      * function is invisible: only the last state is ever shown.
      */
     prewarm(renderer, camera) {
-      town.group.visible = true;
+      world.setFocus(world.spawn.x, world.spawn.z);
+      world.group.visible = true;
       sunLight.intensity = SUN_INTENSITY;
       skyLight.intensity = SKY_INTENSITY;
       renderer.compile(scene, camera);
 
-      const probe = new THREE.PerspectiveCamera(60, camera.aspect, 0.1, 5000);
-      probe.position.copy(SURFACE_ORIGIN).add(new THREE.Vector3(0, 140, 300));
-      probe.lookAt(SURFACE_ORIGIN);
+      const probe = new THREE.PerspectiveCamera(60, camera.aspect, 0.1, SURFACE_CAMERA_FAR);
+      probe.position.copy(SURFACE_ORIGIN).add(world.spawn)
+        .add(new THREE.Vector3(0, 160, 320));
+      probe.lookAt(new THREE.Vector3().copy(SURFACE_ORIGIN).add(world.spawn));
       renderer.render(scene, probe);
 
-      town.group.visible = false;
+      world.group.visible = false;
       sunLight.intensity = 0;
       skyLight.intensity = 0;
       // Leave the canvas showing space, not a frozen town.
@@ -277,7 +319,14 @@ export function createSurface(scene, spaceObjects, onTeleport = () => {}) {
         return;
       }
 
-      town.update(dt);
+      world.update(dt);
+      // The ground travels with the ship. Only the tiles that changed
+      // place are rebuilt, so this is nearly free while hovering and
+      // costs a few tiles a second at full speed.
+      world.setFocus(
+        ship.mesh.position.x - SURFACE_ORIGIN.x,
+        ship.mesh.position.z - SURFACE_ORIGIN.z,
+      );
 
       // Parked: the ship belongs to the disembark sequence, which is
       // holding it still on the ground. Nothing here may move it.

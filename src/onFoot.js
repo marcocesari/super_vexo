@@ -195,6 +195,7 @@ function angleDelta(a, b) {
 export function createOnFoot({
   scene, camera, ship, surface, input, renderer,
   monsters = null, onShot = () => {},
+  onDown = () => {}, onLanded = () => {}, onAboard = () => {},
 }) {
   // Something for the armour to reflect. A small box of lit panels,
   // pre-filtered once at startup: his plates are 0.62 metal, and metal
@@ -282,6 +283,7 @@ export function createOnFoot({
   let sprintingNow = false;
   // Health, the pistol, and dying.
   let heartsLeft = MAX_HEARTS;
+  let down = false;
   let hurtCooldown = 0;
   let shotCooldown = 0;
   let drawnFor = 0;               // seconds since the pistol was last used
@@ -298,11 +300,11 @@ export function createOnFoot({
   const _walkOut = [0, 0];
   let camInit = false;
 
-  const town = surface.town;
+  const world = surface.world;
 
   /** Ground height in world Y at a point given in world coordinates. */
   function groundAt(x, z) {
-    return SURFACE_ORIGIN.y + town.groundHeightAt(x - SURFACE_ORIGIN.x, z - SURFACE_ORIGIN.z);
+    return SURFACE_ORIGIN.y + world.groundHeightAt(x - SURFACE_ORIGIN.x, z - SURFACE_ORIGIN.z);
   }
 
   // The prompt is touched every frame, so remember what is on it and
@@ -390,7 +392,7 @@ export function createOnFoot({
       .multiplyScalar(scale)
       .applyQuaternion(parkQuat)
       .add(parkPos);
-    return town.isClear(_v.x - SURFACE_ORIGIN.x, _v.z - SURFACE_ORIGIN.z, 1.2);
+    return world.isClear(_v.x - SURFACE_ORIGIN.x, _v.z - SURFACE_ORIGIN.z, 1.2);
   }
 
   /** Hang the ladder off the given side of the parked ship. */
@@ -484,6 +486,27 @@ export function createOnFoot({
   function keepAboveGround() {
     const floor = groundAt(_camGoal.x, _camGoal.z) + 0.7;
     if (_camGoal.y < floor) _camGoal.y = floor;
+
+    // And clear the ground BETWEEN the camera and what it is looking at.
+    //
+    // The old town was flat, so a camera above the ground under itself
+    // could always see. Real ground rolls, and a rise of half a metre
+    // between a camera 1.5 m up and a man 5 m away hides him completely
+    // — which is exactly what happened the first time Vexo walked on
+    // this world: he vanished behind a hummock and the screen filled
+    // with grass. Lifting the camera until the sight line clears every
+    // sample along the way costs six height lookups.
+    const SAMPLES = 6;
+    for (let i = 1; i < SAMPLES; i++) {
+      const t = i / SAMPLES;
+      const x = _camGoal.x + (_lookGoal.x - _camGoal.x) * t;
+      const z = _camGoal.z + (_lookGoal.z - _camGoal.z) * t;
+      const g = groundAt(x, z) + 0.5;
+      // How high the camera would have to be for the line from it to the
+      // target to pass over this point.
+      const needed = (g - _lookGoal.y * t) / (1 - t);
+      if (needed > _camGoal.y) _camGoal.y = needed;
+    }
   }
 
   /** Is there room for the camera at this point on the ground plane? */
@@ -491,7 +514,7 @@ export function createOnFoot({
     if (surface.parked && Math.hypot(x - parkPos.x, z - parkPos.z) < SHIP_CAM_CLEAR) {
       return false;
     }
-    return town.isClear(x - SURFACE_ORIGIN.x, z - SURFACE_ORIGIN.z, 0.5);
+    return world.isClear(x - SURFACE_ORIGIN.x, z - SURFACE_ORIGIN.z, 0.5);
   }
 
   /**
@@ -586,12 +609,17 @@ export function createOnFoot({
     winded = WINDED_TIME;
     if (heartsLeft <= 0) {
       dying = DYING_TIME;
-      vexo.setGait('idle');
-      setPrompt(strings.onFoot.down);
+      // He falls over properly — knees, then forward — and the sign
+      // waits for him to finish. See poseDying in vexo.js.
+      vexo.setGait('dying');
+      vel.set(0, 0, 0);
+      setPrompt(null);
+      staminaWheel.hide();
     }
   }
 
-  /** Out cold, and waking up back in the ship with everything reset. */
+  /** Unused now that Game Over owns what happens after he falls, but
+   *  kept because `reset()` wants the same clearing-up. */
   function revive() {
     heartsLeft = MAX_HEARTS;
     hearts.set(heartsLeft, MAX_HEARTS);
@@ -616,7 +644,11 @@ export function createOnFoot({
     heartsLeft = MAX_HEARTS;
     hurtCooldown = 0;
     dying = 0;
+    down = false;
     hearts.set(heartsLeft, MAX_HEARTS);
+    // He is out of the ship and on his feet: a good place to come back
+    // to if the next few minutes go badly.
+    onLanded();
     camPitch = 0;
     camYaw = heading;
     vel.set(0, 0, 0);
@@ -707,10 +739,20 @@ export function createOnFoot({
       staminaWheel.hide();
       hearts.hide();
       detach();
+      onAboard();
     }
   }
 
   function updateWalk(dt, axes) {
+    // Flat out. He does not walk, look, sprint or shoot while he is
+    // falling over — and above all his gait is left alone, or the walk
+    // code below would set it back to `idle` on the next frame and the
+    // death animation would never play at all.
+    if (dying > 0 || down) {
+      vel.set(0, 0, 0);
+      return;
+    }
+
     // --- Looking around -------------------------------------------------------
     // Stick as a rate, gyro as a displacement, both into the same angle.
     // Nothing here springs back: where you point it is where it stays.
@@ -814,7 +856,7 @@ export function createOnFoot({
       foot.z += vel.z * dt;
 
       // Walls and tree trunks.
-      town.resolveWalk(
+      world.resolveWalk(
         foot.x - SURFACE_ORIGIN.x, foot.z - SURFACE_ORIGIN.z, WALK_RADIUS, _walkOut,
       );
       foot.x = _walkOut[0] + SURFACE_ORIGIN.x;
@@ -947,8 +989,8 @@ export function createOnFoot({
     /** Hearts left, for the HUD and the tests. */
     get hearts() { return heartsLeft; },
     get maxHearts() { return MAX_HEARTS; },
-    /** True while he is flat on his back after losing the last one. */
-    get down() { return dying > 0; },
+    /** True while he is falling over, or lying there afterwards. */
+    get down() { return dying > 0 || down; },
     /** Where the monsters should hunt, or null if he is not out here. */
     get quarry() { return state === 'walk' && dying <= 0 ? foot : null; },
     /** A club landed on him. */
@@ -1003,7 +1045,13 @@ export function createOnFoot({
       if (hurtCooldown > 0) hurtCooldown -= dt;
       if (dying > 0) {
         dying -= dt;
-        if (dying <= 0) revive();
+        if (dying <= 0) {
+          // Down for good. What happens next — continue from a save, or
+          // back to the title — is not this module's business.
+          dying = 0;
+          down = true;
+          onDown();
+        }
       }
       vexo.update(dt);
       if (state !== 'off') updateCamera(dt);
@@ -1043,6 +1091,12 @@ export function createOnFoot({
       state = 'off';
       phaseT = 0;
       refusedT = 0;
+      down = false;
+      dying = 0;
+      // Back to full health: whatever happened out there, the next time
+      // he climbs down that ladder he does it on his feet.
+      heartsLeft = MAX_HEARTS;
+      hearts.set(heartsLeft, MAX_HEARTS);
       camInit = false;
       vexo.group.visible = false;
       ladder.setExtension(0);

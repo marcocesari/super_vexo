@@ -483,6 +483,65 @@ canvas {
   opacity: 0.65;
 }
 
+/* GAME OVER. Deliberately not a `.screen-overlay`: this one blacks the
+   game out rather than dimming it, because the point is that the run
+   has stopped. */
+#game-over {
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  background: rgba(2, 4, 8, 0.88);
+  animation: game-over-in 1.1s ease-out;
+}
+#game-over[hidden] { display: none; }
+@keyframes game-over-in {
+  0% { opacity: 0; }
+  40% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.game-over__sign {
+  font-size: clamp(2.2rem, 9vw, 4.2rem);
+  letter-spacing: 0.3em;
+  color: #ff4d5e;
+  text-shadow: 0 0 24px rgba(255, 77, 94, 0.55), 0 3px 0 rgba(0, 0, 0, 0.6);
+}
+.game-over__ask {
+  margin: 0;
+  color: #cfe4f6;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+}
+.game-over__buttons { display: flex; gap: 1rem; margin-top: 0.4rem; }
+.game-over__btn {
+  font: inherit;
+  font-size: 0.85rem;
+  letter-spacing: 0.14em;
+  padding: 0.6rem 1.3rem;
+  color: #d8ecff;
+  background: rgba(10, 24, 40, 0.9);
+  border: 1px solid rgba(120, 180, 240, 0.35);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.game-over__btn--on {
+  border-color: #5effa6;
+  color: #eaffef;
+  box-shadow: 0 0 18px rgba(94, 255, 166, 0.25);
+}
+.game-over__btn:disabled { opacity: 0.35; cursor: default; }
+.game-over__hint {
+  margin: 0.3rem 0 0;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #6f9dc4;
+}
+
 /* The inventory: gear down the left, Vexo on the right. The right-hand
    box is empty on purpose — the figure is drawn into it by the renderer
    (see inventory.js), so it must stay transparent and must not move
@@ -586,6 +645,33 @@ canvas {
   box-shadow: inset 0 0 18px rgba(94, 255, 166, 0.08);
 }
 .inventory__item--empty { color: #6f9dc4; justify-content: center; }
+/* The System tab: one button so far, where TotK keeps Save. */
+.inventory__system {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+.inventory__system[hidden] { display: none; }
+.inventory__save {
+  font: inherit;
+  font-size: 0.85rem;
+  letter-spacing: 0.16em;
+  padding: 0.7rem 1.4rem;
+  color: #eaffef;
+  background: rgba(12, 40, 28, 0.85);
+  border: 1px solid rgba(94, 255, 166, 0.45);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.inventory__save:hover { background: rgba(18, 60, 40, 0.9); }
+.inventory__saved {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: #7fb0d8;
+}
 .inventory__item-name {
   color: #eaf4ff;
   font-size: 0.95rem;

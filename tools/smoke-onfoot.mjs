@@ -71,7 +71,13 @@ const state = () => page.evaluate(() => {
   };
 });
 
-await page.goto(`${URL}/?land=1&skipIntro=1`, { waitUntil: 'load' });
+// `peaceful=1` empties the camps. This file measures walking speeds,
+// stamina and ladders over several hundred lines, and a bokoblin
+// catching him halfway through spoils all three at once — a knockback
+// reads as a faster sprint, a hit empties the stamina wheel, and the
+// last heart leaves him on the floor where the ladder used to be. The
+// camps have their own file.
+await page.goto(`${URL}/?land=1&skipIntro=1&peaceful=1`, { waitUntil: 'load' });
 await page.waitForTimeout(700);
 // Dismiss the title card — `?land=1` drops us into town on the way out.
 await page.keyboard.press('Space');
@@ -161,7 +167,7 @@ const rig = await page.evaluate(() => {
   // ground under its own footprint (onFoot.js explains why), so that is
   // the number the belly has to be measured against — on a slope the
   // ground under the centre can be most of a metre lower.
-  const town = g.surface.town;
+  const town = g.surface.world;
   const ORIGIN_Y = -20000;
   const groundAt = (x, z) => ORIGIN_Y + town.groundHeightAt(x, z);
   const yaw = new (ship.rotation.constructor)().setFromQuaternion(ship.quaternion, 'YXZ').y;
@@ -232,7 +238,7 @@ async function walkFor(ms, { run = false } = {}) {
 const openGround = await page.evaluate(() => {
   const g = window.__superVexo;
   const f = g.onFoot;
-  const town = g.surface.town;
+  const town = g.surface.world;
   let best = null;
   for (let x = -200; x <= 200; x += 4) {
     for (let z = -200; z <= 200; z += 4) {
@@ -468,7 +474,7 @@ for (let i = 0; i < 10; i++) {
         if (v.y < lowest) lowest = v.y;
       }
     });
-    const town = g.surface.town;
+    const town = g.surface.world;
     const ground = -20000 + town.groundHeightAt(f.position.x, f.position.z);
     return +(lowest - ground).toFixed(3);
   }));
@@ -495,7 +501,7 @@ const gyroLook = await page.evaluate(async () => {
   // Open ground first: the boom swings wide to see past a wall or the
   // ship, and a camera that isn't behind him has nothing to say about
   // which way "behind him" moved.
-  const town = g.surface.town;
+  const town = g.surface.world;
   let best = null;
   for (let x = -200; x <= 200; x += 4) {
     for (let z = -200; z <= 200; z += 4) {
@@ -586,27 +592,51 @@ check('and the view stays where it was left',
   Math.abs(stickLook.released - stickLook.pushed) < 0.15,
   `${stickLook.pushed.toFixed(2)} → ${stickLook.released.toFixed(2)} rad after release`);
 
-// --- Walls --------------------------------------------------------------------
-const walls = await page.evaluate(() => {
-  const town = window.__superVexo.surface.town;
-  // Find a point inside a building by sweeping the neighbourhood, then
-  // ask the walk resolver to get us out of it.
-  for (let x = -300; x <= 300; x += 3) {
-    for (let z = -300; z <= 300; z += 3) {
-      if (town.isClear(x, z, 0.38)) continue;
-      const out = town.resolveWalk(x, z, 0.38, [0, 0]);
-      return {
-        found: [x, z],
-        pushed: out.map((n) => +n.toFixed(2)),
-        moved: +Math.hypot(out[0] - x, out[1] - z).toFixed(2),
-        clearNow: town.isClear(out[0], out[1], 0.36),
-      };
-    }
+// --- Ground too steep to climb -------------------------------------------------
+// There are no buildings in this world. What stops a walker now is the
+// ground itself: anything past about 38° sheds him back down it, which
+// is what keeps him off a dune's slipface and out of the mountains he
+// has no business climbing.
+const steep = await page.evaluate(() => {
+  const w = window.__superVexo.surface.world;
+  for (let i = 1; i < 20000; i++) {
+    const r = 40 * Math.sqrt(i);
+    const x = Math.cos(i * 0.7) * r;
+    const z = Math.sin(i * 0.7) * r;
+    const s = w.terrain.sampleAt(x, z, 2);
+    if (s.slopeDeg < 45 || s.height < 5) continue;
+    const out = w.resolveWalk(x, z, 0.38, [0, 0]);
+    return {
+      at: [Math.round(x), Math.round(z)],
+      slope: +s.slopeDeg.toFixed(1),
+      moved: +Math.hypot(out[0] - x, out[1] - z).toFixed(2),
+      // Pushed DOWNHILL, not just anywhere.
+      downhill: w.groundHeightAt(out[0], out[1]) < s.height,
+    };
   }
   return null;
 });
-check('solid things are solid', walls != null && walls.clearNow,
-  walls ? `pushed ${walls.moved}m out of the wall at ${walls.found}` : 'no wall found');
+check('ground too steep to climb pushes him back down',
+  steep != null && steep.moved > 0.2 && steep.downhill,
+  steep ? `${steep.slope}° at ${steep.at}, moved ${steep.moved}m downhill` : 'no cliff found');
+
+// And gentle ground does not, or every walk would be a fight with the
+// hillside.
+const walkable = await page.evaluate(() => {
+  const w = window.__superVexo.surface.world;
+  for (let i = 1; i < 20000; i++) {
+    const r = 40 * Math.sqrt(i);
+    const x = Math.cos(i * 0.7) * r;
+    const z = Math.sin(i * 0.7) * r;
+    const s = w.terrain.sampleAt(x, z, 2);
+    if (s.slopeDeg > 12 || s.height < 5) continue;
+    const out = w.resolveWalk(x, z, 0.38, [0, 0]);
+    return { moved: +Math.hypot(out[0] - x, out[1] - z).toFixed(3), slope: +s.slopeDeg.toFixed(1) };
+  }
+  return null;
+});
+check('and walkable ground leaves him alone',
+  walkable != null && walkable.moved === 0, walkable ? `${walkable.slope}°, moved ${walkable.moved}m` : '');
 
 // --- Boarding -----------------------------------------------------------------
 await page.evaluate(() => {
@@ -619,7 +649,13 @@ await page.evaluate(() => {
 await page.waitForTimeout(300);
 const prompt = await page.evaluate(() => {
   const el = document.getElementById('foot-prompt');
-  return el && !el.hidden ? el.textContent : null;
+  const g = window.__superVexo;
+  const text = el && !el.hidden ? el.textContent : null;
+  // If he is on the floor with no hearts left, a missing prompt is not
+  // a prompt bug — it is a bokoblin having caught him somewhere in the
+  // last four hundred lines of this file. Say which it was.
+  return text ?? `no prompt (state ${g.onFoot.state}, ${g.onFoot.hearts} hearts,`
+    + ` down ${g.onFoot.down}, sign ${g.gameOver.isOpen})`;
 });
 check('standing at the ladder offers a way back in', /climb back in/i.test(prompt ?? ''),
   prompt ?? 'no prompt');
@@ -649,7 +685,7 @@ check('the way out is offered again once he is aboard',
 // rather than posting Vexo into a wall.
 const blocked = await page.evaluate(() => {
   const g = window.__superVexo;
-  const town = g.surface.town;
+  const town = g.surface.world;
   const ship = g.ship.mesh;
   const home = { x: ship.position.x, z: ship.position.z };
   const yaw = new (ship.rotation.constructor)()

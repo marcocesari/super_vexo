@@ -76,11 +76,13 @@ Then open http://localhost:5173.
 - **Shift / B (hold)** — sprint (6.2 m/s), for as long as your stamina lasts
 - **Space / X** — shoot. He draws the pistol off his thigh and holsters it again
   a few seconds after the last shot
-- **E, or + on a pad** — the inventory. Weapons down the left, and Vexo on the
-  right: drag him, or hold A / D, to turn him round and look at his kit from any
-  side. He's a real model in a real scene, drawn into that corner of the game's
-  own canvas, so he can never go stale the way a picture of him would. Escape or
-  B closes it
+- **E, or + on a pad** — the inventory. A row of tabs, weapons down the left,
+  and Vexo on the right: drag him, or hold A / D, to turn him round and look at
+  his kit from any side. He's a real model in a real scene, drawn into that
+  corner of the game's own canvas, so he can never go stale the way a picture of
+  him would. **← → , or L / R on a pad**, walks along the tabs; the last one on
+  the right is **System**, and that's where the save button is. Escape or B
+  closes it
 - **Right stick, or turning the phone** — swing the camera around him. Push and
   it keeps turning; let go and it stays where you left it. Walking forward
   eases it back behind him on its own, so there's no button to press
@@ -232,15 +234,85 @@ into the other the way a person does when they pick up the pace.
 npm run smoke:onfoot     # flies down, climbs out, walks, sprints, boards
 ```
 
+`?peaceful=1` empties the camps, for measuring how he moves without a
+bokoblin interrupting — which is what the on-foot tests run with.
+
+## The world
+
+The ground is not a model of anywhere. It is generated — endlessly, in
+every direction — from rules taken off real ground by measuring it.
+
+Twenty places on Earth were surveyed with `tools/worldstudy/survey.py`:
+their actual elevations downloaded from public terrain tiles, and the
+satellite imagery with them. The Dolomites, Mont Blanc, Annapurna, the
+Appalachians, the Jura, Etna; Erg Chebbi, Sossusvlei, Badwater,
+Monument Valley, the Bardenas, the Namib gravel plain; the Mississippi's
+meanders, a glacial outwash plain, a Norwegian fjord, the Grand Canyon;
+the Po valley, the Serengeti, Finnish lake country, the chalk cliffs at
+Étretat. Three findings shaped everything:
+
+**Ridges come every three kilometres.** Dolomites 3.5 km, Mont Blanc
+3.4, Annapurna 3.7, Appalachians 3.5, Jura 3.6, fjord 3.3, Grand Canyon
+3.1 — utterly different mountains, made in utterly different ways, all
+repeating at about the same distance. Dune fields are finer, at 2.0–2.2
+km.
+
+**Slope tells one kind of ground from another.** Median slope runs
+0.3–0.7° on a floodplain, 3.4° on savanna, 6–9° in hills, 4–11° across
+dunes, 22–32° in mountains, with the steepest twentieth reaching 50–63°
+in the Alps and the Grand Canyon.
+
+**Real land is much smoother than fractal noise.** Its power spectrum
+measures 1/f³·² to 1/f⁵·⁶. The textbook recipe for procedural terrain
+gives 1/f², and that one number is why so much of it looks like crumpled
+foil.
+
+The world is built six times smaller than Earth but at *exactly* the
+same angles — a valley every 3 km means five minutes of walking before
+anything changes, while slope is the thing you actually feel underfoot.
+Colours were sampled from the satellite imagery rather than chosen, and
+the surprise there is how drab real ground is: the Sahara reads #a87647,
+not orange; alpine meadow #536641; a salt pan #efe2c2.
+
+`src/world/terrain.js` holds the rules and is pure arithmetic — no
+Three.js — so the very function the game draws with can be run by a tool
+and measured against the real thing:
+
+```bash
+node tools/worldstudy/tune.mjs      # generated vs Earth, side by side
+python3 tools/worldstudy/survey.py out/   # re-measure the real places
+```
+
+There is no town any more: Castel Maggiore, its streets and the Le
+Piazze mall were deleted along with the rest of the old world. Landing
+sets you down on open ground, and where that is depends on where you
+came down. Leave and come back and you return to the same spot.
+
+`src/world/planet.js` draws it, in four rings of tiles that travel with
+the player: 64 m tiles with a vertex every 4 m under his feet, out to
+4 km tiles on the horizon. Twenty kilometres of world for about 30,000
+triangles. To fly around it with none of the game in the way, start
+`npm run dev` and open
+[/tools/world-preview.html](http://localhost:5173/tools/world-preview.html)
+— drag to look, W and S to fly, Shift to go faster.
+
 ## Bokoblins
 
-Four camps around the neighbourhood, laid out the way *Tears of the Kingdom*
-lays them out: a fire, some crates, three monsters and a bigger one in charge.
-Red, blue and black, in that order of nastiness, and the black ones are the
-bosses — bigger, and worth four times the shooting. You can see a camp from
+Camps are spread across the whole world, laid out the way *Tears of the
+Kingdom* lays them out: a fire, some crates, three monsters and a bigger one in
+charge. Red, blue and black, in that order of nastiness, and the black ones are
+the bosses — bigger, and worth four times the shooting. You can see a camp from
 across a field and decide whether to go round it, which is the whole reason
 they're in camps rather than scattered: a wandering monster is a jump scare, a
 camp is a decision.
+
+Since the world has no edges, the camps can't be a list of places. Every 620 m
+square of it either holds a camp or doesn't, decided by hashing the square's
+coordinates — so the same square always holds the same camp, in the same spot,
+and you can learn where they live and come back to a fight you walked away
+from. Only the nearest four are ever built; they travel with you, which costs
+the same whether you stand still or fly across a continent. Saves record which
+squares have been cleared.
 
 They see about 24 m in a cone in front of them, and hear anything within 7 m
 whichever way they're facing. One spotting you brings the whole camp — that's
@@ -254,9 +326,7 @@ of a mistake. There's a mercy window of a second and a half, and only two of a
 camp may be swinging at once — without either, four of them delete you in about
 four seconds, and that isn't a fight, it's a mob.
 
-Lose all five hearts and Vexo goes down, and wakes up back in the ship with his
-hearts refilled and the camps back where they were. Nothing else in this game
-has a losing screen and this didn't seem the place to introduce one.
+Lose all five hearts and he goes down properly — see *Game over*, below.
 
 The pistol itself is `src/world/pistol.js`, built to a real compact pistol's
 proportions — 181 mm long, 130 mm tall, 32 mm wide, with a 99 mm barrel — and
@@ -275,6 +345,46 @@ thumbstick on a phone is more dexterity than this game should ask for.
 
 ```bash
 npm run smoke:monsters   # camps, being spotted, being hit, shooting back, losing
+```
+
+## Game over, and saving
+
+Lose the last heart and Vexo takes the hit, his knees give, and he goes over
+backwards — about a second and a half of it, and nothing interrupts it, because
+a sign that lands on top of the animation steals it. Then **GAME OVER**, and one
+question: continue from your last save, or back to the title screen. **← →** to
+choose, **Enter** or **A** to take it. With nothing saved, the offer changes
+rather than lying to you — *You have no saved game* — and only the title screen
+is on the table.
+
+Saving works the way it does in *Tears of the Kingdom*: there's a button you
+press, and the game also saves on its own so that a bad five minutes never costs
+you an hour. The button is in the inventory's **System** tab, the last tab on
+the right, exactly where TotK keeps its own — hold R to the end of the row and
+the cog is waiting. Underneath it, when the game last managed it.
+
+The autosaves happen at the three moments worth coming back from:
+
+| when | why |
+| --- | --- |
+| he climbs down the ladder | you got where you were going |
+| he climbs back in | you got out alive |
+| a camp is cleared | that took some doing |
+
+A save records where the ship is and whether it's in town, which monsters are
+dead and how battered the rest are, your credits, the upgrades you've bought and
+the rovers you've fixed. It does *not* record his hearts: you come back in the
+ship, and climbing down that ladder gives you a fresh five.
+
+Two slots, manual and automatic, and Game Over offers whichever is newer — so
+someone who saves religiously never loses more than they chose to, and someone
+who never touches the button still has somewhere to go. It all lives in
+`localStorage`, which can throw (a private window, a browser with site data
+switched off), so every touch of it is wrapped: a game that can't save is a
+shame, a game that white-screens because it can't save is a bug.
+
+```bash
+npm run smoke:gameover   # autosaves, the save button, dying, and both answers
 ```
 
 `?character=1&who=boko` puts one on the turntable — `who=boko-blue`,

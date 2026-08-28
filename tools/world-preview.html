@@ -1,0 +1,142 @@
+<!doctype html>
+<!--
+  A window onto the new world, with none of the game in the way.
+
+  Served by `npm run dev` at /tools/world-preview.html. It builds the
+  planet on its own, puts a camera above it and lets you move: drag to
+  look, W/S to fly, and a number key to jump to the nearest ground of
+  that kind. `?x=&z=&h=` starts you somewhere in particular, which is
+  how the screenshots in the journal were taken.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Super Vexo — world preview</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0a0f14; overflow: hidden; }
+  canvas { display: block; }
+  #hud {
+    position: fixed; left: 10px; top: 10px; z-index: 2;
+    font: 12px/1.5 ui-monospace, monospace; color: #cfe4f6;
+    background: rgba(6, 12, 20, 0.72); padding: 8px 10px; border-radius: 6px;
+    white-space: pre;
+  }
+</style>
+</head>
+<body>
+<div id="hud">building…</div>
+<script type="module">
+import * as THREE from 'three';
+import { createPlanet } from '/src/world/planet.js';
+import { BIOME } from '/src/world/terrain.js';
+
+const params = new URLSearchParams(location.search);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9dc9ef);
+scene.fog = new THREE.Fog(0xa9cfe8, 900, 9000);
+
+const sun = new THREE.DirectionalLight(0xfff2e2, 2.4);
+sun.position.set(-0.5, 1, 0.45).multiplyScalar(1000);
+scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xbcd9f2, 0x4a4436, 1.1));
+
+const planet = createPlanet();
+scene.add(planet.group);
+
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 1, 26000);
+let yaw = Number(params.get('yaw') ?? 0.6);
+let pitch = Number(params.get('pitch') ?? -0.32);
+const pos = new THREE.Vector3(
+  Number(params.get('x') ?? planet.spawn.x),
+  Number(params.get('h') ?? planet.spawn.y + 260),
+  Number(params.get('z') ?? planet.spawn.z),
+);
+
+/** Put the camera over the nearest ground of a given kind. */
+function goTo(biome) {
+  const t = planet.terrain;
+  for (let i = 1; i < 9000; i++) {
+    const r = 120 * Math.sqrt(i);
+    const x = pos.x + Math.cos(i * 0.7) * r;
+    const z = pos.z + Math.sin(i * 0.7) * r;
+    if (t.biomeAt(x, z) !== biome) continue;
+    pos.set(x, t.heightAt(x, z) + 220, z);
+    return true;
+  }
+  return false;
+}
+if (params.get('go')) {
+  goTo(params.get('go'));
+  // An explicit height wins over the one `goTo` picked — otherwise
+  // every jump lands you at 220 m and you can never stand on anything.
+  if (params.has('h')) pos.y = planet.terrain.heightAt(pos.x, pos.z) + Number(params.get('h'));
+}
+
+const keys = new Set();
+addEventListener('keydown', (e) => {
+  keys.add(e.code);
+  const n = Number(e.key);
+  if (n >= 1 && n <= 9) goTo(Object.values(BIOME)[n]);
+});
+addEventListener('keyup', (e) => keys.delete(e.code));
+let dragging = false;
+renderer.domElement.addEventListener('pointerdown', () => { dragging = true; });
+addEventListener('pointerup', () => { dragging = false; });
+addEventListener('pointermove', (e) => {
+  if (!dragging) return;
+  yaw -= e.movementX * 0.003;
+  pitch = Math.max(-1.5, Math.min(1.2, pitch - e.movementY * 0.003));
+});
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+const hud = document.getElementById('hud');
+const dir = new THREE.Vector3();
+let last = performance.now();
+let frames = 0;
+let fps = 0;
+let fpsAt = last;
+
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  const speed = (keys.has('ShiftLeft') ? 900 : 180) * dt;
+  dir.set(0, 0, -1).applyEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
+  if (keys.has('KeyW')) pos.addScaledVector(dir, speed);
+  if (keys.has('KeyS')) pos.addScaledVector(dir, -speed);
+  if (keys.has('KeyQ')) pos.y += speed;
+  if (keys.has('KeyE')) pos.y -= speed;
+
+  planet.setFocus(pos.x, pos.z);
+  camera.position.copy(pos);
+  camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
+  renderer.render(scene, camera);
+
+  frames++;
+  if (now - fpsAt > 500) {
+    fps = Math.round((frames * 1000) / (now - fpsAt));
+    frames = 0;
+    fpsAt = now;
+  }
+  const s = planet.terrain.sampleAt(pos.x, pos.z, 4);
+  hud.textContent = `${Math.round(pos.x)}, ${Math.round(pos.z)}   height ${s.height.toFixed(0)} m`
+    + `   camera ${Math.round(pos.y)} m\n${s.biome}   slope ${s.slopeDeg.toFixed(1)}°`
+    + `   ${fps} fps   ${renderer.info.render.triangles / 1000 | 0}k tris`
+    + `   ${renderer.info.render.calls} calls`;
+  window.__preview = { planet, pos, fps, renderer, sample: s };
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

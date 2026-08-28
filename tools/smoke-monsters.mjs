@@ -40,13 +40,19 @@ await page.waitForTimeout(700);
 const built = await page.evaluate(() => {
   const g = window.__superVexo;
   const m = g.monsters;
-  const town = g.surface.town;
+  const world = g.surface.world;
   return {
     camps: m.camps.length,
     monsters: m.monsters.length,
     bosses: m.monsters.filter((x) => x.boss).length,
-    // Nobody should have been dropped inside a building.
-    inWalls: m.monsters.filter((x) => !town.isClear(x.pos.x, x.pos.y, 0.4)).length,
+    // Nobody should have been pitched somewhere nothing could stand: in
+    // the sea, or on ground too steep to hold a camp. There are no
+    // buildings in this world to be dropped inside of any more, so what
+    // matters is the ground itself.
+    stranded: m.monsters.filter((x) => {
+      const s = world.terrain.sampleAt(x.pos.x, x.pos.y, 2);
+      return s.height <= 0 || s.slopeDeg > 38;
+    }).length,
     spread: (() => {
       let worst = Infinity;
       for (let i = 0; i < m.camps.length; i++) {
@@ -62,8 +68,8 @@ const built = await page.evaluate(() => {
 check('there are camps', built.camps === 4, `${built.camps} camps`);
 check('each has a gang and a boss', built.monsters === 16 && built.bosses === 4,
   `${built.monsters} monsters, ${built.bosses} bosses`);
-check('none of them stands inside a building', built.inWalls === 0,
-  `${built.inWalls} in walls`);
+check('none of them is standing somewhere nothing could stand',
+  built.stranded === 0, `${built.stranded} in the sea or up a cliff`);
 // Camps you can choose to go round have to be far enough apart to be
 // separate places rather than one long fight.
 check('the camps are spread out', built.spread > 60, `nearest pair ${built.spread}m apart`);
@@ -182,6 +188,9 @@ check('the pistol kills them', shot.dead > 0,
 check('the boss takes more killing', shot.bossHp > 1, `${shot.bossHp} left`);
 
 // --- Losing ---------------------------------------------------------------------
+// A camp can actually finish him now: the last heart plays a death and
+// hands over to GAME OVER, which is `smoke:gameover`'s business. What
+// this file cares about is that the monsters are the ones who did it.
 const defeat = await page.evaluate(async () => {
   const g = window.__superVexo;
   const f = g.onFoot;
@@ -192,22 +201,30 @@ const defeat = await page.evaluate(async () => {
   f.position.x = camp.x;
   f.position.z = camp.z;
   const t0 = performance.now();
-  while (performance.now() - t0 < 20000) {
+  let killedAfter = null;
+  while (performance.now() - t0 < 25000) {
     await new Promise((r) => requestAnimationFrame(r));
-    if (f.state === 'off') break;
+    if (killedAfter === null && f.hearts === 0) killedAfter = performance.now() - t0;
+    if (g.gameOver.isOpen) break;
   }
   return {
-    state: f.state,
     hearts: f.hearts,
-    monstersReset: g.monsters.monsters.every((m) => m.state !== 'chase'),
-    parked: g.surface.parked,
+    killedAfter: killedAfter === null ? null : Math.round(killedAfter),
+    gait: f.vexo.gait,
+    down: f.down,
+    sign: g.gameOver.isOpen,
   };
 });
-check('losing the last heart puts him back in the ship', defeat.state === 'off',
-  `state ${defeat.state}`);
-check('with his hearts back', defeat.hearts === 5, `${defeat.hearts} hearts`);
-check('and the camps back where they were', defeat.monstersReset);
-check('the ship is his again', !defeat.parked);
+check('a camp can finish him off', defeat.hearts === 0,
+  defeat.killedAfter != null ? `last heart gone after ${defeat.killedAfter}ms` : 'still standing');
+check('and losing the last heart drops him', defeat.down,
+  `gait ${defeat.gait}`);
+check('which brings up GAME OVER', defeat.sign);
+// Put the game back on its feet for the checks after this one.
+await page.evaluate(() => {
+  window.__superVexo.gameOver.hide();
+  window.__superVexo.resetGame();
+});
 
 check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 check('no console warnings', warnings.length === 0, warnings.slice(0, 3).join(' | '));

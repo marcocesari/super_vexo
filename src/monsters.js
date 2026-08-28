@@ -53,10 +53,10 @@ const STAGGER_S = 0.45;
 /**
  * @param {object} deps
  * @param {THREE.Scene} deps.scene
- * @param {*} deps.town        the neighbourhood, for ground height and clear space
- * @param {THREE.Vector3} deps.origin   where the town sits in world space
+ * @param {*} deps.world       the ground, for height and for clear space
+ * @param {THREE.Vector3} deps.origin   where the world sits in world space
  */
-export function createMonsters({ scene, town, origin }) {
+export function createMonsters({ scene, world, origin }) {
   const group = new THREE.Group();
   group.visible = false;
   scene.add(group);
@@ -69,69 +69,154 @@ export function createMonsters({ scene, town, origin }) {
 
   const monsters = [];
   const camps = [];
+  // Where a camp's crates sit, relative to its fire.
+  const CRATE_SPOTS = [[2.4, 1.2], [-2.1, 1.9], [1.1, -2.4]];
 
-  /** Ground height in world Y at a town-local point. */
-  const groundAt = (x, z) => origin.y + town.groundHeightAt(x, z);
+  /** Ground height in world Y at a world-local point. */
+  const groundAt = (x, z) => origin.y + world.groundHeightAt(x, z);
 
-  // --- Build the camps ----------------------------------------------------------
-  // Spread around the neighbourhood at fixed bearings, then nudged to the
-  // nearest patch of ground with room for a fire and four monsters. Fixed
-  // rather than random so a camp is always in the same place: you learn
-  // where they live, which you cannot do if they move every reload.
-  const SITES = [
-    [130, 60], [-120, 90], [40, -150], [-90, -120],
-  ];
-  for (const [i, [wantX, wantZ]] of SITES.entries()) {
-    if (camps.length >= CAMPS) break;
-    const site = findClearGround(wantX, wantZ, 7);
-    if (!site) continue;
-    const camp = { x: site.x, z: site.z, members: [] };
+  // --- The camps ----------------------------------------------------------------
+  // The world has no edges, so the camps cannot be a list of places. They
+  // are a GRID instead: every CAMP_CELL metres square either holds a camp
+  // or does not, decided by hashing the square's coordinates. That makes
+  // them spread across the whole world and yet fixed — the same square
+  // always holds the same camp, at the same spot, so you can learn where
+  // they live and come back to a fight you left.
+  //
+  // Only the nearest few are ever built. Four camps' worth of monsters
+  // travel with the player and are re-pitched onto whichever squares are
+  // closest, which keeps the cost the same whether you are standing in
+  // the one place or flying across a continent.
+  const CAMP_CELL = 620;
+  for (let i = 0; i < CAMPS; i++) {
+    const camp = { x: 0, z: 0, cell: null, members: [] };
     camps.push(camp);
     buildCampProps(camp);
-    for (let m = 0; m < PER_CAMP; m++) {
-      const a = (m / PER_CAMP) * Math.PI * 2 + i;
-      spawn(camp, camp.x + Math.sin(a) * 2.6, camp.z + Math.cos(a) * 2.6,
-        m === 0 ? 'blue' : 'red', false);
-    }
+    for (let m = 0; m < PER_CAMP; m++) spawn(camp, 0, 0, m === 0 ? 'blue' : 'red', false);
     // The one in charge: black, bigger, and worth avoiding.
-    spawn(camp, camp.x - 1.4, camp.z - 1.4, 'black', true);
+    spawn(camp, 0, 0, 'black', true);
+  }
+
+  /** A stable number in [0, 1) for a pair of whole numbers. */
+  function hash2(i, j, salt = 0) {
+    let h = Math.imul(i | 0, 0x27d4eb2d) ^ Math.imul(j | 0, 0x165667b1) ^ Math.imul(salt, 0x9e3779b1);
+    h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+
+  /**
+   * Where the camp in this square of the world stands, or null if that
+   * square has none.
+   *
+   * Rather more squares are empty than full: a monster camp behind every
+   * hill is a chore, and the whole point of a camp is that you can see it
+   * from a distance and decide.
+   */
+  function siteForCell(i, j) {
+    if (hash2(i, j, 7) > 0.42) return null;
+    const x = (i + 0.2 + hash2(i, j, 11) * 0.6) * CAMP_CELL;
+    const z = (j + 0.2 + hash2(i, j, 13) * 0.6) * CAMP_CELL;
+    return findClearGround(x, z, 7);
+  }
+
+  /**
+   * Pitch the camps on the nearest squares that have one.
+   *
+   * A camp already standing where it should be is left alone, fight and
+   * all — walking away from a battle and back again must not reset it.
+   */
+  function ensureCampsNear(x, z) {
+    const ci = Math.floor(x / CAMP_CELL);
+    const cj = Math.floor(z / CAMP_CELL);
+    const wanted = [];
+    const REACH = 3;
+    for (let dj = -REACH; dj <= REACH; dj++) {
+      for (let di = -REACH; di <= REACH; di++) {
+        const site = siteForCell(ci + di, cj + dj);
+        if (!site) continue;
+        wanted.push({
+          key: `${ci + di},${cj + dj}`, site,
+          d2: (site.x - x) ** 2 + (site.z - z) ** 2,
+        });
+      }
+    }
+    wanted.sort((a, b) => a.d2 - b.d2);
+    const keep = wanted.slice(0, CAMPS);
+    const keepKeys = new Set(keep.map((w) => w.key));
+    const free = camps.filter((c) => !keepKeys.has(c.cell));
+    for (const w of keep) {
+      if (camps.some((c) => c.cell === w.key)) continue;
+      const camp = free.pop();
+      if (!camp) break;
+      pitchCamp(camp, w.key, w.site.x, w.site.z);
+    }
+  }
+
+  /** Move a camp, its fire, its crates and its monsters somewhere new. */
+  function pitchCamp(camp, cell, x, z) {
+    camp.cell = cell;
+    camp.x = x;
+    camp.z = z;
+    placeCampProps(camp);
+    for (const [i, m] of camp.members.entries()) {
+      const a = (i / camp.members.length) * Math.PI * 2 + hash2(x | 0, z | 0) * 6;
+      const r = m.boss ? 1.9 : 2.6;
+      m.home.set(x + Math.sin(a) * r, z + Math.cos(a) * r);
+      m.pos.copy(m.home);
+      m.state = 'idle';
+      m.timer = 0;
+      m.hp = m.boko.maxHp * (m.boss ? 2 : 1);
+      m.boko.group.rotation.set(0, m.heading, 0);
+      m.boko.group.visible = true;
+      place(m);
+    }
   }
 
   /** The nearest point to (x, z) with `radius` metres of clear ground. */
   function findClearGround(x, z, radius) {
-    if (town.isClear(x, z, radius)) return { x, z };
+    if (world.isClear(x, z, radius)) return { x, z };
     for (let ring = 6; ring <= 60; ring += 6) {
       for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
         const px = x + Math.sin(a) * ring;
         const pz = z + Math.cos(a) * ring;
-        if (town.isClear(px, pz, radius)) return { x: px, z: pz };
+        if (world.isClear(px, pz, radius)) return { x: px, z: pz };
       }
     }
     return null;
   }
 
+  /** Build a camp's fire and crates once. They are moved, never remade. */
   function buildCampProps(camp) {
-    const y = groundAt(camp.x, camp.z);
     // Fire: a ring of stones with a cone of flame in it. Emissive rather
     // than a light — a light per camp would recompile every shader in
     // the game the first time one came into view.
-    const stones = new THREE.Mesh(
-      new THREE.TorusGeometry(0.55, 0.13, 6, 12), woodMat,
-    );
+    const stones = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.13, 6, 12), woodMat);
     stones.rotation.x = Math.PI / 2;
-    stones.position.set(camp.x + origin.x, y + 0.1, camp.z + origin.z);
     group.add(stones);
+    camp.stones = stones;
     const flame = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.8, 7), fireMat);
-    flame.position.set(camp.x + origin.x, y + 0.5, camp.z + origin.z);
     group.add(flame);
     camp.flame = flame;
-
-    for (const [i, [dx, dz]] of [[2.4, 1.2], [-2.1, 1.9], [1.1, -2.4]].entries()) {
+    camp.crates = CRATE_SPOTS.map((_, i) => {
       const crate = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.62, 0.7), crateMat);
-      crate.position.set(camp.x + dx + origin.x, groundAt(camp.x + dx, camp.z + dz) + 0.31,
-        camp.z + dz + origin.z);
       crate.rotation.y = i * 0.8;
       group.add(crate);
+      return crate;
+    });
+  }
+
+  /** Set a camp's things down on the ground wherever it now stands. */
+  function placeCampProps(camp) {
+    const y = groundAt(camp.x, camp.z);
+    camp.stones.position.set(camp.x + origin.x, y + 0.1, camp.z + origin.z);
+    camp.flame.position.set(camp.x + origin.x, y + 0.5, camp.z + origin.z);
+    for (const [i, [dx, dz]] of CRATE_SPOTS.entries()) {
+      camp.crates[i].position.set(
+        camp.x + dx + origin.x,
+        groundAt(camp.x + dx, camp.z + dz) + 0.31,
+        camp.z + dz + origin.z,
+      );
     }
   }
 
@@ -160,6 +245,7 @@ export function createMonsters({ scene, town, origin }) {
   }
 
   const _v = new THREE.Vector3();
+  const lastFocus = new THREE.Vector2(Infinity, Infinity);
 
   function place(m) {
     m.boko.group.position.set(
@@ -208,7 +294,7 @@ export function createMonsters({ scene, town, origin }) {
     if (Math.abs(turn) < 1.2) {
       const nx = m.pos.x + Math.sin(m.heading) * step;
       const nz = m.pos.y + Math.cos(m.heading) * step;
-      if (town.isClear(nx, nz, 0.45)) {
+      if (world.isClear(nx, nz, 0.45)) {
         m.pos.x = nx;
         m.pos.y = nz;
       } else {
@@ -267,6 +353,17 @@ export function createMonsters({ scene, town, origin }) {
 
     /** Show them only while the player is down in the town. */
     setActive(on) { group.visible = on; },
+
+    /**
+     * Where the player is, so the camps can be pitched around them.
+     * Cheap to call every frame: it only does anything when the nearest
+     * squares of the world change, which is every few hundred metres.
+     */
+    focus(x, z) {
+      if (Math.abs(x - lastFocus.x) < 60 && Math.abs(z - lastFocus.y) < 60) return;
+      lastFocus.set(x, z);
+      ensureCampsNear(x, z);
+    },
 
     /**
      * @param {number} dt
@@ -441,8 +538,53 @@ export function createMonsters({ scene, town, origin }) {
       return best;
     },
 
+    /**
+     * Put one down without shooting it — used when a save is restored
+     * and the camps have to be put back the way they were left.
+     */
+    kill(m) {
+      m.state = 'dead';
+      m.timer = 0;
+      m.hp = 0;
+      m.boko.group.rotation.x = -Math.PI / 2.2;
+      m.boko.group.position.y = groundAt(m.pos.x, m.pos.y) + 0.25;
+    },
+
+    /**
+     * Which camps have been cleared, and how battered the rest are.
+     *
+     * Keyed by the square of the world a camp stands on, not by its
+     * place in an array: the camps travel with the player now, so the
+     * third camp in the list is a different camp an hour later. The
+     * square is the only thing about a camp that does not move.
+     */
+    snapshot() {
+      return camps.filter((c) => c.cell).map((c) => ({
+        cell: c.cell,
+        hp: c.members.map((m) => (m.state === 'dead' ? 0 : m.hp)),
+      }));
+    },
+
+    /** Put a saved state back onto whichever camps are pitched now. */
+    restore(saved) {
+      if (!Array.isArray(saved)) return;
+      const byCell = new Map(saved.map((c) => [c.cell, c]));
+      for (const camp of camps) {
+        const was = byCell.get(camp.cell);
+        if (!was) continue;
+        for (const [i, m] of camp.members.entries()) {
+          const hp = was.hp[i];
+          if (hp === undefined) continue;
+          m.hp = hp;
+          if (hp <= 0) this.kill(m);
+        }
+      }
+    },
+
     /** Everything back where it started — used when the player dies. */
     reset() {
+      for (const camp of camps) camp.cell = null;
+      lastFocus.set(Infinity, Infinity);
       for (const m of monsters) {
         m.pos.copy(m.home);
         m.state = 'idle';

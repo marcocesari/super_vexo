@@ -25,8 +25,26 @@ export const strings = {
   // Shown when the ship drops through Earth's atmosphere and lands on
   // the real streets of Castel Maggiore (see src/surface.js).
   surface: {
-    town: 'CASTEL MAGGIORE · BOLOGNA',
-    street: 'Via Giuseppe Impastato',
+    town: 'AN UNNAMED WORLD',
+    street: 'unknown ground',
+    // What the banner calls the ground you have just set down on. The
+    // names are the landform, because that is all anyone can tell about
+    // a place from the air.
+    ground: {
+      plain: 'open plain',
+      savanna: 'dry grassland',
+      forest: 'forest',
+      hills: 'hill country',
+      mountain: 'bare mountain',
+      snow: 'snowfield',
+      dunes: 'sand sea',
+      stone: 'stone desert',
+      salt: 'salt pan',
+      badlands: 'badlands',
+      mesa: 'plateau country',
+      beach: 'shoreline',
+      sea: 'open water',
+    },
     leaveHint: 'Descend to land · climb to leave the atmosphere',
   },
 
@@ -41,13 +59,30 @@ export const strings = {
     controls: 'W A S D / stick — walk · Shift / B — sprint',
   },
 
+  // Shown when the last heart goes (see gameOver.js).
+  gameOver: {
+    title: 'GAME OVER',
+    ask: 'Continue from your last save?',
+    noSave: 'You have no saved game. Start again?',
+    yes: 'YES — CONTINUE',
+    no: 'NO — TITLE SCREEN',
+    hint: '← → to choose · Enter / A to take it',
+  },
+
   // The inventory screen (E, or + on a pad).
   inventory: {
     title: 'GEAR',
     weapons: 'Weapons',
     empty: 'Nothing yet.',
-    hint: 'E / + — close · B / Esc — back',
+    hint: 'E / + — close · ← → or L / R — tabs · B / Esc — back',
     turnHint: 'Drag, or A / D, to turn him',
+    system: 'System',
+    save: 'SAVE GAME',
+    neverSaved: 'Not saved yet.',
+    savedJustNow: 'Saved just now.',
+    savedSecondsAgo: 'Saved a few seconds ago.',
+    savedMinutesAgo: 'Saved {n} minutes ago.',
+    saveFailed: "Couldn't save — this browser won't let the game store anything.",
     starterGun: 'Sidearm',
     starterGunNote: 'Equipped',
   },

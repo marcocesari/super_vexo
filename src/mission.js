@@ -119,6 +119,8 @@ export function createMission(roverApi) {
     get credits() { return credits; },
     get inRange() { return inRange; },
     get repairing() { return repairing; },
+    /** Put credits back after a save is loaded. */
+    grantCredits(n) { credits = Math.max(0, Math.round(n)); },
     remaining,
     totalRovers,
     update,

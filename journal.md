@@ -2,6 +2,165 @@
 
 Most recent entries on top.
 
+## 2026-08-28 — A new world, measured off the real one
+
+- Marco: delete the world and build a whole new one — but *"you should
+  not copy the world, you just analyse how mountains are made, how
+  deserts are made and other stuff"*, at the scale of **the whole
+  world**, with everything else the game has kept and put in different
+  places.
+- **The yellow man is half blocked.** Street View panorama tiles come
+  back `403 PERMISSION_DENIED` to a script. The panorama can be found —
+  the snap lands on the official one outside Centro Commerciale Le
+  Piazze — but Google will not serve the pixels, so the picture is
+  black. User-uploaded photospheres do render (Big Ben came through
+  fine). So: satellite from above, which is Marco's own stated fallback,
+  plus something better.
+- **The better thing: real elevation.** Public terrain tiles give the
+  actual height of any ground on Earth. Twenty places were downloaded
+  and measured — `tools/worldstudy/survey.py`, results in
+  `findings/measurements.json`. Three findings ran the whole design:
+  1. **Ridges come every three kilometres.** Dolomites 3.5 km, Mont
+     Blanc 3.4, Annapurna 3.7, Appalachians 3.5, Jura 3.6, a Norwegian
+     fjord 3.3, the Grand Canyon 3.1 — glaciated limestone, granite,
+     folded sandstone, a river-cut plateau, all repeating at the same
+     distance. Dunes are finer, 2.0-2.2 km.
+  2. **Slope is what tells one kind of ground from another.** Median
+     slope 0.3-0.7° on floodplains, 3.4° savanna, 6-9° hills, 4-11°
+     dune fields, 22-32° mountains.
+  3. **Real land is far SMOOTHER than fractal noise.** The measured
+     power spectrum runs 1/f^3.2 to 1/f^5.6. Textbook fbm gives 1/f²,
+     and that one number is why procedural terrain so often looks like
+     crumpled foil. Dropping the gain from 0.5 to 0.38 fixed more than
+     any other change.
+- **Colours were sampled, not chosen.** k-means over the satellite
+  close-ups. The striking thing is how drab they are: the Sahara reads
+  #a87647, not orange; alpine meadow #536641; a salt pan #efe2c2.
+- `src/world/terrain.js` is pure arithmetic — no Three.js — so the SAME
+  function the game draws can be run by a tool and measured against
+  Earth. `tools/worldstudy/tune.mjs` prints the generated numbers beside
+  the real ones. Where it stands: dunes 6.4°/19.7° against Erg Chebbi
+  and Sossusvlei's 7.4°/24.6° with 339 m of relief against their 330;
+  stone desert 7.4°/25.7° against the Namib's 6.7°/23.0°; mesa country
+  2.7° median against Monument Valley's 2.3°; snowfields 31.9° against
+  Mont Blanc's 32.3°. Mountains come out at 34.8° — steeper than the
+  Dolomites' 21.7°, nearer Mont Blanc.
+- **Three mistakes worth keeping a note of.** (1) Everything was added
+  on top of everything else, so every kind of ground measured the same:
+  steep. Real country is made by ONE process winning — ice cut the Alps,
+  water cut the Grand Canyon, wind built the Sahara — so the landforms
+  are now blended between, not summed. (2) The height and the label
+  disagreed: plateau tops that rose above the treeline were called
+  mountain, so "mountain" measured a median slope of 0.0° — dead flat
+  rock at altitude. Both now ask one function what shaped the ground.
+  (3) The patch-finder checked five points 500 m apart and called the
+  answer a plain; the plain had 1377 m of relief, because the middle was
+  flat and the rest was a mountain range.
+- `src/world/planet.js` draws it: four rings of tiles that follow the
+  player, 64 m tiles at 4 m spacing under his feet out to 4 km tiles at
+  the horizon, twenty kilometres of world for about 30k triangles and 60
+  draw calls, at 60 fps. Moving one tile east rebuilds seven tiles, not
+  forty-nine.
+- Two bugs in the drawing, both invisible in code and obvious in a
+  screenshot. The tile recycler keyed tiles by position in a Map, and a
+  fresh ring's tiles all read "NaN,NaN" — so forty-nine collapsed into
+  one entry and the first frame drew three islands in an empty sea. And
+  the colour was computed from a slope measured at the ring's own
+  spacing, so the same hillside came out two different colours either
+  side of a ring boundary: every seam in the world showed as a staircase
+  of pale steps.
+- `tools/world-preview.html` (`npm run dev`, then /tools/world-preview.html)
+  flies around it with none of the game in the way.
+- **And then the swap.** Marco chose: Castel Maggiore gone completely,
+  and the game's things spread across the world where they belong. So
+  `world/neighborhood.js` (916 lines), the OSM place file and
+  `tools/fetch-osm.mjs` are deleted, and `surface.js` now owns a
+  POSITION in an endless world rather than a place. Leaving and coming
+  back puts you where you left off.
+- The camps could no longer be a list of addresses, so they became a
+  GRID: every 620 m square of the world either holds a camp or does not,
+  decided by hashing the square. Four camps' worth of monsters travel
+  with the player and are re-pitched onto the nearest squares — the same
+  square always holds the same camp, so you can still learn where they
+  live and come back to a fight you left. Saves are keyed by square for
+  the same reason.
+- **Vexo disappeared the first time he walked on it**, and the reason
+  was worth the hour. He was in the scene, visible, 5 m in front of the
+  camera, projecting to the middle of the screen — and the picture
+  showed grass. The ground was in front of him: I had given the terrain
+  2.5 m of fine roughness for texture underfoot, and a man is 1.8 m
+  tall, so the bumps swallowed him. Two fixes, both right: the texture
+  is now half a metre at most, and the camera lifts itself until the
+  sight line clears every rise between it and him — which the old town,
+  being flat, never needed.
+- Other things the swap broke, all found by the tests: `resolveWalk`
+  returned an array where the walker passes one IN to be filled, so
+  every step teleported him to the origin; `CRATE_SPOTS` was used above
+  where it was declared; and the ceiling for leaving the atmosphere was
+  620 m, which is below the tops of the mountains.
+- Every suite passes. `smoke:landing` now checks that a WORLD arrives —
+  many kinds of ground, none of them covering everything, mountains and
+  sea, somewhere to put a ship down — and `smoke:onfoot`'s "solid things
+  are solid" became "ground too steep to climb pushes him back down",
+  because there is nothing solid in this world any more except the
+  ground.
+- **Still to come:** nothing grows on it yet. Trees, rocks and grass are
+  the next piece, and then the rovers and the missions want spreading
+  across the world the way the camps now are.
+
+## 2026-08-26 — Game over, and somewhere to come back to
+
+- Marco: *"When the hearts end, there should be a animation where Vexo
+  dies and then there will be a GAME OVER sign on, it will then ask the
+  player if it wants to continue playing from last saved"* — plus: look
+  at how Tears of the Kingdom builds its inventory, and put the save
+  button at the far right, where TotK has it.
+- Two questions asked before starting, because both change the shape of
+  it: what NO means (**back to the title screen**), and whether the game
+  should ever save by itself (**manual button plus autosave often**).
+- **Where TotK actually keeps Save.** Nine tabs across the top, and the
+  last one on the right is System, whose first entry is Save. Sources:
+  the [Game UI Database's TotK
+  pages](https://www.gameuidatabase.com/index.php?&set=1&title=27), and
+  a [TheGamer piece on the pause
+  menu](https://www.thegamer.com/zelda-tears-of-the-kingdom-best-worst-ui-design-choices/).
+  So the row here is Weapons | System, System last, L / R (or ← →) to
+  walk along it — and the tabs come from a list, so armour and key items
+  can be dropped in beside them without touching the navigation.
+- **The death.** `poseDying` in `vexo.js` is four beats over about a
+  second and a half: the hit rocks him back, the knees give, the arms
+  come up and then out, and he goes over. The sign waits for all of it —
+  a GAME OVER that lands on top of the animation steals it.
+- **The bug that animation always has.** The first version played for
+  one frame and then stopped: `updateWalk` sets his gait from his speed
+  every frame, and a standing-still man is `idle`, so it overwrote
+  `dying` immediately. He fell over for 16 milliseconds. `updateWalk`
+  now returns early while he is going down.
+- **`src/save.js`.** Two localStorage slots, manual and auto, and Game
+  Over offers whichever is newer. Autosaves on landing, on boarding, and
+  on clearing a camp. What is stored: the ship's transform, whether it
+  is in town, which monsters are dead and how hurt the rest are,
+  credits, upgrades bought, rovers fixed. What is NOT stored: his
+  hearts — you come back in the ship and the ladder gives you a fresh
+  five, so a hearts field would be a number nothing ever reads.
+- **A quieter bug, found by the test rather than by playing.** Choosing
+  NO went to the title state and showed nothing: `titleCard.dismiss()`
+  REMOVES the card from the document after its fade, and `show()` only
+  reset the opacity. Fixed — `show()` re-attaches it and calls off any
+  pending removal.
+- `smoke:gameover` is 30 checks against localStorage itself rather than
+  against the button that claims to have written to it. A save that
+  never gets written looks exactly like one that does, right up until
+  the moment the player needs it.
+- **And a test that had been quietly lucky.** `smoke:onfoot` started
+  failing four checks — sprint measured at 7.03 m/s, an unexpectedly
+  empty stamina wheel, no ladder prompt. All one cause: a bokoblin
+  caught him halfway through the file. It had presumably been happening
+  for a while and the automatic revive hid it, putting him back in the
+  ship as though nothing had. There is now a `?peaceful=1` flag that
+  keeps the camps empty, and the on-foot file uses it — it measures
+  walking, not fighting, and the camps have their own file.
+
 ## 2026-08-22 — Bokoblins, camps, and something to shoot them with
 
 - Marco asked for monsters like Tears of the Kingdom's bokoblins, and

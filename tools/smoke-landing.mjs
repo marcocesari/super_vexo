@@ -1,11 +1,15 @@
-// Landing smoke: flying into Earth puts you on the real streets of
-// Castel Maggiore, and climbing out puts you back in space.
+// Landing smoke: flying into the planet puts you on real ground, and
+// climbing out puts you back in space.
 //
-// Covers the whole round trip because it's a state swap with a lot of
-// moving parts — scene background, fog, two sets of lights, every
-// space object's visibility, and a 20 km teleport that the chase
-// camera must cut to rather than fly.
+// Covers the whole round trip because it is a state swap with a lot of
+// moving parts — scene background, fog, two sets of lights, the camera
+// far plane, every space object's visibility, and a 20 km teleport that
+// the chase camera must cut to rather than fly.
 //
+// The ground itself is generated and endless (src/world/terrain.js), so
+// what is checked here is that a WORLD arrives: varied ground, ground
+// that follows the ship as it flies, and ground solid enough to stand
+// a spacecraft on.
 // Run while `npm run dev` is up.
 import { chromium } from 'playwright';
 
@@ -35,92 +39,64 @@ await page.goto(`${URL}/?skipIntro=1`, { waitUntil: 'load' });
 await page.keyboard.press('Space');
 await page.waitForTimeout(400);
 
-// --- The town itself --------------------------------------------------------
-const town = await page.evaluate(() => {
-  const t = window.__superVexo.surface.town;
+// --- The world itself -------------------------------------------------------
+const world = await page.evaluate(() => {
+  const w = window.__superVexo.surface.world;
+  // Sample a big square of the world and see what is in it.
+  const heights = [];
+  const biomes = new Map();
+  const STEP = 340;
+  for (let j = -14; j <= 14; j++) {
+    for (let i = -14; i <= 14; i++) {
+      const x = i * STEP;
+      const z = j * STEP;
+      heights.push(w.groundHeightAt(x, z));
+      const b = w.info.biomeAt(x, z);
+      biomes.set(b, (biomes.get(b) ?? 0) + 1);
+    }
+  }
+  heights.sort((a, b) => a - b);
+  const at = (q) => heights[Math.floor(q * (heights.length - 1))];
   return {
-    buildings: t.info.buildings,
-    town: t.info.town,
-    homeFromAddress: Math.round(Math.hypot(t.home.x, t.home.z)),
-    homeHeight: Math.round(t.info.homeStoreyHeight),
-    homeGround: +t.info.homeGround.toFixed(1),
-    hills: t.info.hills,
-    meshes: t.group.children.length,
+    kinds: [...biomes.keys()],
+    biggest: [...biomes.entries()].sort((a, b) => b[1] - a[1])[0],
+    lowest: Math.round(heights[0]),
+    highest: Math.round(heights[heights.length - 1]),
+    median: Math.round(at(0.5)),
+    reach: w.info.reach,
   };
 });
-check('the neighbourhood is built', town.buildings >= 25 && town.meshes >= 6,
-  `${town.buildings} buildings, ${town.meshes} meshes`);
-// The address point should fall inside (or right beside) the home block —
-// that's the whole promise of the marker.
-check('home block sits on the address', town.homeFromAddress <= 30,
-  `${town.homeFromAddress}m from Via Giuseppe Impastato 28`);
-check('home block is a four-storey condo', town.homeHeight >= 12 && town.homeHeight <= 14,
-  `${town.homeHeight}m`);
-// The first scan was 300m and clipped Centro Commerciale Le Piazze in
-// half — most of the mall's units fell outside it and simply weren't
-// there. The radius is 500m now; this is the guard against shrinking it.
-check('the whole neighbourhood is in range', town.buildings >= 50,
-  `${town.buildings} buildings`);
+// A world of one kind of ground everywhere is a bug that looks like a
+// working game until you fly for a minute.
+check('the world has many kinds of ground', world.kinds.length >= 6,
+  world.kinds.join(', '));
+check('and none of them covers everything',
+  world.biggest[1] / (29 * 29) < 0.6,
+  `${world.biggest[0]} is ${Math.round((world.biggest[1] / (29 * 29)) * 100)}% of it`);
+check('there are mountains and there is sea',
+  world.highest > 200 && world.lowest < -20,
+  `${world.lowest}m to ${world.highest}m`);
+check('the ground reaches to the horizon', world.reach > 8000, `${world.reach}m`);
 
-const place = JSON.parse(
-  await (await fetch(`${URL}/src/world/places/castel-maggiore.json`)).text(),
-);
-await page.evaluate((p) => { window.__place = p; }, place);
-
-// --- The long blocks stand on hills ------------------------------------------
-check('the long blocks got their hills', town.hills >= 5, `${town.hills} hills`);
-check('home stands on one of them', town.homeGround > 2, `${town.homeGround}m above the flat`);
-
-// Roads drape over the terrain rather than being trimmed around it —
-// six of the seven long blocks have a service road within a metre of
-// the wall, so a hill always has a road on it. The invariant is that no
-// road vertex ends up buried under the ground it lies on.
-const roadDrape = await page.evaluate(() => {
-  const t = window.__superVexo.surface.town;
-  let worstBelow = 0;
-  let checked = 0;
-  for (const mesh of t.group.children) {
-    if (mesh.name !== 'roads' && mesh.name !== 'paths') continue;
-    const pos = mesh.geometry.attributes.position;
-    for (let i = 0; i < pos.count; i += 3) {   // one vertex per triangle is plenty
-      const below = t.groundHeightAt(pos.getX(i), pos.getZ(i)) - pos.getY(i);
-      if (below > worstBelow) worstBelow = below;
-      checked++;
-    }
+// --- Ground you can put a ship down on ---------------------------------------
+const clear = await page.evaluate(() => {
+  const w = window.__superVexo.surface.world;
+  let found = 0;
+  let tried = 0;
+  for (let i = 1; i < 400; i++) {
+    const r = 60 * Math.sqrt(i);
+    const x = Math.cos(i * 0.7) * r;
+    const z = Math.sin(i * 0.7) * r;
+    tried++;
+    if (w.isClear(x, z, 3)) found++;
   }
-  return { worstBelow: +worstBelow.toFixed(2), checked };
+  return { found, tried, spawn: [w.spawn.x, w.spawn.y, w.spawn.z].map(Math.round) };
 });
-check('roads climb the hills instead of sinking into them',
-  roadDrape.worstBelow < 0.2 && roadDrape.checked > 100,
-  `deepest road vertex is ${roadDrape.worstBelow}m under the terrain, ${roadDrape.checked} checked`);
+check('there is somewhere to land', clear.found > 30,
+  `${clear.found} of ${clear.tried} spots flat and dry`);
+check('and the world picked a starting one above the water', clear.spawn[1] > 0,
+  `spawn at ${clear.spawn}`);
 
-// --- Trees stand on the verge, not in the road -------------------------------
-// They're scattered procedurally along the streets, so the only thing
-// keeping them out of the carriageway is the clearance test in
-// neighborhood.js. Check every single one against every road.
-const trees = await page.evaluate(() => {
-  const t = window.__superVexo.surface.town;
-  return { count: t.trees.length, sample: t.trees.slice(0, 400) };
-});
-function distToSegment(px, pz, x1, z1, x2, z2) {
-  const dx = x2 - x1; const dz = z2 - z1;
-  const lenSq = dx * dx + dz * dz;
-  if (lenSq < 1e-9) return Math.hypot(px - x1, pz - z1);
-  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (pz - z1) * dz) / lenSq));
-  return Math.hypot(px - (x1 + t * dx), pz - (z1 + t * dz));
-}
-let worstTree = Infinity;
-for (const [x, z] of trees.sample) {
-  for (const r of place.roads) {
-    for (let i = 0; i < r.pts.length - 1; i++) {
-      const d = distToSegment(x, z, r.pts[i][0], r.pts[i][1], r.pts[i + 1][0], r.pts[i + 1][1]);
-      worstTree = Math.min(worstTree, d - r.w / 2);
-    }
-  }
-}
-check('the town has street trees', trees.count > 40, `${trees.count} trees`);
-check('no tree stands in a road', worstTree > 1.5,
-  `closest tree is ${worstTree.toFixed(1)}m from the nearest kerb`);
 
 // --- Flying into Earth lands you ---------------------------------------------
 const landed = await page.evaluate(async () => {
@@ -135,14 +111,21 @@ const landed = await page.evaluate(async () => {
     shipScale: sv.ship.mesh.scale.x,
     banner: !document.getElementById('landing-banner').hidden,
     street: document.querySelector('.landing-banner__street')?.textContent ?? '',
-    townVisible: sv.surface.town.group.visible,
+    worldVisible: sv.surface.world.group.visible,
+    tiles: sv.surface.world.info.tilesBuilt,
+    far: sv.camera.far,
   };
 });
-check('flying into Earth lands the ship', landed.active);
-check('you arrive hovering over the street', landed.altitude > 10 && landed.altitude < 120,
+check('flying into the planet lands the ship', landed.active);
+check('you arrive hovering over the ground', landed.altitude > 10 && landed.altitude < 220,
   `${landed.altitude}m up`);
-check('the town is rendered', landed.townVisible);
-check('the banner names the street', /Impastato/.test(landed.street), landed.street);
+check('the ground is rendered', landed.worldVisible);
+check('and it was actually built', landed.tiles > 100, `${landed.tiles} tiles`);
+// A camera that can only see 5 km cannot show a mountain range, and the
+// whole point of the new world is the view.
+check('the camera can see to the horizon down here', landed.far > 12000,
+  `far plane ${landed.far}`);
+check('the banner names the ground you are on', landed.street.length > 3, landed.street);
 // The teleport is 20 km; without the camera cut you'd spend seconds
 // watching the ship shrink into the distance. The boom is measured in
 // ship lengths, and the ship is scaled up on the surface, so the bound
@@ -162,43 +145,57 @@ const floor = await page.evaluate(async () => {
 check('the street is a floor, not a crash', floor.altitude > 0 && floor.vy >= 0,
   `alt=${floor.altitude}m vy=${floor.vy}`);
 
-// And that floor follows the hills, rather than letting the ship fly
-// through a five-metre rise.
+// And that floor follows the ground, rather than letting the ship fly
+// through a hill.
 const hilltop = await page.evaluate(async () => {
   const sv = window.__superVexo;
-  const t = sv.surface.town;
-  sv.ship.mesh.position.set(t.home.x, -20000 + 1, t.home.z);
+  const w = sv.surface.world;
+  // Find some ground with a real slope on it and try to fly into it.
+  let spot = null;
+  for (let i = 1; i < 3000 && !spot; i++) {
+    const r = 70 * Math.sqrt(i);
+    const x = sv.ship.mesh.position.x + 20000 * 0 + Math.cos(i * 0.7) * r;
+    const z = sv.ship.mesh.position.z + Math.sin(i * 0.7) * r;
+    if (w.groundHeightAt(x, z) > 60) spot = { x, z };
+  }
+  if (!spot) return null;
+  sv.ship.mesh.position.set(spot.x, -20000 + 1, spot.z);
   sv.ship.velocity.set(0, -30, 0);
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   return {
     alt: +sv.surface.altitude(sv.ship).toFixed(2),
-    ground: +t.groundHeightAt(t.home.x, t.home.z).toFixed(2),
+    ground: +w.groundHeightAt(spot.x, spot.z).toFixed(2),
   };
 });
-check('the ship rests on the hill, not inside it', hilltop.alt > hilltop.ground,
-  `altitude ${hilltop.alt}m over ${hilltop.ground}m of hill`);
+check('the ship rests on the hill, not inside it',
+  hilltop != null && hilltop.alt > hilltop.ground,
+  hilltop ? `altitude ${hilltop.alt}m over ${hilltop.ground}m of hill` : 'no hill found');
 
 // --- Climbing out returns you to space ---------------------------------------
 const space = await page.evaluate(async () => {
   const sv = window.__superVexo;
-  sv.ship.mesh.position.y += 900;
+  // Above LEAVE_ALTITUDE, which is 1500 m now: the ceiling had to clear
+  // the tallest ground in the world, or crossing a mountain range would
+  // throw you into space.
+  sv.ship.mesh.position.y += 2200;
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   await new Promise((r) => setTimeout(r, 250));
+  // Earth sits at (-90, 25, -330) in the solar system; see world/earth.js.
   const earthDist = sv.ship.mesh.position.distanceTo(
-    sv.surface.town.group.position.clone().set(-90, 25, -330),
+    new (sv.ship.mesh.position.constructor)(-90, 25, -330),
   );
   return {
     active: sv.surface.active,
     y: Math.round(sv.ship.mesh.position.y),
     earthDist: Math.round(earthDist),
-    townVisible: sv.surface.town.group.visible,
+    worldVisible: sv.surface.world.group.visible,
     banner: !document.getElementById('landing-banner').hidden,
   };
 });
 check('climbing high enough leaves the atmosphere', !space.active);
 check('you come out above the planet, not inside it', space.earthDist > 112,
   `${space.earthDist} units from Earth's centre`);
-check('the town is hidden again', !space.townVisible);
+check('the ground is hidden again', !space.worldVisible);
 check('the banner is gone', !space.banner);
 check('the ship is back in the solar system', Math.abs(space.y) < 5000, `y=${space.y}`);
 

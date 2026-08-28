@@ -1,0 +1,922 @@
+{
+ "dolomites": {
+  "metresPerPixel": 13.2,
+  "kmAcross": 10.1,
+  "lowest": 1321.5,
+  "highest": 3130.7,
+  "relief": 1809.2,
+  "slopeMean": 23.8,
+  "slopeMedian": 21.7,
+  "slopeP95": 50.0,
+  "slopeMax": 79.6,
+  "flatFraction": 0.007,
+  "steepFraction": 0.281,
+  "ridgeSpacingM": 3538,
+  "landformSigmaM": 124.9,
+  "spectrumBeta": 4.85,
+  "hypsometry": [
+   1513.4,
+   1822.7,
+   2044.2,
+   2258.3,
+   2806.9
+  ],
+  "what": "glaciated limestone: sheer walls, scree fans, treeline",
+  "at": [
+   46.51,
+   11.76
+  ],
+  "palette": [
+   {
+    "hex": "#536641",
+    "share": 0.391
+   },
+   {
+    "hex": "#394d2e",
+    "share": 0.327
+   },
+   {
+    "hex": "#192b17",
+    "share": 0.183
+   },
+   {
+    "hex": "#7f8a66",
+    "share": 0.099
+   }
+  ]
+ },
+ "erg-chebbi": {
+  "metresPerPixel": 16.4,
+  "kmAcross": 12.6,
+  "lowest": 672.0,
+  "highest": 901.0,
+  "relief": 229.0,
+  "slopeMean": 5.7,
+  "slopeMedian": 3.9,
+  "slopeP95": 17.0,
+  "slopeMax": 59.5,
+  "flatFraction": 0.237,
+  "steepFraction": 0.005,
+  "ridgeSpacingM": 1996,
+  "landformSigmaM": 12.7,
+  "spectrumBeta": 2.81,
+  "hypsometry": [
+   696.0,
+   702.0,
+   710.0,
+   723.0,
+   764.0
+  ],
+  "what": "sand sea: dune wavelength, hard edge against stone",
+  "at": [
+   31.1,
+   -4.01
+  ],
+  "palette": [
+   {
+    "hex": "#707255",
+    "share": 0.365
+   },
+   {
+    "hex": "#9e906c",
+    "share": 0.296
+   },
+   {
+    "hex": "#a87647",
+    "share": 0.201
+   },
+   {
+    "hex": "#3b4e39",
+    "share": 0.137
+   }
+  ]
+ },
+ "po-plain": {
+  "metresPerPixel": 13.6,
+  "kmAcross": 10.4,
+  "lowest": 7.0,
+  "highest": 31.6,
+  "relief": 24.6,
+  "slopeMean": 0.8,
+  "slopeMedian": 0.7,
+  "slopeP95": 1.9,
+  "slopeMax": 16.1,
+  "flatFraction": 0.962,
+  "steepFraction": 0.0,
+  "ridgeSpacingM": 2024,
+  "landformSigmaM": 1.4,
+  "spectrumBeta": 4.82,
+  "hypsometry": [
+   10.1,
+   12.6,
+   15.6,
+   17.9,
+   20.5
+  ],
+  "what": "farmland flat, field grid, drainage ditches",
+  "at": [
+   44.7,
+   11.3
+  ],
+  "palette": [
+   {
+    "hex": "#7c755b",
+    "share": 0.348
+   },
+   {
+    "hex": "#28452c",
+    "share": 0.333
+   },
+   {
+    "hex": "#475d3f",
+    "share": 0.258
+   },
+   {
+    "hex": "#b9b3a2",
+    "share": 0.062
+   }
+  ]
+ },
+ "mont-blanc": {
+  "metresPerPixel": 13.3,
+  "kmAcross": 10.2,
+  "lowest": 1080.8,
+  "highest": 4789.5,
+  "relief": 3708.7,
+  "slopeMean": 32.1,
+  "slopeMedian": 32.3,
+  "slopeP95": 53.8,
+  "slopeMax": 75.7,
+  "flatFraction": 0.003,
+  "steepFraction": 0.556,
+  "ridgeSpacingM": 3447,
+  "landformSigmaM": 157.4,
+  "spectrumBeta": 4.76,
+  "hypsometry": [
+   1609.9,
+   2556.2,
+   3080.5,
+   3486.1,
+   4123.3
+  ],
+  "what": "high alpine: aretes, cirques, permanent ice",
+  "at": [
+   45.85,
+   6.87
+  ],
+  "palette": [
+   {
+    "hex": "#4b5e4d",
+    "share": 0.368
+   },
+   {
+    "hex": "#314333",
+    "share": 0.272
+   },
+   {
+    "hex": "#95a48d",
+    "share": 0.219
+   },
+   {
+    "hex": "#d4dacb",
+    "share": 0.141
+   }
+  ]
+ },
+ "appalachians": {
+  "metresPerPixel": 14.5,
+  "kmAcross": 11.2,
+  "lowest": 194.0,
+  "highest": 663.0,
+  "relief": 469.0,
+  "slopeMean": 10.8,
+  "slopeMedian": 9.3,
+  "slopeP95": 25.7,
+  "slopeMax": 54.0,
+  "flatFraction": 0.075,
+  "steepFraction": 0.014,
+  "ridgeSpacingM": 3485,
+  "landformSigmaM": 37.0,
+  "spectrumBeta": 4.12,
+  "hypsometry": [
+   208.9,
+   260.9,
+   314.5,
+   358.0,
+   505.8
+  ],
+  "what": "fold mountains: long parallel ridges, water gaps",
+  "at": [
+   40.55,
+   -77.9
+  ],
+  "palette": [
+   {
+    "hex": "#2b3b22",
+    "share": 0.484
+   },
+   {
+    "hex": "#3b4b2d",
+    "share": 0.255
+   },
+   {
+    "hex": "#1c2c17",
+    "share": 0.223
+   },
+   {
+    "hex": "#6c694d",
+    "share": 0.037
+   }
+  ]
+ },
+ "etna": {
+  "metresPerPixel": 15.1,
+  "kmAcross": 11.6,
+  "lowest": 1115.3,
+  "highest": 3298.9,
+  "relief": 2183.5,
+  "slopeMean": 15.0,
+  "slopeMedian": 13.5,
+  "slopeP95": 29.9,
+  "slopeMax": 62.5,
+  "flatFraction": 0.006,
+  "steepFraction": 0.049,
+  "ridgeSpacingM": 6558,
+  "landformSigmaM": 60.7,
+  "spectrumBeta": 4.62,
+  "hypsometry": [
+   1366.2,
+   1658.0,
+   1884.9,
+   2324.5,
+   2898.9
+  ],
+  "what": "volcano: cone, radial gullies, lava fields",
+  "at": [
+   37.75,
+   15.0
+  ],
+  "palette": [
+   {
+    "hex": "#404331",
+    "share": 0.357
+   },
+   {
+    "hex": "#5a5b48",
+    "share": 0.278
+   },
+   {
+    "hex": "#2a2d19",
+    "share": 0.272
+   },
+   {
+    "hex": "#82806a",
+    "share": 0.093
+   }
+  ]
+ },
+ "annapurna": {
+  "metresPerPixel": 16.8,
+  "kmAcross": 12.9,
+  "lowest": 3790.0,
+  "highest": 7514.0,
+  "relief": 3724.0,
+  "slopeMean": 32.9,
+  "slopeMedian": 32.3,
+  "slopeP95": 59.1,
+  "slopeMax": 88.3,
+  "flatFraction": 0.003,
+  "steepFraction": 0.552,
+  "ridgeSpacingM": 3658,
+  "landformSigmaM": 211.0,
+  "spectrumBeta": 3.45,
+  "hypsometry": [
+   4311.0,
+   5001.0,
+   5452.0,
+   6008.0,
+   6800.0
+  ],
+  "what": "the biggest relief there is",
+  "at": [
+   28.6,
+   83.9
+  ],
+  "palette": [
+   {
+    "hex": "#fbfcfa",
+    "share": 0.57
+   },
+   {
+    "hex": "#e8eae3",
+    "share": 0.25
+   },
+   {
+    "hex": "#ced1c5",
+    "share": 0.131
+   },
+   {
+    "hex": "#a4aa98",
+    "share": 0.049
+   }
+  ]
+ },
+ "jura": {
+  "metresPerPixel": 13.1,
+  "kmAcross": 10.1,
+  "lowest": 748.4,
+  "highest": 1229.9,
+  "relief": 481.5,
+  "slopeMean": 7.6,
+  "slopeMedian": 5.8,
+  "slopeP95": 21.1,
+  "slopeMax": 50.6,
+  "flatFraction": 0.146,
+  "steepFraction": 0.015,
+  "ridgeSpacingM": 3630,
+  "landformSigmaM": 31.4,
+  "spectrumBeta": 4.93,
+  "hypsometry": [
+   877.7,
+   935.4,
+   1009.4,
+   1091.9,
+   1179.7
+  ],
+  "what": "young folds, forested, regular",
+  "at": [
+   46.7,
+   6.1
+  ],
+  "palette": [
+   {
+    "hex": "#2d442b",
+    "share": 0.408
+   },
+   {
+    "hex": "#3f573d",
+    "share": 0.321
+   },
+   {
+    "hex": "#1b2e19",
+    "share": 0.214
+   },
+   {
+    "hex": "#657862",
+    "share": 0.057
+   }
+  ]
+ },
+ "sossusvlei": {
+  "metresPerPixel": 17.4,
+  "kmAcross": 13.3,
+  "lowest": 521.0,
+  "highest": 951.0,
+  "relief": 430.0,
+  "slopeMean": 13.2,
+  "slopeMedian": 10.9,
+  "slopeP95": 32.3,
+  "slopeMax": 68.3,
+  "flatFraction": 0.056,
+  "steepFraction": 0.067,
+  "ridgeSpacingM": 2239,
+  "landformSigmaM": 44.9,
+  "spectrumBeta": 3.71,
+  "hypsometry": [
+   572.0,
+   586.0,
+   636.0,
+   711.0,
+   801.0
+  ],
+  "what": "star and linear dunes, white pans between",
+  "at": [
+   -24.73,
+   15.35
+  ],
+  "palette": [
+   {
+    "hex": "#efe2c2",
+    "share": 0.339
+   },
+   {
+    "hex": "#898064",
+    "share": 0.315
+   },
+   {
+    "hex": "#dcd0b1",
+    "share": 0.242
+   },
+   {
+    "hex": "#b6ac8e",
+    "share": 0.104
+   }
+  ]
+ },
+ "badwater": {
+  "metresPerPixel": 15.4,
+  "kmAcross": 11.8,
+  "lowest": -94.0,
+  "highest": 1740.6,
+  "relief": 1834.6,
+  "slopeMean": 13.1,
+  "slopeMedian": 4.1,
+  "slopeP95": 40.4,
+  "slopeMax": 68.9,
+  "flatFraction": 0.31,
+  "steepFraction": 0.217,
+  "ridgeSpacingM": 2990,
+  "landformSigmaM": 67.9,
+  "spectrumBeta": 4.17,
+  "hypsometry": [
+   -83.0,
+   -82.0,
+   -80.0,
+   665.2,
+   1398.8
+  ],
+  "what": "salt playa, dead flat, against a fault scarp",
+  "at": [
+   36.23,
+   -116.77
+  ],
+  "palette": [
+   {
+    "hex": "#878570",
+    "share": 0.395
+   },
+   {
+    "hex": "#e4ddd3",
+    "share": 0.242
+   },
+   {
+    "hex": "#5e5f4b",
+    "share": 0.199
+   },
+   {
+    "hex": "#a5a28d",
+    "share": 0.164
+   }
+  ]
+ },
+ "monument-valley": {
+  "metresPerPixel": 15.3,
+  "kmAcross": 11.7,
+  "lowest": 1505.7,
+  "highest": 2059.4,
+  "relief": 553.7,
+  "slopeMean": 6.2,
+  "slopeMedian": 2.3,
+  "slopeP95": 28.9,
+  "slopeMax": 82.0,
+  "flatFraction": 0.442,
+  "steepFraction": 0.047,
+  "ridgeSpacingM": 2747,
+  "landformSigmaM": 44.1,
+  "spectrumBeta": 3.85,
+  "hypsometry": [
+   1539.3,
+   1588.7,
+   1624.6,
+   1675.1,
+   1794.5
+  ],
+  "what": "plateau remnants: mesas, buttes, talus skirts",
+  "at": [
+   36.99,
+   -110.1
+  ],
+  "palette": [
+   {
+    "hex": "#8a7253",
+    "share": 0.34
+   },
+   {
+    "hex": "#a37e5b",
+    "share": 0.314
+   },
+   {
+    "hex": "#bf8a63",
+    "share": 0.231
+   },
+   {
+    "hex": "#6e5e44",
+    "share": 0.115
+   }
+  ]
+ },
+ "bardenas": {
+  "metresPerPixel": 14.2,
+  "kmAcross": 10.9,
+  "lowest": 255.4,
+  "highest": 493.3,
+  "relief": 237.9,
+  "slopeMean": 3.6,
+  "slopeMedian": 1.9,
+  "slopeP95": 12.3,
+  "slopeMax": 40.9,
+  "flatFraction": 0.514,
+  "steepFraction": 0.001,
+  "ridgeSpacingM": 2620,
+  "landformSigmaM": 15.6,
+  "spectrumBeta": 4.77,
+  "hypsometry": [
+   262.4,
+   285.4,
+   297.3,
+   320.6,
+   414.3
+  ],
+  "what": "badlands: rills, gullies, no plants to hold it",
+  "at": [
+   42.17,
+   -1.5
+  ],
+  "palette": [
+   {
+    "hex": "#ada783",
+    "share": 0.362
+   },
+   {
+    "hex": "#817d5e",
+    "share": 0.31
+   },
+   {
+    "hex": "#d8d0a9",
+    "share": 0.223
+   },
+   {
+    "hex": "#424630",
+    "share": 0.106
+   }
+  ]
+ },
+ "namib-gravel": {
+  "metresPerPixel": 17.5,
+  "kmAcross": 13.5,
+  "lowest": 811.0,
+  "highest": 1377.0,
+  "relief": 566.0,
+  "slopeMean": 8.4,
+  "slopeMedian": 6.7,
+  "slopeP95": 23.0,
+  "slopeMax": 69.4,
+  "flatFraction": 0.113,
+  "steepFraction": 0.016,
+  "ridgeSpacingM": 3384,
+  "landformSigmaM": 30.4,
+  "spectrumBeta": 4.18,
+  "hypsometry": [
+   872.0,
+   925.0,
+   972.0,
+   1026.0,
+   1116.0
+  ],
+  "what": "stone desert: flat gravel plain with koppies",
+  "at": [
+   -23.416,
+   15.933
+  ],
+  "palette": [
+   {
+    "hex": "#b0986e",
+    "share": 0.387
+   },
+   {
+    "hex": "#c0a377",
+    "share": 0.27
+   },
+   {
+    "hex": "#9c8e66",
+    "share": 0.254
+   },
+   {
+    "hex": "#7a7d5b",
+    "share": 0.089
+   }
+  ]
+ },
+ "mississippi": {
+  "metresPerPixel": 16.1,
+  "kmAcross": 12.4,
+  "lowest": 20.3,
+  "highest": 38.2,
+  "relief": 17.9,
+  "slopeMean": 0.8,
+  "slopeMedian": 0.3,
+  "slopeP95": 3.7,
+  "slopeMax": 16.3,
+  "flatFraction": 0.89,
+  "steepFraction": 0.0,
+  "ridgeSpacingM": 2691,
+  "landformSigmaM": 1.5,
+  "spectrumBeta": 2.67,
+  "hypsometry": [
+   24.1,
+   24.9,
+   25.9,
+   27.2,
+   29.6
+  ],
+  "what": "meanders, oxbows, floodplain",
+  "at": [
+   32.5,
+   -91.1
+  ],
+  "palette": [
+   {
+    "hex": "#243820",
+    "share": 0.457
+   },
+   {
+    "hex": "#354d2f",
+    "share": 0.258
+   },
+   {
+    "hex": "#122212",
+    "share": 0.249
+   },
+   {
+    "hex": "#858c70",
+    "share": 0.036
+   }
+  ]
+ },
+ "skaftafell": {
+  "metresPerPixel": 8.4,
+  "kmAcross": 6.4,
+  "lowest": 97.9,
+  "highest": 189.9,
+  "relief": 92.0,
+  "slopeMean": 1.0,
+  "slopeMedian": 0.7,
+  "slopeP95": 2.8,
+  "slopeMax": 57.9,
+  "flatFraction": 0.912,
+  "steepFraction": 0.0,
+  "ridgeSpacingM": 1626,
+  "landformSigmaM": 1.2,
+  "spectrumBeta": 3.83,
+  "hypsometry": [
+   122.2,
+   128.8,
+   136.8,
+   146.0,
+   153.9
+  ],
+  "what": "braided glacial outwash",
+  "at": [
+   63.98,
+   -16.97
+  ],
+  "palette": [
+   {
+    "hex": "#4e4730",
+    "share": 0.528
+   },
+   {
+    "hex": "#43362b",
+    "share": 0.437
+   },
+   {
+    "hex": "#606256",
+    "share": 0.026
+   },
+   {
+    "hex": "#1a0f25",
+    "share": 0.009
+   }
+  ]
+ },
+ "geiranger": {
+  "metresPerPixel": 8.9,
+  "kmAcross": 6.9,
+  "lowest": -0.3,
+  "highest": 1629.5,
+  "relief": 1629.8,
+  "slopeMean": 24.0,
+  "slopeMedian": 22.5,
+  "slopeP95": 57.2,
+  "slopeMax": 83.9,
+  "flatFraction": 0.173,
+  "steepFraction": 0.353,
+  "ridgeSpacingM": 3317,
+  "landformSigmaM": 101.2,
+  "spectrumBeta": 5.65,
+  "hypsometry": [
+   0.0,
+   359.9,
+   900.8,
+   1127.3,
+   1353.2
+  ],
+  "what": "fjord: drowned U-valley",
+  "at": [
+   62.1,
+   7.1
+  ],
+  "palette": [
+   {
+    "hex": "#213f47",
+    "share": 0.527
+   },
+   {
+    "hex": "#0c1314",
+    "share": 0.271
+   },
+   {
+    "hex": "#53605d",
+    "share": 0.198
+   },
+   {
+    "hex": "#a3a8a0",
+    "share": 0.005
+   }
+  ]
+ },
+ "grand-canyon": {
+  "metresPerPixel": 15.4,
+  "kmAcross": 11.9,
+  "lowest": 714.6,
+  "highest": 2299.2,
+  "relief": 1584.6,
+  "slopeMean": 27.1,
+  "slopeMedian": 25.9,
+  "slopeP95": 62.6,
+  "slopeMax": 83.5,
+  "flatFraction": 0.082,
+  "steepFraction": 0.42,
+  "ridgeSpacingM": 3057,
+  "landformSigmaM": 136.7,
+  "spectrumBeta": 3.79,
+  "hypsometry": [
+   884.8,
+   1142.0,
+   1290.5,
+   1681.0,
+   2173.3
+  ],
+  "what": "incised plateau, layered cliffs",
+  "at": [
+   36.1,
+   -112.1
+  ],
+  "palette": [
+   {
+    "hex": "#0f160e",
+    "share": 0.37
+   },
+   {
+    "hex": "#8b795d",
+    "share": 0.246
+   },
+   {
+    "hex": "#ba9c7c",
+    "share": 0.21
+   },
+   {
+    "hex": "#51543e",
+    "share": 0.174
+   }
+  ]
+ },
+ "serengeti": {
+  "metresPerPixel": 19.1,
+  "kmAcross": 14.7,
+  "lowest": 1337.0,
+  "highest": 1803.0,
+  "relief": 466.0,
+  "slopeMean": 4.4,
+  "slopeMedian": 3.4,
+  "slopeP95": 13.2,
+  "slopeMax": 49.2,
+  "flatFraction": 0.223,
+  "steepFraction": 0.006,
+  "ridgeSpacingM": 3590,
+  "landformSigmaM": 25.7,
+  "spectrumBeta": 3.63,
+  "hypsometry": [
+   1359.0,
+   1387.0,
+   1408.0,
+   1439.0,
+   1552.0
+  ],
+  "what": "savanna: grass with scattered trees",
+  "at": [
+   -2.3,
+   34.8
+  ],
+  "palette": [
+   {
+    "hex": "#74684f",
+    "share": 0.37
+   },
+   {
+    "hex": "#615b44",
+    "share": 0.278
+   },
+   {
+    "hex": "#847559",
+    "share": 0.226
+   },
+   {
+    "hex": "#454a34",
+    "share": 0.126
+   }
+  ]
+ },
+ "finland-lakes": {
+  "metresPerPixel": 9.1,
+  "kmAcross": 7.0,
+  "lowest": 69.6,
+  "highest": 165.6,
+  "relief": 96.0,
+  "slopeMean": 2.4,
+  "slopeMedian": 0.1,
+  "slopeP95": 15.5,
+  "slopeMax": 73.4,
+  "flatFraction": 0.828,
+  "steepFraction": 0.013,
+  "ridgeSpacingM": 1359,
+  "landformSigmaM": 6.5,
+  "spectrumBeta": 2.81,
+  "hypsometry": [
+   76.0,
+   80.6,
+   96.7,
+   96.8,
+   116.1
+  ],
+  "what": "boreal forest and lake country, glacier-scoured",
+  "at": [
+   61.5,
+   25.5
+  ],
+  "palette": [
+   {
+    "hex": "#15242b",
+    "share": 0.614
+   },
+   {
+    "hex": "#132228",
+    "share": 0.378
+   },
+   {
+    "hex": "#273228",
+    "share": 0.005
+   },
+   {
+    "hex": "#455a40",
+    "share": 0.004
+   }
+  ]
+ },
+ "etretat": {
+  "metresPerPixel": 12.4,
+  "kmAcross": 9.5,
+  "lowest": -19.5,
+  "highest": 123.5,
+  "relief": 143.0,
+  "slopeMean": 2.1,
+  "slopeMedian": 0.0,
+  "slopeP95": 10.4,
+  "slopeMax": 78.3,
+  "flatFraction": 0.756,
+  "steepFraction": 0.005,
+  "ridgeSpacingM": 2595,
+  "landformSigmaM": 14.4,
+  "spectrumBeta": 3.23,
+  "hypsometry": [
+   0.0,
+   0.0,
+   0.0,
+   84.5,
+   107.1
+  ],
+  "what": "chalk sea cliffs against the water",
+  "at": [
+   49.71,
+   0.2
+  ],
+  "palette": [
+   {
+    "hex": "#062729",
+    "share": 0.544
+   },
+   {
+    "hex": "#314b3a",
+    "share": 0.206
+   },
+   {
+    "hex": "#5c6758",
+    "share": 0.188
+   },
+   {
+    "hex": "#949989",
+    "share": 0.062
+   }
+  ]
+ }
+}

@@ -54,9 +54,21 @@ export function createUpgrades() {
     return true;
   }
 
+  /**
+   * Apply an upgrade without paying for it — for restoring a save,
+   * where the credits were spent in the session that saved it.
+   */
+  function buyFree(id) {
+    const u = upgrades.find((x) => x.id === id);
+    if (!u || u.bought) return false;
+    u.apply();
+    u.bought = true;
+    return true;
+  }
+
   function reset() {
     for (const u of upgrades) u.bought = false;
   }
 
-  return { upgrades, buy, reset };
+  return { upgrades, buy, buyFree, reset };
 }

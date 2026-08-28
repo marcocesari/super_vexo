@@ -1045,6 +1045,8 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
   // 0 = walking, 1 = sprinting. Eased, so picking up the pace shades
   // between the two gaits instead of snapping between them.
   let run = 0;
+  // Seconds into the death animation.
+  let dyingT = 0;
 
   // Metres covered per full two-step cycle. Drives cadence from speed,
   // so he takes faster steps when he runs instead of sliding along at a
@@ -1361,6 +1363,60 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     torso.position.y = torsoRestY;
   }
 
+  /**
+   * Going down.
+   *
+   * Three beats, because a fall is not one movement: he takes the blow
+   * and rocks back, his knees give and he drops to them, and only then
+   * does he go over — pitching forward with his arms not quite catching
+   * him. Collapsing straight to the floor in one motion reads as a
+   * dropped puppet, which is the difference between a character dying
+   * and a mesh being switched off.
+   *
+   * The fall is applied to `body` and not to the group, so whatever is
+   * driving him around the world keeps its own heading and position and
+   * has nothing to undo afterwards.
+   */
+  function poseDying(dt) {
+    dyingT += dt;
+    const t1 = Math.min(1, dyingT / 0.35);          // hit, rocking back
+    const t2 = Math.min(1, Math.max(0, (dyingT - 0.3) / 0.5));   // knees
+    const t3 = Math.min(1, Math.max(0, (dyingT - 0.7) / 0.65));  // over he goes
+    const ease = (x) => x * x * (3 - 2 * x);
+
+    const rock = ease(t1) * (1 - ease(t2));
+    const knees = ease(t2);
+    const fall = ease(t3);
+
+    for (const [i, leg] of legs.entries()) {
+      // Knees buckle, and one leg folds under him more than the other.
+      leg.hip.rotation.x = -knees * (0.9 + i * 0.35) * (1 - fall * 0.35);
+      leg.hip.rotation.y = leg.side * 0.09;
+      leg.hip.position.z = 0;
+      leg.shin.rotation.x = knees * (1.7 + i * 0.3);
+      leg.ankle.rotation.x = -0.15 * knees;
+    }
+    for (const [i, arm] of arms.entries()) {
+      // Up as he is hit, then out to break a fall that isn't broken.
+      arm.shoulder.rotation.x = -rock * 1.5 - fall * (0.6 + i * 0.25);
+      arm.shoulder.rotation.z = arm.side * (0.11 + rock * 0.5 + fall * 0.5);
+      arm.forearm.rotation.x = -(0.3 + rock * 0.9);
+    }
+
+    // The body: back on the hit, then down and forward onto the ground.
+    body.rotation.x = rock * 0.28 - fall * (Math.PI / 2 - 0.12);
+    body.rotation.z = fall * 0.22;
+    body.position.y = -knees * 0.42 - fall * 0.38;
+    body.position.x = fall * 0.05;
+    upper.rotation.x = rock * 0.3 + fall * 0.25;
+    upper.rotation.y = 0;
+    upper.rotation.z = 0;
+    headPivot.rotation.set(rock * -0.4 + fall * 0.35, 0, 0);
+    headPivot.position.y = headRestY;
+    torso.position.y = torsoRestY;
+    torso.rotation.y = 0;
+  }
+
   function update(dt) {
     t += dt;
     // The circuits pulse in every gait — it is the suit's own light,
@@ -1374,12 +1430,13 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     if (pistol) pistol.update(dt);
     if (gait === 'walk') poseWalk(dt);
     else if (gait === 'climb') poseClimb(dt);
+    else if (gait === 'dying') poseDying(dt);
     else poseIdle();
 
     // Aiming overrides whatever the gait did with that arm: pistol up,
     // pointed where he is facing, and held still while everything else
     // carries on underneath it.
-    if (armed) {
+    if (armed && gait !== 'dying') {
       // The wrist stays where setArmed put it — the grip basis — while
       // the arm swings underneath.
       const gunArm = arms.find((a) => a.side > 0);
@@ -1421,7 +1478,11 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
      * @param {number} [speed] metres per second, for 'walk' only
      */
     setGait(mode, speed = 0) {
-      if (mode !== gait) { phase = 0; if (mode !== 'walk') run = 0; }
+      if (mode !== gait) {
+        phase = 0;
+        if (mode !== 'walk') run = 0;
+        if (mode === 'dying') dyingT = 0;
+      }
       gait = mode;
       gaitSpeed = speed;
     },
