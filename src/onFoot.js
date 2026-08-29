@@ -918,33 +918,38 @@ export function createOnFoot({
       || input.gamepad.isButtonDown(BUTTONS.R2)
       || input.gamepad.isButtonDown(BUTTONS.X);
     if (firing && shotCooldown <= 0 && monsters) {
-      shotCooldown = SHOT_INTERVAL;
-      drawnFor = HOLSTER_AFTER;
+      // Nothing is fired until the gun is actually in his hand.
+      //
       // From the END OF THE BARREL, which the gun can be asked for.
       // Taking a point on his chest instead — which is what this did —
       // draws every tracer out of his sternum, and no amount of aiming
       // fixes where a line starts.
       //
-      // He may not have the gun up yet on the first shot of a burst, so
-      // fall back to the chest for that one frame rather than skipping
-      // the shot.
-      if (!vexo.getMuzzle(_muzzle)) {
-        _muzzle.copy(foot).addScaledVector(UP, VEXO_HEIGHT * 0.62);
+      // The first shot of a burst used to fall back to the chest,
+      // because he may not have drawn yet. That fallback IS the bug it
+      // was meant to work around: it fired the shot from his sternum
+      // instead of waiting the tenth of a second it takes him to bring
+      // the gun up. Now he draws first and shoots when he is ready.
+      // Holding the trigger draws the gun whether or not this frame's
+      // shot happens.
+      drawnFor = HOLSTER_AFTER;
+      if (vexo.getMuzzle(_muzzle)) {
+        shotCooldown = SHOT_INTERVAL;
+        // Soft lock: anything within thirty degrees of where he is
+        // facing gets shot AT, rather than requiring the player to line
+        // a moving target up with a thumbstick.
+        const locked = monsters.aimAt(_muzzle, heading, AIM_CONE, SHOT_RANGE);
+        if (locked) {
+          _aim.copy(locked).sub(_muzzle).normalize();
+          // And he turns to it, so the shot doesn't come out sideways.
+          heading += angleDelta(heading, Math.atan2(_aim.x, _aim.z)) * 0.6;
+        } else {
+          _aim.set(Math.sin(heading), 0, Math.cos(heading));
+        }
+        const hit = monsters.shoot(_muzzle, _aim, SHOT_RANGE);
+        vexo.fire();                    // muzzle flash on the gun itself
+        onShot(_muzzle, _aim, hit);
       }
-      // Soft lock: anything within thirty degrees of where he is facing
-      // gets shot AT, rather than requiring the player to line a moving
-      // target up with a thumbstick.
-      const locked = monsters.aimAt(_muzzle, heading, AIM_CONE, SHOT_RANGE);
-      if (locked) {
-        _aim.copy(locked).sub(_muzzle).normalize();
-        // And he turns to it, so the shot doesn't come out sideways.
-        heading += angleDelta(heading, Math.atan2(_aim.x, _aim.z)) * 0.6;
-      } else {
-        _aim.set(Math.sin(heading), 0, Math.cos(heading));
-      }
-      const hit = monsters.shoot(_muzzle, _aim, SHOT_RANGE);
-      vexo.fire();                      // muzzle flash on the gun itself
-      onShot(_muzzle, _aim, hit);
     }
     // Pistol out while he is shooting or has just shot; away otherwise.
     vexo.setArmed(drawnFor > 0, heading);

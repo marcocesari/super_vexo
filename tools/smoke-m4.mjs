@@ -11,7 +11,7 @@
 //
 // Also confirms no console errors / warnings. Run while `npm run dev`
 // is up.
-import { chromium } from 'playwright';
+import { launchBrowser } from './lib/browser.mjs';
 import { withSkipIntro } from './smokeUrl.mjs';
 
 const URL = withSkipIntro(process.env.SMOKE_URL ?? 'http://127.0.0.1:5173');
@@ -24,7 +24,7 @@ const isNoise = (t) => NOISE.some((re) => re.test(t));
 
 const errors = [];
 const warnings = [];
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
 const page = await ctx.newPage();
 page.on('console', (msg) => {

@@ -10,7 +10,7 @@
 // because everything else was there. So this reads the actual pixels.
 //
 // Run while `npm run dev` is up.
-import { chromium } from 'playwright';
+import { launchBrowser } from './lib/browser.mjs';
 
 const URL = process.env.SMOKE_URL ?? 'http://127.0.0.1:5173';
 const NOISE = [/GPU stall due to ReadPixels/i, /CONTEXT_LOST_WEBGL/i, /loseContext/i];
@@ -24,7 +24,7 @@ function check(label, ok, detail = '') {
   if (!ok) failed = true;
 }
 
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 900, height: 560 } });
 page.on('console', (m) => {
   const t = m.text();

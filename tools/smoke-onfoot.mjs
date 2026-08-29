@@ -9,7 +9,7 @@
 // in a screenshot taken from the wrong angle.
 //
 // Run while `npm run dev` is up.
-import { chromium } from 'playwright';
+import { launchBrowser } from './lib/browser.mjs';
 
 const URL = process.env.SMOKE_URL ?? 'http://127.0.0.1:5173';
 const NOISE = [/GPU stall due to ReadPixels/i, /CONTEXT_LOST_WEBGL/i, /loseContext/i];
@@ -23,7 +23,7 @@ function check(label, ok, detail = '') {
   if (!ok) failed = true;
 }
 
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 900, height: 640 } });
 // Watch any <audio> the game builds, so the sprint theme can be checked
 // without the audio module having to expose itself for the test.

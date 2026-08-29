@@ -8,6 +8,12 @@
          maximum-scale=1     → iOS honours this even when it ignores the above. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 
+    <!-- The ship, as a tab icon. A real file at the root rather than a
+         data URI: browsers ask for /favicon.ico whatever the page says,
+         and the 404 they got showed up as a console error in every
+         test. -->
+    <link rel="icon" href="./favicon.ico" sizes="any" />
+
     <!-- Served from GitHub Pages, which caches hard. Without this a phone
          happily keeps showing yesterday's build after a reload. -->
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
@@ -19,7 +25,7 @@
     <meta name="theme-color" content="#02030a" />
 
     <title>Super Vexo and the Mystery of the System</title>
-    <script defer src="./assets/index-BzaVVrGa.js"></script>
+    <script defer src="./assets/index-CeZU02SO.js"></script>
   </head>
   <body>
     <div id="app"></div>

@@ -2,6 +2,49 @@
 
 Most recent entries on top.
 
+## 2026-08-29 — The lag while flying, and a test that had been lying
+
+Marco: *"when I fly around with the airship, I see that the game lags
+sometimes."* Measured before touching anything, over 700 frames of
+flight, with the three things that do bursts of work timed separately.
+
+- **It was the monster camps.** Up to 48 milliseconds in a single frame,
+  the ground almost nothing. The camps live on a grid of squares and the
+  game works out where the camp in each square stands by searching for
+  flat ground — up to 160 probes, five terrain lookups each — and it did
+  that for all forty-nine squares within reach every time the player
+  moved sixty metres. Which at flying speed is every two seconds, and is
+  exactly "sometimes".
+- The answer never changes, so it is now worked out once per square and
+  kept; the search is forty probes rather than a hundred and sixty; and
+  no more than two new squares are examined in a frame, except the very
+  first time, when the whole job is done at once under cover of the
+  landing. Worst frame while flying: 66 ms before, 22 ms after, and
+  nothing at all over 25 ms in 700 frames.
+
+Chasing it turned up three other things.
+
+- **The first shot of a burst came out of his chest.** There was a
+  deliberate fallback for it — he may not have drawn yet — and that
+  fallback was the bug it was meant to work around. He now draws first
+  and fires when the gun is in his hand, a tenth of a second later. The
+  tracer starts 1 mm from the muzzle.
+- **The tests were drawing in software at three frames a second.** A
+  headless browser uses no GPU unless asked, and the world is now heavy
+  enough for that to matter: 3 fps against 60. The game caps its clock at
+  50 ms a frame so a stutter cannot teleport anyone, so at 3 fps the game
+  runs six times slower than the wall clock — and every wait in every
+  suite began timing out. Eleven checks in `smoke:onfoot` were failing
+  and nothing was wrong with the game. All the suites now open a browser
+  with a GPU (`tools/lib/browser.mjs`), and fall back with a warning.
+- **`smoke:build` had been testing a build from May.** It served `dist/`,
+  and the build has gone to `docs/` since GitHub Pages needed it there.
+  Pointed at the real thing, it immediately found two genuine faults: a
+  404 for `/favicon.ico` (there is a real one now) and an assertion that
+  the Tablet is on screen from the start, which stopped being true months
+  ago. A test that checks the wrong artefact is worse than no test,
+  because it reports success.
+
 ## 2026-08-28 — "the land moves in a glitchy way"
 
 Marco flew across the new world and said the ground glitched as it

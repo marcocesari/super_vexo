@@ -113,11 +113,22 @@ export function createMonsters({ scene, world, origin }) {
    * hill is a chore, and the whole point of a camp is that you can see it
    * from a distance and decide.
    */
+  // Where each square's camp stands, once it has been worked out. The
+  // answer never changes — it is a hash of the square and a search of
+  // ground that does not move — so it is worked out at most once.
+  const siteCache = new Map();
+
   function siteForCell(i, j) {
-    if (hash2(i, j, 7) > 0.42) return null;
-    const x = (i + 0.2 + hash2(i, j, 11) * 0.6) * CAMP_CELL;
-    const z = (j + 0.2 + hash2(i, j, 13) * 0.6) * CAMP_CELL;
-    return findClearGround(x, z, 7);
+    const key = `${i},${j}`;
+    if (siteCache.has(key)) return siteCache.get(key);
+    let site = null;
+    if (hash2(i, j, 7) <= 0.42) {
+      const x = (i + 0.2 + hash2(i, j, 11) * 0.6) * CAMP_CELL;
+      const z = (j + 0.2 + hash2(i, j, 13) * 0.6) * CAMP_CELL;
+      site = findClearGround(x, z, 7);
+    }
+    siteCache.set(key, site);
+    return site;
   }
 
   /**
@@ -126,21 +137,50 @@ export function createMonsters({ scene, world, origin }) {
    * A camp already standing where it should be is left alone, fight and
    * all — walking away from a battle and back again must not reset it.
    */
+  // How many squares may be worked out in one frame. Forty-nine of them
+  // at once is a fifth of a second of arithmetic, which is a visible
+  // lurch; two at a time is invisible and the camps settle within half a
+  // second of arriving somewhere new.
+  const SITES_PER_FRAME = 2;
+
   function ensureCampsNear(x, z) {
     const ci = Math.floor(x / CAMP_CELL);
     const cj = Math.floor(z / CAMP_CELL);
     const wanted = [];
     const REACH = 3;
+    // The FIRST time — when no camp is standing anywhere yet — do the
+    // whole job at once. Spreading that first pitch over frames means
+    // there is a moment after landing when the camps have no position at
+    // all, which is a strange thing for the rest of the game to see and
+    // was enough to make a test walk into an empty field. The hitch it
+    // costs is hidden under the landing sequence.
+    const firstPitch = camps.every((c) => c.cell === null);
+    let budget = firstPitch ? Infinity : SITES_PER_FRAME;
+    let unfinished = false;
+    // Nearest squares first, so if the budget runs out it is the far
+    // ones that wait.
+    const cells = [];
     for (let dj = -REACH; dj <= REACH; dj++) {
       for (let di = -REACH; di <= REACH; di++) {
-        const site = siteForCell(ci + di, cj + dj);
-        if (!site) continue;
-        wanted.push({
-          key: `${ci + di},${cj + dj}`, site,
-          d2: (site.x - x) ** 2 + (site.z - z) ** 2,
-        });
+        cells.push([ci + di, cj + dj, di * di + dj * dj]);
       }
     }
+    cells.sort((a, b) => a[2] - b[2]);
+    for (const [i, j] of cells) {
+      const known = siteCache.has(`${i},${j}`);
+      if (!known) {
+        if (budget <= 0) { unfinished = true; continue; }
+        budget -= 1;
+      }
+      const site = siteForCell(i, j);
+      if (!site) continue;
+      wanted.push({
+        key: `${i},${j}`, site,
+        d2: (site.x - x) ** 2 + (site.z - z) ** 2,
+      });
+    }
+    // Come back next frame for the squares that had to wait.
+    pending = unfinished;
     wanted.sort((a, b) => a.d2 - b.d2);
     const keep = wanted.slice(0, CAMPS);
     const keepKeys = new Set(keep.map((w) => w.key));
@@ -173,11 +213,19 @@ export function createMonsters({ scene, world, origin }) {
     }
   }
 
-  /** The nearest point to (x, z) with `radius` metres of clear ground. */
+  /**
+   * The nearest point to (x, z) with `radius` metres of clear ground.
+   *
+   * Forty probes at most, not a hundred and sixty. Each one asks the
+   * terrain five questions, and this used to run for every square of the
+   * world within reach every time the player moved sixty metres — which
+   * cost 48 milliseconds in a single frame and was exactly the lag Marco
+   * saw while flying.
+   */
   function findClearGround(x, z, radius) {
     if (world.isClear(x, z, radius)) return { x, z };
-    for (let ring = 6; ring <= 60; ring += 6) {
-      for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
+    for (let ring = 9; ring <= 45; ring += 9) {
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
         const px = x + Math.sin(a) * ring;
         const pz = z + Math.cos(a) * ring;
         if (world.isClear(px, pz, radius)) return { x: px, z: pz };
@@ -246,6 +294,9 @@ export function createMonsters({ scene, world, origin }) {
 
   const _v = new THREE.Vector3();
   const lastFocus = new THREE.Vector2(Infinity, Infinity);
+  // True when squares were left unexamined because the frame ran out of
+  // budget, so the next frame picks them up even if nobody has moved.
+  let pending = false;
 
   function place(m) {
     m.boko.group.position.set(
@@ -360,7 +411,8 @@ export function createMonsters({ scene, world, origin }) {
      * squares of the world change, which is every few hundred metres.
      */
     focus(x, z) {
-      if (Math.abs(x - lastFocus.x) < 60 && Math.abs(z - lastFocus.y) < 60) return;
+      const moved = Math.abs(x - lastFocus.x) >= 60 || Math.abs(z - lastFocus.y) >= 60;
+      if (!moved && !pending) return;
       lastFocus.set(x, z);
       ensureCampsNear(x, z);
     },

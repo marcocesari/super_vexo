@@ -13,7 +13,8 @@
 // Plus: no console errors / warnings (usual headless allowlist).
 //
 // Run while `npm run dev` is up.
-import { chromium, devices } from 'playwright';
+import { devices } from 'playwright';
+import { launchBrowser } from './lib/browser.mjs';
 
 const URL = process.env.SMOKE_URL ?? 'http://127.0.0.1:5173';
 const NOISE = [
@@ -35,7 +36,7 @@ function check(label, ok, detail = '') {
   if (!ok) failed = true;
 }
 
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 const ctx = await browser.newContext({
   ...devices['iPhone 13'],
   isMobile: true,

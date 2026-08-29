@@ -21,7 +21,7 @@
 //      ship to make sure it keeps up.
 //
 // Run while `npm run dev` is up.
-import { chromium } from 'playwright';
+import { launchBrowser } from './lib/browser.mjs';
 
 const URL = process.env.SMOKE_URL ?? 'http://127.0.0.1:5173';
 const errors = [];
@@ -31,7 +31,7 @@ function check(label, ok, detail = '') {
   if (!ok) failed = true;
 }
 
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 700, height: 440 } });
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
 page.on('console', (m) => {

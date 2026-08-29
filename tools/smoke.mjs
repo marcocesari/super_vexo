@@ -10,7 +10,7 @@
 //   Terminal B:   node tools/smoke.mjs
 //
 // Or:            npm run smoke   (assumes dev server already running)
-import { chromium } from 'playwright';
+import { launchBrowser } from './lib/browser.mjs';
 import { withSkipIntro } from './smokeUrl.mjs';
 
 const URL = withSkipIntro(process.env.SMOKE_URL ?? 'http://127.0.0.1:5173');
@@ -18,7 +18,7 @@ const URL = withSkipIntro(process.env.SMOKE_URL ?? 'http://127.0.0.1:5173');
 const errors = [];
 const warnings = [];
 
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
 const page = await ctx.newPage();
 

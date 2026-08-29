@@ -1,13 +1,13 @@
 // Build-mode smoke:
 //   1. Runs `npm run build`.
-//   2. Boots a tiny http server on dist/ and runs the same assertions as
+//   2. Boots a tiny http server on docs/ and runs the same assertions as
 //      tools/smoke.mjs against the production bundle.
-//   3. Opens dist/index.html via file:// and asserts no console errors
+//   3. Opens docs/index.html via file:// and asserts no console errors
 //      (Chromium needs --allow-file-access-from-files for some checks,
 //      but we just verify the bundle executes and the DOM mounts).
 //
 // Usage:  npm run smoke:build
-import { chromium } from 'playwright';
+import { launchBrowser } from './lib/browser.mjs';
 import { spawn, execSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -18,7 +18,11 @@ import { withSkipIntro } from './smokeUrl.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
-const distDir = join(repoRoot, 'dist');
+// The build goes to `docs/`, because that is what GitHub Pages serves
+// (see vite.config.js). This pointed at `dist/` — a directory left over
+// from months ago — so the test that is supposed to check the bundle we
+// ship has been loading a bundle from May and passing on it.
+const distDir = join(repoRoot, 'docs');
 
 console.log('• Building…');
 execSync('npm run build', { cwd: repoRoot, stdio: 'inherit' });
@@ -31,6 +35,8 @@ const MIME = {
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
   '.json': 'application/json',
+  '.ico': 'image/x-icon',
+  '.mp3': 'audio/mpeg',
 };
 const server = createServer(async (req, res) => {
   try {
@@ -52,7 +58,7 @@ const server = createServer(async (req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const port = server.address().port;
 const httpURL = `http://127.0.0.1:${port}`;
-console.log(`• Serving dist on ${httpURL}`);
+console.log(`• Serving docs on ${httpURL}`);
 
 // --- Filters (same allowlist as the dev smoke) -----------------------------
 const NOISE = [
@@ -69,7 +75,7 @@ const isNoise = (t) => NOISE.some((re) => re.test(t));
 async function smokePage(url, { canPressKey } = { canPressKey: true }) {
   const errors = [];
   const warnings = [];
-  const browser = await chromium.launch({
+  const browser = await launchBrowser({
     args: url.startsWith('file://') ? ['--allow-file-access-from-files'] : [],
   });
   const page = await browser
@@ -79,8 +85,11 @@ async function smokePage(url, { canPressKey } = { canPressKey: true }) {
   page.on('console', (msg) => {
     const t = msg.text();
     if (isNoise(t)) return;
-    if (msg.type() === 'error') errors.push(t);
-    if (msg.type() === 'warning') warnings.push(t);
+    // "Failed to load resource" on its own is unchaseable — say WHICH.
+    const where = msg.location?.()?.url;
+    const detail = /failed to load resource/i.test(t) && where ? `${t} — ${where}` : t;
+    if (msg.type() === 'error') errors.push(detail);
+    if (msg.type() === 'warning') warnings.push(detail);
   });
   page.on('pageerror', (err) => {
     if (!isNoise(err.message)) errors.push(`pageerror: ${err.message}`);
@@ -95,7 +104,12 @@ async function smokePage(url, { canPressKey } = { canPressKey: true }) {
   if (canPressKey) {
     await page.keyboard.press('Space');
     await page.waitForSelector('#title-card', { state: 'detached', timeout: 2000 });
-    await page.locator('[data-velocity]').waitFor({ timeout: 2000 });
+    // The Tablet is not on screen until it is asked for, so ask for it.
+    // This waited on the readout being visible by itself, which was true
+    // of the build from May that this test had been quietly serving and
+    // has not been true of the game for months.
+    await page.keyboard.press('KeyT');
+    await page.locator('[data-velocity]').waitFor({ timeout: 3000 });
   }
 
   await browser.close();
@@ -104,13 +118,13 @@ async function smokePage(url, { canPressKey } = { canPressKey: true }) {
 
 let failed = false;
 
-console.log('• Smoke: dist via http');
+console.log('• Smoke: the built game over http');
 const httpResult = await smokePage(httpURL);
 for (const e of httpResult.errors) console.error('  ERROR:', e);
 for (const w of httpResult.warnings) console.error('  WARN:', w);
 if (httpResult.errors.length || httpResult.warnings.length) failed = true;
 
-console.log('• Smoke: dist via file://');
+console.log('• Smoke: the built game over file://');
 const fileURL = pathToFileURL(join(distDir, 'index.html')).toString();
 const fileResult = await smokePage(fileURL);
 for (const e of fileResult.errors) console.error('  ERROR:', e);

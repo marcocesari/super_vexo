@@ -7,7 +7,7 @@
 // working game until you play it for a while.
 //
 // Run while `npm run dev` is up.
-import { chromium } from 'playwright';
+import { launchBrowser } from './lib/browser.mjs';
 
 const URL = process.env.SMOKE_URL ?? 'http://127.0.0.1:5173';
 const NOISE = [/GPU stall due to ReadPixels/i, /CONTEXT_LOST_WEBGL/i, /loseContext/i];
@@ -21,7 +21,7 @@ function check(label, ok, detail = '') {
   if (!ok) failed = true;
 }
 
-const browser = await chromium.launch();
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 820, height: 520 } });
 page.on('console', (m) => {
   const t = m.text();
@@ -207,6 +207,12 @@ check('the boss takes more killing', shooting.bossHp >= shooting.mookHp * 2,
 const defeat = await page.evaluate(async () => {
   const g = window.__superVexo;
   const f = g.onFoot;
+  // Back on their feet first. The section above shoots at this camp for
+  // five seconds and can leave every one of them dead, and a fight with
+  // four corpses proves nothing — which is exactly what this check
+  // reported once the tests started running at full speed and the
+  // shooting had time to finish the job.
+  g.monsters.reset();
   // Straight to the last heart, then let them finish it: waiting out
   // five hits with a mercy window between each takes fifteen seconds.
   f.takeHit(f.hearts - 1);
@@ -226,10 +232,19 @@ const defeat = await page.evaluate(async () => {
     gait: f.vexo.gait,
     down: f.down,
     sign: g.gameOver.isOpen,
+    // If he survives, say why: where he is, where they are, and what
+    // they were doing about it.
+    where: [Math.round(f.position.x), Math.round(f.position.z)],
+    camp: [Math.round(camp.x), Math.round(camp.z)],
+    states: camp.members.map((m) => m.state).join(','),
+    onFoot: f.state,
   };
 });
 check('a camp can finish him off', defeat.hearts === 0,
-  defeat.killedAfter != null ? `last heart gone after ${defeat.killedAfter}ms` : 'still standing');
+  defeat.killedAfter != null
+    ? `last heart gone after ${defeat.killedAfter}ms`
+    : `still standing: ${defeat.hearts} hearts at ${defeat.where}, camp at ${defeat.camp}, `
+      + `they were ${defeat.states}, he was ${defeat.onFoot}`);
 check('and losing the last heart drops him', defeat.down,
   `gait ${defeat.gait}`);
 check('which brings up GAME OVER', defeat.sign);
