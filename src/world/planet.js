@@ -34,6 +34,8 @@
 // the middle cut out of every ring there is only ever one sheet.
 import * as THREE from 'three';
 import { createTerrain, BIOME, GROUND_COLOR, SEA_LEVEL, fromReal } from './terrain.js';
+import { PLACES } from './continentAlpha.js';
+import { createSettlement } from './settlement.js';
 
 // Tiles across each ring, odd so there is a middle one.
 const RING_TILES = 6;
@@ -153,6 +155,21 @@ export function createPlanet({ seed = 20260827 } = {}) {
   for (let r = 1; r < RINGS; r++) {
     rings[r].group.position.y = -0.05 * rings[r].step;
   }
+
+  // --- The towns he drew ---------------------------------------------------------
+  // Built once at load: three of them, two and a half thousand triangles
+  // between them, which is less than one tile of ground. They are hidden
+  // until you are near enough to see them, so they cost nothing to have.
+  const settlements = PLACES.map((place) => {
+    const town = terrain.towns.find((t) => t.name === place.name);
+    const s = createSettlement(place, town.x, town.z, town.level);
+    s.group.visible = false;
+    group.add(s.group);
+    return s;
+  });
+  // How far off a town can be seen. Beyond this it is hidden, which also
+  // keeps forty-odd footprints out of the walk resolver's way.
+  const TOWN_SIGHT = 4200;
 
   // --- The sea -----------------------------------------------------------------
   // One plane, kept under the player. Sea level is zero everywhere, so
@@ -466,6 +483,9 @@ export function createPlanet({ seed = 20260827 } = {}) {
     queue.sort((a, b) => a.d2 - b.d2);
     sea.position.x = x;
     sea.position.z = z;
+    for (const s of settlements) {
+      s.group.visible = Math.hypot(s.x - x, s.z - z) < TOWN_SIGHT + s.radius;
+    }
     work(BUILD_BUDGET_MS);
   }
 
@@ -504,7 +524,19 @@ export function createPlanet({ seed = 20260827 } = {}) {
    */
   function isClear(x, z, radius = 3) {
     const s = terrain.sampleAt(x, z, Math.max(2, radius));
-    return s.height > SEA_LEVEL + 1.5 && s.slopeDeg < 12;
+    if (s.height <= SEA_LEVEL + 1.5 || s.slopeDeg >= 12) return false;
+    return !insideBuilding(x, z, radius);
+  }
+
+  /** Is this point inside one of the buildings? */
+  function insideBuilding(x, z, pad = 0) {
+    for (const s of settlements) {
+      if (Math.hypot(s.x - x, s.z - z) > s.radius * 1.4) continue;
+      for (const f of s.footprints) {
+        if (Math.abs(x - f.x) < f.halfX + pad && Math.abs(z - f.z) < f.halfZ + pad) return f;
+      }
+    }
+    return null;
   }
 
   /**
@@ -517,9 +549,25 @@ export function createPlanet({ seed = 20260827 } = {}) {
   const WALKABLE = 38;
   const _grad = [0, 0];
   function resolveWalk(x, z, radius, out = []) {
-    const s = terrain.sampleAt(x, z, 2);
     out[0] = x;
     out[1] = z;
+
+    // Walls first: a house is solid whatever the ground under it does.
+    // Pushed out of the nearest side, which is what lets somebody slide
+    // along a wall rather than sticking to it.
+    const wall = insideBuilding(x, z, radius ?? 0.4);
+    if (wall) {
+      const pad = (radius ?? 0.4);
+      const dx = x - wall.x;
+      const dz = z - wall.z;
+      const outX = wall.halfX + pad - Math.abs(dx);
+      const outZ = wall.halfZ + pad - Math.abs(dz);
+      if (outX < outZ) out[0] = wall.x + Math.sign(dx || 1) * (wall.halfX + pad);
+      else out[1] = wall.z + Math.sign(dz || 1) * (wall.halfZ + pad);
+      return out;
+    }
+
+    const s = terrain.sampleAt(x, z, 2);
     if (s.slopeDeg <= WALKABLE) return out;
     // Too steep: slide him back DOWN the hill rather than stopping him
     // dead. Standing still against a wall of rock reads as a bug; being
@@ -583,6 +631,8 @@ export function createPlanet({ seed = 20260827 } = {}) {
       name: 'an unnamed world',
       biomeAt: (x, z) => terrain.biomeAt(x, z),
       get tilesBuilt() { return built; },
+      /** The towns, for the map and for tests. */
+      settlements,
       /** What building the ground cost last frame, and what is left. */
       get build() { return { ms: +buildMs.toFixed(2), queued: queue.length }; },
       reach: WORLD_REACH,

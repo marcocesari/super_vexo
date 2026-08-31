@@ -2,6 +2,38 @@
 
 Most recent entries on top.
 
+## 2026-09-01 (later) — Estronic and the two villages
+
+Nothing has been built in this game since the old town was deleted. He
+drew three places on his map, so here they are.
+
+- **Level ground first.** People flatten a site before they build on it,
+  and a street that follows a hillside up and down is a street nobody
+  would lay out. Each town eases the ground to one height across its
+  site and back into the country over twice its radius.
+- The levelling ate itself on the first try: working out what height a
+  town should sit at asks the ground how high it is, and the ground
+  flattens itself towards the town's level to answer — a level it had
+  not worked out yet. Every town came back at zero. It measures with the
+  flattening switched off now.
+- **They are laid out, not scattered.** Estronic is a curtain wall with
+  towers and four gates where his roads come in, streets from the gates
+  to a square, and a keep in the square. The villages are houses round a
+  green with a well in the middle. That is what makes a place read as
+  somewhere people live: you can tell which way is in.
+- The wall came out as a ring of planks lying flat on the grass, like
+  the spokes of a wheel, because each segment was turned by its bearing
+  round the circle rather than tangent to it.
+- Three meshes a town — walls, roofs, trim — so all three cost six draw
+  calls between them, and they are hidden beyond four kilometres.
+  Estronic is 2268 triangles, which is less than one tile of ground.
+- Walls push a walker out of the nearest SIDE rather than straight away
+  from the middle, which is what lets him slide along a wall instead of
+  sticking to it. The ship will not set down on a roof.
+- `smoke:towns` is new: that all three are built where he drew them, on
+  ground level to within a degree, with walls that stop you and squares
+  that do not, and named on the map.
+
 ## 2026-09-01 — The world is Marco's drawing now
 
 He drew Continent Alpha on a sheet of paper — kingdoms, rivers, a lake,

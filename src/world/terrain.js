@@ -45,7 +45,7 @@ const SHRINK = 6;
 // capital in the middle.
 
 import {
-  KINGDOMS, RIVERS, LAKE, RIDGES, SPIRE_AT,
+  KINGDOMS, RIVERS, LAKE, RIDGES, SPIRE_AT, PLACES,
 } from './continentAlpha.js';
 
 /** Real-world metres to world metres. */
@@ -485,6 +485,26 @@ export function createTerrain({ seed = 20260827 } = {}) {
     return mix(mix(a, b, fu), mix(c, d, fu), fv);
   }
 
+  // --- The towns' sites ----------------------------------------------------------
+  // Worked out once, and lazily: the level each town stands at is the
+  // ground's own height at its centre, which cannot be asked for until
+  // the ground exists.
+  const towns = PLACES.map((p) => ({
+    name: p.name,
+    x: (p.at[0] - 0.5) * 2 * WORLD_HALF_X,
+    z: (p.at[1] - 0.5) * 2 * WORLD_HALF_Z,
+    r: p.r,
+    reach: p.r * 2.4,
+    level: 0,
+  }));
+  let townsLevelled = false;
+  // True only while the towns are working out what height to sit at. The
+  // first version left it out and the answer came back zero everywhere:
+  // levelling asks the ground how high it is, the ground flattens itself
+  // towards the town's level to answer, and the level it flattened
+  // towards was the nothing it had not worked out yet.
+  let levelling = false;
+
   const _climate = { uplift: 0.5, moisture: 0.5, heat: 0.5 };
 
   /**
@@ -791,6 +811,8 @@ export function createTerrain({ seed = 20260827 } = {}) {
     const seabed = mix(-fromReal(900), fromReal(10), smoothstep(-0.6, 0.14, continent));
     let ground = mix(seabed, h + lift, land);
 
+    if (!townsLevelled) levelTowns();
+
     // --- And what he drew on it ---------------------------------------------
     //
     // AFTER the lift, not before. Cutting a river to the waterline and
@@ -840,7 +862,45 @@ export function createTerrain({ seed = 20260827 } = {}) {
       }
     }
 
+    // --- And the ground his towns stand on ----------------------------------
+    // Levelled, because a town is built on level ground: people flatten
+    // a site before they build on it, and a street that follows a
+    // hillside up and down is a street nobody would lay out. The
+    // flattening eases off over twice the town's radius so the site sits
+    // in the country rather than on a plinth.
+    if (!levelling) {
+      for (const town of towns) {
+        const d = Math.hypot(x - town.x, z - town.z);
+        if (d > town.reach) continue;
+        ground = mix(ground, town.level, smoothstep(town.reach, town.r * 0.75, d));
+      }
+    }
+
     return ground;
+  }
+
+  /**
+   * Decide what height each town stands at, once.
+   *
+   * Sampled around the site rather than at its middle: a capital six
+   * hundred metres across wants the average of the ground it covers, or
+   * half of it ends up in a cutting.
+   */
+  function levelTowns() {
+    townsLevelled = true;   // set first: heightAt is about to be re-entered
+    levelling = true;
+    for (const town of towns) {
+      let sum = 0;
+      let n = 0;
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * Math.PI * 2;
+        const rr = town.r * (k % 2 ? 0.75 : 0.35);
+        sum += heightAt(town.x + Math.cos(a) * rr, town.z + Math.sin(a) * rr);
+        n++;
+      }
+      town.level = sum / n;
+    }
+    levelling = false;
   }
 
   /**
@@ -934,6 +994,11 @@ export function createTerrain({ seed = 20260827 } = {}) {
     moistureField,
     heatField,
     styleAt,
+    /** Where the towns are and what height their ground was levelled to. */
+    get towns() {
+      if (!townsLevelled) levelTowns();
+      return towns;
+    },
     /**
      * Height above which snow lies, at this point.
      *

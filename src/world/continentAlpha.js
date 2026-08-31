@@ -172,11 +172,42 @@ export const RIDGES = [
   { points: [[0.40, 0.63], [0.47, 0.70], [0.54, 0.78], [0.60, 0.86], [0.64, 0.95]], height: 0.9 },
 ];
 
-/** Places worth marking on the map, even before anything is built. */
+/**
+ * The places he drew, and how much ground each one stands on.
+ *
+ * `r` is in metres — not a fraction of the sheet like everything else
+ * here, because a town is a fixed size on the ground and does not want
+ * to grow when the world does.
+ */
 export const PLACES = [
-  { name: 'Estronic', kind: 'capital', at: [0.49, 0.47] },
-  { name: 'West Village', kind: 'village', at: [0.23, 0.52] },
-  { name: 'Bobo Village', kind: 'village', at: [0.87, 0.42] },
+  {
+    name: 'Estronic',
+    of: 'capital of Continent Alpha',
+    kind: 'capital',
+    at: [0.49, 0.47],
+    r: 620,
+    // Whitewashed walls and pale roofs: the capital in the middle of the
+    // green country, meant to be seen from a long way off.
+    walls: 0xe8ded0, roofs: 0xb0603f, trim: 0x8a7c68,
+  },
+  {
+    name: 'West Village',
+    of: 'on the edge of the Camelloo',
+    kind: 'village',
+    at: [0.23, 0.52],
+    r: 190,
+    // Mud brick and reed, out where the sand starts.
+    walls: 0xc9ab84, roofs: 0x8d7550, trim: 0x6f5c40,
+  },
+  {
+    name: 'Bobo Village',
+    of: 'of the Rock People',
+    kind: 'village',
+    at: [0.87, 0.42],
+    r: 190,
+    // Basalt and ash, in the Vulcans' country.
+    walls: 0x6b6560, roofs: 0x40382f, trim: 0x2e2926,
+  },
 ];
 
 /** The Spire goes where he drew volcanoes: with the Rock People. */

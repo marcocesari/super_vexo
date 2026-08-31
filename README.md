@@ -358,9 +358,38 @@ the sheet. What's on it:
 
 His rivers are traced as runs of points and then carved into the ground
 along a distance field, so they hold water and wander instead of running
-in straight hops between the points I read off the photograph. Estronic
-and the two villages are marked but not built — there are no buildings
-in the game yet.
+in straight hops between the points I read off the photograph.
+
+### The three towns
+
+**Estronic**, **West Village** and **Bobo Village** are built, where he
+drew them (`src/world/settlement.js`). They're laid out rather than
+scattered, because that's what makes a place read as somewhere people
+live: you can tell which way is *in*.
+
+- **Estronic**, capital of Continent Alpha — a curtain wall with towers
+  and four gates where his roads come in, streets running from the gates
+  to a square in the middle, and a keep standing in the square.
+  Whitewashed walls and red roofs, so it can be seen across the plain.
+- **West Village** — mud brick and reed, out where the Camelloo's sand
+  begins.
+- **Bobo Village** — basalt and ash, in the Rock People's country under
+  the Spire.
+
+The ground under each is levelled first, easing back into the country
+over twice the town's radius — people flatten a site before they build
+on it, and a street that follows a hillside up and down is a street
+nobody would lay out. Walls are solid: you're pushed out of the nearest
+side, so you slide along a wall rather than sticking to it, and the ship
+won't set down on a roof.
+
+Each town is merged into three meshes — walls, roofs, trim — so all
+three cost six draw calls between them, and they're hidden until you're
+within about four kilometres.
+
+```bash
+npm run smoke:towns
+```
 
 ### The ground rules underneath
 

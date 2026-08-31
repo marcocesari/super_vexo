@@ -2,7 +2,7 @@
 //
 // Marco asked for "the full map, every single inch of the world" — which
 // is why the world was given edges to have a last inch of. It is one
-// continent, 120 km by 80 km, and this draws all of it: not a picture
+// continent, 130 km by 86 km, and this draws all of it: not a picture
 // made once and saved, but the same terrain rules the ground itself is
 // built from, run over the whole world (see world/mapImage.js).
 //
@@ -144,6 +144,27 @@ export function createMap({ world }) {
     };
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(sheet, placed.x, placed.y, placed.w, placed.h);
+
+    // The towns he drew, named. A capital gets a bigger mark than a
+    // village, which is how anybody would draw it.
+    for (const town of world.info.settlements ?? []) {
+      const p = toScreen(town.x, town.z);
+      const big = town.kind === 'capital';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, (big ? 5 : 3.2) * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = big ? '#ffe9b0' : '#efe0c4';
+      ctx.strokeStyle = 'rgba(20, 14, 8, 0.85)';
+      ctx.lineWidth = 1.6 * dpr;
+      ctx.fill();
+      ctx.stroke();
+      ctx.font = `${(big ? 12 : 10) * dpr}px ui-monospace, monospace`;
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 3 * dpr;
+      ctx.strokeStyle = 'rgba(10, 16, 24, 0.9)';
+      ctx.strokeText(town.name, p.x, p.y - (big ? 9 : 7) * dpr);
+      ctx.fillStyle = '#fff6e2';
+      ctx.fillText(town.name, p.x, p.y - (big ? 9 : 7) * dpr);
+    }
 
     // The ship first, so that when they are in the same place the arrow
     // for the player is the one on top.
