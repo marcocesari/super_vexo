@@ -333,7 +333,36 @@ a fine thing for ground to do and a useless thing to draw a map of —
 "every single inch" only means something if there's a last inch. Fly
 past the coast and there's open sea, not a wall.
 
-### It's laid out on purpose
+### It is Marco's map
+
+The world is his drawing. He drew **Continent Alpha** on a sheet of
+paper — kingdoms, rivers, a lake, a capital in the middle — photographed
+it, and said: use this, the lines are the rivers, keep everything exactly
+like the drawing.
+
+So the photograph was straightened out, the pencil lifted off the paper,
+and the map traced into `src/world/continentAlpha.js` as fractions of
+the sheet. What's on it:
+
+| on the paper | in the game |
+| --- | --- |
+| **The Camelloo** (Camels Kindom), scribbled *"more sand"* | a sand sea across the north-west |
+| **The Vulcans** (Rock People Kindom), with a *lava river* | bare volcanic rock, and the Spire |
+| **The Dwellers** (Elfs Kindom) | deep forest through the south-west |
+| **Dwellers Territory** | wooded hills in the middle-south |
+| **The Magica Republic**, behind the *invisible barrier* | cold, stony, half-bare country |
+| **Estronic**, capital of Continent Alpha | level open ground in the exact centre |
+| **Astro Lake** | a lake, where he put it |
+| every wandering line | a river, carved where he drew it |
+| the heavy bands he shaded in | ranges of hills |
+
+His rivers are traced as runs of points and then carved into the ground
+along a distance field, so they hold water and wander instead of running
+in straight hops between the points I read off the photograph. Estronic
+and the two villages are marked but not built — there are no buildings
+in the game yet.
+
+### The ground rules underneath
 
 The climate used to be three fields of noise, which gave a world with
 everything in it and no arrangement to it — nowhere could be learned,

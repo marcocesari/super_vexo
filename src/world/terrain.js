@@ -39,6 +39,15 @@
 // 32° steep.
 const SHRINK = 6;
 
+// The world is Marco's drawing. Everything below that decides WHERE
+// something is reads its position out of continentAlpha.js, which is his
+// map traced off the photograph: his kingdoms, his rivers, his lake, his
+// capital in the middle.
+
+import {
+  KINGDOMS, RIVERS, LAKE, RIDGES, SPIRE_AT,
+} from './continentAlpha.js';
+
 /** Real-world metres to world metres. */
 export const fromReal = (m) => m / SHRINK;
 
@@ -72,6 +81,16 @@ const CONTINENT_SIZE = 62000;
 // round them — the lift the whole continent stands at, below.
 const SPIRE_FOOT = 127;
 
+// How wide the things he drew are, on the ground. A pencil line on a
+// sheet of paper is about a kilometre wide at this scale, so a river is
+// a valley you can see across rather than a stream you step over.
+const RIVER_REACH = 620;
+// Just below the waterline, so his rivers actually hold water: the sea
+// is one plane across the whole world, and anything cut below it fills.
+const RIVER_LEVEL = -6;
+const RIDGE_REACH = 4200;
+const RIDGE_HEIGHT = 300;
+
 // The world has edges now: one continent, 130 km by 86 km, with open sea
 // all round it. It went on for ever before, which is a fine thing for
 // ground to do and a useless thing to draw a map of — "every single inch
@@ -96,7 +115,14 @@ export const SEA_LEVEL = 0;
 // this is ours. It stands about eleven hundred metres over ground that
 // is barely a hundred, with snow on the top half and a crater in it, and
 // it can be seen from most of the continent.
-export const SPIRE = { x: 0, z: 0, radius: 5200, height: 1450, craterR: 520, craterDepth: 320 };
+export const SPIRE = {
+  // Where he drew volcanoes: with the Rock People, in the north-east.
+  // It stood in the middle of the world before his map arrived, and the
+  // middle is Estronic now — his capital, which wants level ground.
+  x: (SPIRE_AT[0] - 0.5) * 2 * 65000,
+  z: (SPIRE_AT[1] - 0.5) * 2 * 43000,
+  radius: 5200, height: 1450, craterR: 520, craterDepth: 320,
+};
 // Sand sits at the angle of repose and no steeper — 33° for dry sand,
 // which is why every dune on Earth has the same slipface angle.
 const REPOSE = Math.tan((33 * Math.PI) / 180);
@@ -306,9 +332,12 @@ export function createTerrain({ seed = 20260827 } = {}) {
   function continentField(x, z) {
     // Weighted well above the waterline: inland is land, and the sea
     // gets in only as bays, gulfs and the odd inland sea.
-    // Weighted above the waterline, but not so far that the sea can
-    // never get in: the dips that remain become gulfs and inland seas.
-    const inland = fbm(n1, x, z, 4, CONTINENT_SIZE, 0.42) * 1.05 + 0.46;
+    // Land, all of it. His drawing is a continent that fills the sheet
+    // with water only round the outside and one lake in it, so the noise
+    // here only roughens the coast — it is not allowed to open bays
+    // through the middle any more, which it was doing right across the
+    // country he had drawn as the Dwellers' and the wizards'.
+    const inland = fbm(n1, x, z, 4, CONTINENT_SIZE, 0.42) * 0.30 + 1.0;
     // How far out towards the edge of the world this is: 0 in the middle,
     // 1 at the border. Measured as the greater of the two axes so the
     // continent is bounded by a rectangle of sea rather than an oval.
@@ -321,74 +350,140 @@ export function createTerrain({ seed = 20260827 } = {}) {
   }
 
   /**
-   * WHERE THINGS ARE.
+   * WHERE THINGS ARE — off Marco's map.
    *
-   * The climate used to be three fields of noise, which gave a world
-   * with everything in it and no arrangement to it: nowhere could be
-   * learned, because there was nowhere to learn. Tears of the Kingdom is
-   * organised — a desert in one place, ice in another, and something
-   * unmistakable in the middle that everything else is placed around —
-   * and Marco asked for a world put together that way, in an arrangement
-   * of its own rather than a copy of that one.
+   * The climate was noise once, which gave a world with everything in it
+   * and no arrangement to it. Then it was ten provinces I laid out. Now
+   * it is his: the kingdoms he drew, where he drew them, each with the
+   * ground its name asks for. Every point takes a weighted average of
+   * the kingdoms near it, so borders are gradients rather than lines.
    *
-   * So the continent is laid out by hand. Each province below is a place
-   * on the map with a climate of its own; every point takes a weighted
-   * average of the provinces near it, which makes the borders gradients
-   * rather than lines, and a little noise on top keeps them from being
-   * circles.
-   *
-   *                     north
-   *        ash and stone   |   ice and high snow
-   *                    ┌───┴───┐
-   *          west moor │ SPIRE │ the sand sea      east
-   *                    └───┬───┘
-   *        south coast     |   canyon country
-   *                     forest
-   *
-   * Positions are fractions of the continent's half-width and
-   * half-depth, so the arrangement keeps its shape if the world is
-   * resized — which it has been three times already.
+   * The weight falls off as 1/((d/r)^6 + a bit), which is very nearly
+   * "the nearest wins" while still blending where two of them meet. A
+   * gentler falloff makes a world with no places in it: with nine
+   * kingdoms all contributing, every point comes out near the average of
+   * the lot, so the desert is only a little drier than the forest and
+   * the mountains never rise.
    */
-  const PROVINCES = [
-    // The middle: the Spire, a lone volcano, and the high ground round
-    // its foot. Everything else is placed relative to this.
-    { at: [0.00, 0.00], r: 0.34, uplift: 0.97, moisture: 0.58, heat: 0.52 },
-
-    // North-east: ice. High, wet enough to snow, and cold.
-    { at: [0.62, -0.72], r: 0.62, uplift: 0.86, moisture: 0.62, heat: 0.05 },
-    { at: [0.22, -0.86], r: 0.50, uplift: 0.74, moisture: 0.58, heat: 0.12 },
-
-    // East: the sand sea. Low, hot and the driest ground there is.
-    { at: [1.02, 0.06], r: 0.66, uplift: 0.16, moisture: 0.03, heat: 0.93 },
-    { at: [0.70, 0.34], r: 0.52, uplift: 0.20, moisture: 0.09, heat: 0.88 },
-
-    // South-east: canyon country. Dry but lifted, which is what makes
-    // flat-lying rock wear back into steps instead of into dunes.
-    { at: [0.72, 0.82], r: 0.56, uplift: 0.50, moisture: 0.26, heat: 0.74 },
-
-    // South: forest, the wettest and warmest ground on the continent.
-    { at: [-0.10, 0.92], r: 0.66, uplift: 0.34, moisture: 0.97, heat: 0.72 },
-
-    // West: open moor and grassland. Gentle country, easy to cross.
-    { at: [-0.86, 0.18], r: 0.70, uplift: 0.24, moisture: 0.66, heat: 0.50 },
-
-    // North-west: ash and bare stone in the mountains' lee — the rain
-    // falls on the far side of them and never gets here.
-    { at: [-0.72, -0.66], r: 0.58, uplift: 0.58, moisture: 0.18, heat: 0.60 },
-
-    // South-west: low, mild coast, where the land runs out.
-    { at: [-0.94, 0.86], r: 0.48, uplift: 0.10, moisture: 0.80, heat: 0.62 },
-  ];
-
-  // Worked out once: how far each province reaches, in metres, squared.
-  const provinces = PROVINCES.map((p) => ({
-    x: p.at[0] * WORLD_HALF_X,
-    z: p.at[1] * WORLD_HALF_Z,
-    rr: (p.r * WORLD_HALF_X) ** 2,
-    uplift: p.uplift,
-    moisture: p.moisture,
-    heat: p.heat,
+  // His kingdoms, in metres. The drawing gives fractions of the sheet:
+  // u across from the west, v down from the north.
+  const provinces = KINGDOMS.map((k) => ({
+    x: (k.at[0] - 0.5) * 2 * WORLD_HALF_X,
+    z: (k.at[1] - 0.5) * 2 * WORLD_HALF_Z,
+    rr: (k.r * 2 * WORLD_HALF_X) ** 2,
+    uplift: k.uplift,
+    moisture: k.moisture,
+    heat: k.heat,
   }));
+
+  // --- What he drew on it: rivers, a lake, ridges -------------------------------
+  //
+  // These are lines and shapes on a sheet of paper, and the ground needs
+  // to know, at any point, how far the nearest one is. Asking that
+  // directly would mean testing sixty-odd line segments per lookup, and
+  // the ground is looked up millions of times to draw one map.
+  //
+  // So they are rasterised ONCE into a coarse grid and turned into a
+  // distance field by two sweeps over it — the standard chamfer
+  // transform, which costs one pass forwards and one back rather than
+  // comparing every cell with every line. Reading it afterwards is two
+  // multiplications.
+  const DRAWN_W = 512;
+  const DRAWN_H = 340;
+  const DRAWN_CELL_X = (WORLD_HALF_X * 2) / DRAWN_W;
+  const DRAWN_CELL_Z = (WORLD_HALF_Z * 2) / DRAWN_H;
+  let drawn = null;
+
+  function buildDrawn() {
+    const river = new Float32Array(DRAWN_W * DRAWN_H).fill(1e9);
+    const ridge = new Float32Array(DRAWN_W * DRAWN_H).fill(1e9);
+    const lake = new Uint8Array(DRAWN_W * DRAWN_H);
+
+    const put = (grid, u, v) => {
+      const i = Math.round(u * DRAWN_W);
+      const j = Math.round(v * DRAWN_H);
+      if (i < 0 || j < 0 || i >= DRAWN_W || j >= DRAWN_H) return;
+      grid[j * DRAWN_W + i] = 0;
+    };
+    /** Walk a line of the drawing, marking every cell it passes through. */
+    const stroke = (grid, points) => {
+      for (let k = 0; k < points.length - 1; k++) {
+        const [u0, v0] = points[k];
+        const [u1, v1] = points[k + 1];
+        const steps = Math.ceil(Math.hypot((u1 - u0) * DRAWN_W, (v1 - v0) * DRAWN_H)) + 1;
+        for (let t = 0; t <= steps; t++) {
+          put(grid, u0 + ((u1 - u0) * t) / steps, v0 + ((v1 - v0) * t) / steps);
+        }
+      }
+    };
+    for (const r of RIVERS) stroke(river, r.points);
+    for (const r of RIDGES) stroke(ridge, r.points);
+
+    // The lake: everything inside the outline he drew round it.
+    for (let j = 0; j < DRAWN_H; j++) {
+      const v = (j + 0.5) / DRAWN_H;
+      for (let i = 0; i < DRAWN_W; i++) {
+        const u = (i + 0.5) / DRAWN_W;
+        let inside = false;
+        for (let k = 0, n = LAKE.points.length, m = n - 1; k < n; m = k++) {
+          const [ax, ay] = LAKE.points[k];
+          const [bx, by] = LAKE.points[m];
+          if ((ay > v) !== (by > v) && u < ((bx - ax) * (v - ay)) / (by - ay) + ax) {
+            inside = !inside;
+          }
+        }
+        if (inside) lake[j * DRAWN_W + i] = 1;
+      }
+    }
+
+    // Two sweeps turn "zero on the line" into "distance from the line".
+    const sweep = (grid) => {
+      const DX = DRAWN_CELL_X;
+      const DZ = DRAWN_CELL_Z;
+      const DD = Math.hypot(DX, DZ);
+      for (let j = 0; j < DRAWN_H; j++) {
+        for (let i = 0; i < DRAWN_W; i++) {
+          const at = j * DRAWN_W + i;
+          let best = grid[at];
+          if (i > 0) best = Math.min(best, grid[at - 1] + DX);
+          if (j > 0) best = Math.min(best, grid[at - DRAWN_W] + DZ);
+          if (i > 0 && j > 0) best = Math.min(best, grid[at - DRAWN_W - 1] + DD);
+          if (i < DRAWN_W - 1 && j > 0) best = Math.min(best, grid[at - DRAWN_W + 1] + DD);
+          grid[at] = best;
+        }
+      }
+      for (let j = DRAWN_H - 1; j >= 0; j--) {
+        for (let i = DRAWN_W - 1; i >= 0; i--) {
+          const at = j * DRAWN_W + i;
+          let best = grid[at];
+          if (i < DRAWN_W - 1) best = Math.min(best, grid[at + 1] + DX);
+          if (j < DRAWN_H - 1) best = Math.min(best, grid[at + DRAWN_W] + DZ);
+          if (i < DRAWN_W - 1 && j < DRAWN_H - 1) best = Math.min(best, grid[at + DRAWN_W + 1] + DD);
+          if (i > 0 && j < DRAWN_H - 1) best = Math.min(best, grid[at + DRAWN_W - 1] + DD);
+          grid[at] = best;
+        }
+      }
+    };
+    sweep(river);
+    sweep(ridge);
+    return { river, ridge, lake };
+  }
+
+  /** Read one of the drawn fields at a point, smoothly. */
+  function drawnAt(grid, x, z) {
+    const u = ((x + WORLD_HALF_X) / (WORLD_HALF_X * 2)) * DRAWN_W - 0.5;
+    const v = ((z + WORLD_HALF_Z) / (WORLD_HALF_Z * 2)) * DRAWN_H - 0.5;
+    const i = Math.floor(u);
+    const j = Math.floor(v);
+    if (i < 0 || j < 0 || i >= DRAWN_W - 1 || j >= DRAWN_H - 1) return 1e9;
+    const fu = u - i;
+    const fv = v - j;
+    const a = grid[j * DRAWN_W + i];
+    const b = grid[j * DRAWN_W + i + 1];
+    const c = grid[(j + 1) * DRAWN_W + i];
+    const d = grid[(j + 1) * DRAWN_W + i + 1];
+    return mix(mix(a, b, fu), mix(c, d, fu), fv);
+  }
 
   const _climate = { uplift: 0.5, moisture: 0.5, heat: 0.5 };
 
@@ -681,9 +776,7 @@ export function createTerrain({ seed = 20260827 } = {}) {
       h += fbm(n4, x, z, 3, 17, 0.5) * rough;
     }
 
-    // --- And the sea --------------------------------------------------------
-    // A coast is a slope, not a wall: the ground carries on down a good
-    // way before it reaches any depth.
+    // --- The sea, and the lift that keeps the continent above it ------------
     // Inland stands well clear of the water. Without this the ground's
     // own dips and valleys — twenty or thirty metres of them, everywhere
     // — fall below sea level, and a continent comes out as a sponge:
@@ -692,9 +785,62 @@ export function createTerrain({ seed = 20260827 } = {}) {
     // shoreline, so the coast is still where the land runs out rather
     // than a step down into the sea.
     const lift = fromReal(760) * smoothstep(-0.05, 0.55, continent);
+    // A coast is a slope, not a wall: the ground carries on down a good
+    // way before it reaches any depth.
     const land = smoothstep(-0.10, 0.14, continent);
     const seabed = mix(-fromReal(900), fromReal(10), smoothstep(-0.6, 0.14, continent));
-    return mix(seabed, h + lift, land);
+    let ground = mix(seabed, h + lift, land);
+
+    // --- And what he drew on it ---------------------------------------------
+    //
+    // AFTER the lift, not before. Cutting a river to the waterline and
+    // then lifting the whole continent a hundred and twenty metres puts
+    // the river back on the hilltop: the first attempt carved Astro Lake
+    // and every river he drew, and not one of them held a drop of water.
+    if (!drawn) drawn = buildDrawn();
+
+    // Ridges: the heavy bands he drew across the lower half, many
+    // strokes on top of one another, which is how anybody draws hills.
+    const ridgeD = drawnAt(drawn.ridge, x, z);
+    if (ridgeD < RIDGE_REACH) {
+      ground += smoothstep(RIDGE_REACH, 0, ridgeD) * RIDGE_HEIGHT * land;
+    }
+
+    // Rivers, where he drew them. Pulled down to a level rather than
+    // grooved, so each has banks and a floor to run along.
+    // Sampled off a bent coordinate, so a river traced as five straight
+    // hops between points on a photograph comes out wandering. It still
+    // goes where he drew it — it just stops looking ruled.
+    const riverD = drawnAt(drawn.river,
+      x + fbm(n2, x, z, 2, 2600) * 520,
+      z + fbm(n3, x, z, 2, 2600) * 520);
+    if (riverD < RIVER_REACH && land > 0.01) {
+      // All the way down in the middle of the channel. At nine tenths
+      // the floor came out seven metres ABOVE the waterline, which on a
+      // map is a brown line where a river should be.
+      const near = smoothstep(RIVER_REACH, 0, riverD);
+      ground = mix(ground, Math.min(ground, RIVER_LEVEL), Math.min(1, near * 1.25) * land);
+    }
+
+    // Astro Lake: inside the outline he drew, the ground is under water.
+    const lakeI = Math.round(((x + WORLD_HALF_X) / (WORLD_HALF_X * 2)) * DRAWN_W);
+    const lakeJ = Math.round(((z + WORLD_HALF_Z) / (WORLD_HALF_Z * 2)) * DRAWN_H);
+    if (lakeI >= 0 && lakeJ >= 0 && lakeI < DRAWN_W && lakeJ < DRAWN_H
+        && drawn.lake[lakeJ * DRAWN_W + lakeI]) {
+      ground = Math.min(ground, -fromReal(160));
+    } else if (lakeI >= 1 && lakeJ >= 1 && lakeI < DRAWN_W - 1 && lakeJ < DRAWN_H - 1) {
+      // Just outside it, the shore wanders in and out instead of
+      // following the straight edges of the outline he drew.
+      let neighbours = 0;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        neighbours += drawn.lake[(lakeJ + dj) * DRAWN_W + lakeI + di];
+      }
+      if (neighbours > 0 && fbm(n3, x, z, 2, 1400) > 0.1) {
+        ground = Math.min(ground, -fromReal(60));
+      }
+    }
+
+    return ground;
   }
 
   /**

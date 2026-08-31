@@ -622,10 +622,15 @@ check('and the view stays where it was left',
 // has no business climbing.
 const steep = await page.evaluate(() => {
   const w = window.__superVexo.surface.world;
+  // Across the whole continent. A spiral out from the origin used to
+  // find a cliff within a few kilometres; the origin is Estronic now —
+  // the capital, on deliberately level ground — and the steep country
+  // is out in the Vulcans and along the ridges.
   for (let i = 1; i < 20000; i++) {
-    const r = 40 * Math.sqrt(i);
-    const x = Math.cos(i * 0.7) * r;
-    const z = Math.sin(i * 0.7) * r;
+    const a = i * 2.39996;
+    const rr = Math.sqrt(i / 20000);
+    const x = Math.cos(a) * rr * 62000;
+    const z = Math.sin(a) * rr * 41000;
     const s = w.terrain.sampleAt(x, z, 2);
     if (s.slopeDeg < 45 || s.height < 5) continue;
     const out = w.resolveWalk(x, z, 0.38, [0, 0]);
@@ -648,9 +653,10 @@ check('ground too steep to climb pushes him back down',
 const walkable = await page.evaluate(() => {
   const w = window.__superVexo.surface.world;
   for (let i = 1; i < 20000; i++) {
-    const r = 40 * Math.sqrt(i);
-    const x = Math.cos(i * 0.7) * r;
-    const z = Math.sin(i * 0.7) * r;
+    const a = i * 2.39996;
+    const rr = Math.sqrt(i / 20000);
+    const x = Math.cos(a) * rr * 62000;
+    const z = Math.sin(a) * rr * 41000;
     const s = w.terrain.sampleAt(x, z, 2);
     if (s.slopeDeg > 12 || s.height < 5) continue;
     const out = w.resolveWalk(x, z, 0.38, [0, 0]);

@@ -2,6 +2,51 @@
 
 Most recent entries on top.
 
+## 2026-09-01 — The world is Marco's drawing now
+
+He drew Continent Alpha on a sheet of paper — kingdoms, rivers, a lake,
+a capital in the middle — photographed it, and said: use this, the lines
+are the rivers, keep everything exactly like the drawing.
+
+- **Reading it took longer than using it.** A photograph of faint pencil
+  on white paper, taken at an angle, rotated ninety degrees, on a carpet.
+  Straightened by finding the sheet — bright AND smooth, which is what
+  separates paper from a patterned rug — then a perspective warp onto a
+  rectangle, then dividing by a heavily blurred copy of itself to throw
+  away the shadow and leave the graphite. A numbered grid over the result
+  and the map could be read off by eye.
+- What is on it: **The Camelloo** (Camels Kindom, scribbled "more sand"),
+  **The Vulcans** (Rock People Kindom, with a lava river), **The
+  Dwellers** (Elfs Kindom), **Dwellers Territory**, **The Magica
+  Republic** (the Republic of Wizards) behind an **invisible barrier**,
+  **Estronic** the capital dead centre, **Astro Lake**, two villages, and
+  rivers wandering between the lot.
+- `src/world/continentAlpha.js` is that drawing as numbers — fractions of
+  the sheet, so it keeps its shape whatever size the world is set to.
+  The kingdoms became the climate provinces; his lines became rivers.
+- **The Spire moved.** It stood in the middle of the world; the middle is
+  his capital now, and he drew the volcanoes in the north-east with the
+  Rock People. So that is where it went.
+- Rivers and the lake are carved through a distance field: the lines are
+  rasterised once into a coarse grid and turned into "how far is the
+  nearest river" by two sweeps over it, rather than testing sixty line
+  segments per ground lookup, which would be tested millions of times to
+  draw one map.
+- **Two mistakes worth remembering.** The first version carved his rivers
+  and lake BEFORE the lift that stands the continent a hundred and twenty
+  metres clear of the sea — so every one of them was carried back up onto
+  the hilltops, and not a drop of water was left anywhere. And the first
+  attempt at the Magica Republic gave the wizards a moisture of 0.22,
+  which is what the world's own rules call a desert: there was already
+  one of those in the north-west, and two is a world with less in it, not
+  more.
+- The rivers are sampled off a bent coordinate, so five straight hops
+  between points read off a photograph come out as a river that wanders
+  where he drew it.
+- `smoke:onfoot` needed its cliff search widened: it spiralled out from
+  the origin looking for steep ground, and the origin is now Estronic,
+  which is deliberately flat.
+
 ## 2026-08-31 (evening) — Marco's game-over music
 
 - He added `game_over.mp3` and asked for it when Vexo dies — "only when
