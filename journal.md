@@ -65,6 +65,12 @@ every single inch of the world you created".
   machine turns him less. It waits for the turn now instead of hoping for
   it. What that check is for is the DIRECTION — the first walk code had A
   turning him right — and the direction does not care how long it took.
+- **One more, found because a test flickered rather than failed.** The
+  Tablet showed in the corner of the screen for a frame or two at load,
+  before the inventory took it in — long enough that `smoke:character`
+  caught it about one run in ten and called the game UI untidy. It was
+  right. The Tablet starts hidden now and the screen that owns it shows
+  it.
 - `smoke:map` is new: sixteen checks, and it reads the pixels rather than
   trusting the code that drew them — a map that came out as a blue
   rectangle would pass every check that only asked whether it had

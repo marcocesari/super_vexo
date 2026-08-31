@@ -68,6 +68,12 @@ export function createHud() {
       </div>
     </div>
   `;
+  // Out of sight until the screen that owns it shows it. The Tablet is
+  // a page of the inventory now, and the inventory takes it in a moment
+  // after this — but "a moment after" is a frame or two in which it
+  // would sit in the corner of the screen where it used to live, and a
+  // panel that flashes up at load and vanishes reads as a fault.
+  root.style.display = 'none';
   document.body.appendChild(root);
 
   // Small top-of-screen banner shown WHEN the tablet is hidden, so the
