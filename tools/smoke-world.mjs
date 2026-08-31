@@ -136,27 +136,21 @@ const overlap = await page.evaluate(() => {
 });
 check('every piece of ground is drawn', overlap.covered === overlap.total,
   `${overlap.covered} of ${overlap.total} points covered`);
-// Some overlap is structural and cannot be removed: each ring snaps to
-// its own grid, so the hole cut in it never lines up exactly with the
-// ring inside, and the tiles around the rim of the hole straddle the
-// boundary. Those sit at the far edge of the finer ring — a couple of
-// hundred metres away for the pair anyone can see — where a disagreement
-// of a few centimetres does not show. What must never come back is the
-// old state of affairs: every ring covering every other, four sheets
-// deep, everywhere, which measured 100% here.
-check('and most of it is drawn only once',
-  overlap.doubled / overlap.total < 0.32,
+// None of it, now that every ring snaps to an odd number of its own
+// tiles and the holes line up exactly (see planet.js). It was 100% when
+// the rings all covered each other, and between 9% and 34% depending on
+// where you stood when they only lined up half the time.
+check('and none of it is drawn twice',
+  overlap.doubled === 0,
   `${Math.round((overlap.doubled / overlap.total) * 100)}% of points drawn twice, `
   + `${overlap.tiles} tiles up`);
 
 // --- 3. Building ground does not cost a frame ----------------------------------
 await open('go=hills&h=120&pitch=-0.15');
 // What is measured is the time spent BUILDING GROUND, not the frame
-// time. These suites run on a headless browser that draws in software,
-// where frames are slow and noisy for reasons that have nothing to do
-// with this code — so a frame-time threshold would either fail always
-// or mean nothing. The build cost is the thing that used to spike to
-// 200 ms, and it is the same number on any machine.
+// time. Frame times vary with the machine, the browser and whatever else
+// is running; the build cost is the thing that used to spike to 200 ms
+// and it is the same arithmetic everywhere.
 const frames = await page.evaluate(async () => {
   const p = window.__preview;
   const build = [];

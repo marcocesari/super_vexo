@@ -55,10 +55,34 @@ const DUNE_HEIGHT = fromReal(300);         // Sossusvlei's big dunes
 // How big a region of one kind of ground is. This one is NOT from the
 // survey: real deserts are a thousand kilometres across, and a world
 // where you must fly for an hour to see a different colour is a worse
-// world. Regions here are a few kilometres, so a minute in the ship
-// takes you somewhere else.
-const REGION_SIZE = 7000;
-const CONTINENT_SIZE = 34000;
+// world. Twenty kilometres is the compromise — six or seven regions
+// across the continent, so a desert is somewhere you fly INTO and spend
+// a while in, rather than a patch you cross without noticing. It was
+// 7 km while the world had no edges and no map, and at that size the
+// whole continent came out as a carpet of speckles with no geography in
+// it at all.
+const REGION_SIZE = 20000;
+// Big enough that the continent is one thing. At 34 km — the figure
+// from when the world had no edges — a 120 km world got four cells of
+// coastline across it and came out as an archipelago: pretty, but not
+// the one continent it is meant to be.
+const CONTINENT_SIZE = 62000;
+
+// The world has edges now: one continent, 120 km by 80 km, with open sea
+// all round it. It went on for ever before, which is a fine thing for
+// ground to do and a useless thing to draw a map of — "every single inch
+// of the world" only means something if there is a last inch. At the
+// ship's 30 m/s it is a bit over an hour from one coast to the other.
+//
+// The edge is not a wall. The land simply runs out: the coastline
+// wanders in and out as any coastline does, and past it there is water
+// for as far as anyone cares to fly.
+export const WORLD_HALF_X = 60000;
+export const WORLD_HALF_Z = 40000;
+// How much of the way out the land starts giving way to sea. Inside
+// this the continent is whatever the noise says; outside it, the sea
+// wins by degrees, so the coast is a coast and not a cut edge.
+const SHELF_FROM = 0.80;
 
 export const SEA_LEVEL = 0;
 // Sand sits at the angle of repose and no steeper — 33° for dry sand,
@@ -268,7 +292,20 @@ export function createTerrain({ seed = 20260827 } = {}) {
 
   /** Above zero is land. About seven parts land to three of sea. */
   function continentField(x, z) {
-    return fbm(n1, x, z, 4, CONTINENT_SIZE, 0.45) * 1.15 + 0.30;
+    // Weighted well above the waterline: inland is land, and the sea
+    // gets in only as bays, gulfs and the odd inland sea.
+    // Weighted above the waterline, but not so far that the sea can
+    // never get in: the dips that remain become gulfs and inland seas.
+    const inland = fbm(n1, x, z, 4, CONTINENT_SIZE, 0.42) * 1.05 + 0.46;
+    // How far out towards the edge of the world this is: 0 in the middle,
+    // 1 at the border. Measured as the greater of the two axes so the
+    // continent is bounded by a rectangle of sea rather than an oval.
+    const out = Math.max(Math.abs(x) / WORLD_HALF_X, Math.abs(z) / WORLD_HALF_Z);
+    // The last fifth is the continental shelf, sloping away. Beyond the
+    // border it keeps falling, so there is no line where the sea stops
+    // being sea.
+    const shelf = smoothstep(SHELF_FROM, 1.02, out) * 2.4 + Math.max(0, out - 1) * 3;
+    return inland - shelf;
   }
 
   /** How mountainous this part of the world is: 0 flat, 1 alpine. */
@@ -485,9 +522,17 @@ export function createTerrain({ seed = 20260827 } = {}) {
     // --- And the sea --------------------------------------------------------
     // A coast is a slope, not a wall: the ground carries on down a good
     // way before it reaches any depth.
+    // Inland stands well clear of the water. Without this the ground's
+    // own dips and valleys — twenty or thirty metres of them, everywhere
+    // — fall below sea level, and a continent comes out as a sponge:
+    // land and lake speckled together at every scale, which is not what
+    // any coast on Earth looks like. The lift fades to nothing at the
+    // shoreline, so the coast is still where the land runs out rather
+    // than a step down into the sea.
+    const lift = fromReal(760) * smoothstep(-0.05, 0.55, continent);
     const land = smoothstep(-0.10, 0.14, continent);
     const seabed = mix(-fromReal(900), fromReal(10), smoothstep(-0.6, 0.14, continent));
-    return mix(seabed, h, land);
+    return mix(seabed, h + lift, land);
   }
 
   /**
@@ -530,7 +575,7 @@ export function createTerrain({ seed = 20260827 } = {}) {
 
     // The snowline falls as the world gets colder, exactly as it falls
     // with latitude on Earth. Above it, nothing else matters.
-    const snowline = mix(fromReal(1500), fromReal(4800), heat);
+    const snowline = mix(fromReal(2700), fromReal(6400), heat);
     if (h > snowline && !(plateau > alpine)) return BIOME.SNOW;
     const treeline = snowline * 0.62;
 
@@ -581,9 +626,16 @@ export function createTerrain({ seed = 20260827 } = {}) {
     moistureField,
     heatField,
     styleAt,
-    /** Height above which snow lies, at this point. */
+    /**
+     * Height above which snow lies, at this point.
+     *
+     * Measured from the sea, like a real snowline — which is why it had
+     * to go up when the continent did: the land now stands a hundred
+     * metres or so clear of the water everywhere, and a snowline set for
+     * a world at sea level put snow on the fields.
+     */
     snowlineAt(x, z) {
-      return mix(fromReal(1500), fromReal(4800), heatField(x, z));
+      return mix(fromReal(2700), fromReal(6400), heatField(x, z));
     },
     seaLevel: SEA_LEVEL,
     /** For tools and tests that want to know what it was built to. */

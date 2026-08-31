@@ -104,12 +104,17 @@ async function smokePage(url, { canPressKey } = { canPressKey: true }) {
   if (canPressKey) {
     await page.keyboard.press('Space');
     await page.waitForSelector('#title-card', { state: 'detached', timeout: 2000 });
-    // The Tablet is not on screen until it is asked for, so ask for it.
-    // This waited on the readout being visible by itself, which was true
-    // of the build from May that this test had been quietly serving and
-    // has not been true of the game for months.
+    // The Tablet is a page of the inventory now, so getting to it means
+    // opening the inventory (T) and walking along the tabs. Waiting for
+    // the readout to be VISIBLE is the point: it proves the built bundle
+    // put the Tablet where it belongs and is still driving it.
     await page.keyboard.press('KeyT');
-    await page.locator('[data-velocity]').waitFor({ timeout: 3000 });
+    for (let i = 0; i < 4; i++) {
+      if (await page.locator('[data-velocity]').isVisible()) break;
+      await page.keyboard.press('ArrowRight');
+      await page.waitForTimeout(200);
+    }
+    await page.locator('[data-velocity]').waitFor({ state: 'visible', timeout: 3000 });
   }
 
   await browser.close();

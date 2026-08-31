@@ -2,6 +2,76 @@
 
 Most recent entries on top.
 
+## 2026-08-31 — The Tablet moves in, and the world gets a map
+
+Marco: the Tablet *is* the inventory, so put its features in there; the
+button becomes T / +; and M / − should show the map — "the full map,
+every single inch of the world you created".
+
+- **Half of it was already in his folder**, from a session on the 29th:
+  the Tablet moved into the inventory as a tab, the buttons rebound, the
+  map's text and styling written. But `src/map.js` and
+  `src/world/mapImage.js` were never written, and `main.js` already
+  imported one of them — so the game would not load at all. Worse,
+  `tools/lib/browser.mjs` had been deleted, which ten smoke files import.
+  Restored, and the missing halves written rather than the whole thing
+  started again.
+- **The world has edges now.** "Every single inch" only means something
+  if there is a last inch, so — Marco's choice — one continent, 120 km
+  by 80, with open sea all round it. Getting it to look like a continent
+  took three goes: at 34 km, the continent noise gave an archipelago; a
+  heavier land bias turned it into a sponge, because the ground's own
+  dips fall below sea level everywhere and each one became a lake; what
+  fixed it was LIFTING the interior a hundred and twenty metres clear of
+  the water, with the lift fading to nothing at the shoreline.
+- Two consequences worth writing down. The snowline is measured from the
+  sea, so raising the land put snow on the fields until it was raised to
+  match. And regions had to grow from 7 km to 20 km: seven kilometres was
+  chosen when the world had no edges and no map, and on a 120 km
+  continent it made a carpet of speckles with no geography in it.
+- **The map is not a picture anybody made.** `world/mapImage.js` runs the
+  same terrain rules the ground is built from over every square kilometre
+  of the world and shades it as though the sun were low in the
+  north-west. It takes a couple of seconds, so it draws a few rows at a
+  time from the moment the game loads; press M sooner and you watch the
+  world appear. The same code writes a file from
+  `tools/worldstudy/map-preview.mjs`, so what the tool shows is exactly
+  what the player sees.
+- **A real bug, found while chasing a failing test.** The ground's rings
+  were overlapping between 9% and 34% depending on where you stood —
+  pure luck of alignment, because each ring snapped to its own grid. Six
+  tiles across a ring is an even number, so the tiles straddle its
+  centre; for the hole cut in a ring to line up with the ring inside it,
+  both have to be snapped to an ODD multiple of their own tile. Snapped
+  that way it is zero, everywhere. `smoke:world` now demands exactly
+  that rather than "under a third".
+- **And two tests that were wrong rather than two bugs.** `smoke:character`
+  called the Tablet visible while it sat in a closed menu with zero
+  width, because it asked the element about its own style rather than
+  whether it was on the screen. `smoke:build` waited for the Tablet's
+  readout to appear on its own, which stopped being true the moment the
+  Tablet became a page of the inventory. Both now check the thing they
+  meant to.
+- **Two suites were still opening a software-rendering browser** —
+  `smoke:gameover` and `smoke:world`, the two I wrote before the shared
+  launcher existed. The game runs about seven times slow that way, and
+  with the map now drawing itself in the background as well, the climb
+  down the ladder stopped finishing inside the timeout. Both ask for the
+  GPU now, and the backlog `smoke:world` measures went from 160 tiles to
+  28.
+- **And `smoke:onfoot` failed about one run in three** for the same
+  family of reason: it held a key for 450 ms of wall clock and expected a
+  fixed amount of turning, but the game advances by the frame, so a busy
+  machine turns him less. It waits for the turn now instead of hoping for
+  it. What that check is for is the DIRECTION — the first walk code had A
+  turning him right — and the direction does not care how long it took.
+- `smoke:map` is new: sixteen checks, and it reads the pixels rather than
+  trusting the code that drew them — a map that came out as a blue
+  rectangle would pass every check that only asked whether it had
+  finished. It counts water round the rim to prove the world really does
+  end in every direction, and follows the green arrow across the map as
+  the ship flies east.
+
 ## 2026-08-29 — The lag while flying, and a test that had been lying
 
 Marco: *"when I fly around with the airship, I see that the game lags

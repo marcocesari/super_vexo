@@ -36,7 +36,7 @@ const BUTTONS_A = 0;
 const BUTTONS_L1 = 4;
 const BUTTONS_R1 = 5;
 
-export function createInventory({ renderer, input, saves = null }) {
+export function createInventory({ renderer, input, saves = null, tablet = null }) {
   // --- The panel ---------------------------------------------------------------
   const root = document.createElement('div');
   root.id = 'inventory';
@@ -48,6 +48,7 @@ export function createInventory({ renderer, input, saves = null }) {
         <h2 class="screen-card__title">${strings.inventory.title}</h2>
         <div class="inventory__tabs" data-tabs></div>
         <ul class="inventory__items" data-items></ul>
+        <div class="inventory__tablet" data-tablet hidden></div>
         <div class="inventory__system" data-system hidden>
           <button class="inventory__save" data-save>${strings.inventory.save}</button>
           <p class="inventory__saved" data-saved></p>
@@ -63,15 +64,24 @@ export function createInventory({ renderer, input, saves = null }) {
   const itemsEl = root.querySelector('[data-items]');
   const tabsEl = root.querySelector('[data-tabs]');
   const systemEl = root.querySelector('[data-system]');
+  const tabletEl = root.querySelector('[data-tablet]');
   const saveBtn = root.querySelector('[data-save]');
   const savedEl = root.querySelector('[data-saved]');
   const figureEl = root.querySelector('.inventory__figure');
 
   // The row. System is last on purpose — see the note at the top.
+  // The Tablet is a page of this screen now rather than an overlay with
+  // its own button — "the tablet is the inventory". Its contents still
+  // belong to hud.js; this only decides where they are shown.
   const TABS = [
     { id: 'weapons', label: strings.inventory.weapons },
+    ...(tablet ? [{ id: 'tablet', label: strings.inventory.tablet }] : []),
     { id: 'system', label: strings.inventory.system },
   ];
+  if (tablet) {
+    tabletEl.appendChild(tablet);
+    tablet.style.display = '';
+  }
   let tab = 0;
 
   // --- The figure ----------------------------------------------------------------
@@ -163,13 +173,15 @@ export function createInventory({ renderer, input, saves = null }) {
   }
 
   function draw() {
-    const onSystem = TABS[tab].id === 'system';
-    itemsEl.hidden = onSystem;
-    systemEl.hidden = !onSystem;
-    if (onSystem) {
+    const page = TABS[tab].id;
+    itemsEl.hidden = page !== 'weapons';
+    systemEl.hidden = page !== 'system';
+    tabletEl.hidden = page !== 'tablet';
+    if (page === 'system') {
       savedEl.textContent = savedNote();
       return;
     }
+    if (page === 'tablet') return;
     itemsEl.innerHTML = '';
     for (const item of items) {
       const li = document.createElement('li');

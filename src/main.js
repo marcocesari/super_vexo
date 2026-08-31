@@ -43,6 +43,7 @@ import { createMonsters } from './monsters.js';
 import { createInventory } from './inventory.js';
 import { createSaves } from './save.js';
 import { createGameOver } from './gameOver.js';
+import { createMap } from './map.js';
 import { strings } from './strings.js';
 import { createTracers } from './world/tracers.js';
 
@@ -308,8 +309,14 @@ const gameOver = createGameOver({
   },
 });
 
-// The inventory: what he is carrying, and Vexo himself to turn round.
-const inventory = createInventory({ renderer, input, saves });
+// The map: the whole world on one screen, drawn from the same rules the
+// ground is. It starts drawing itself now and is ready long before
+// anyone presses M.
+const worldMap = createMap({ world: surface.world });
+
+// The inventory: what he is carrying, the Tablet, and Vexo himself to
+// turn round.
+const inventory = createInventory({ renderer, input, saves, tablet: hud.element });
 inventory.setItems([
   { name: strings.inventory.starterGun, note: strings.inventory.starterGunNote, held: true },
 ]);
@@ -408,9 +415,10 @@ function frame(now) {
     look.turnX = canLook ? axes.lookTurnX : 0;
     look.turnY = canLook ? axes.lookTurnY : 0;
 
-    // Toggle the Tablet: T key or pad "−" (Select).
-    if (input.keyboard.consumeJustPressed(['KeyT']) || input.gamepad.consumeJustPressed(BUTTONS.Select)) {
-      hud.toggle();
+    // The map: M key or pad "−" (Select). The whole world, every inch.
+    if (input.keyboard.consumeJustPressed(['KeyM'])
+        || input.gamepad.consumeJustPressed(BUTTONS.Select)) {
+      worldMap.toggle();
     }
     // Toggle arcade damping: X key or pad X-button.
     if (input.keyboard.consumeJustPressed(['KeyX']) || input.gamepad.consumeJustPressed(BUTTONS.X)) {
@@ -450,20 +458,21 @@ function frame(now) {
       const dir = stick || dpad;
       if (dir) missionScreens.scrollBy(dir * MENU_SCROLL_SPEED * dt);
     }
-    // Inventory: E, or "+" on a pad — which is Start, where a Nintendo
-    // pad prints the plus. Reset moved off Start to make room and lives
-    // on L3 (click the left stick) as well as R. No menus over the top
-    // of GAME OVER.
+    // The inventory — gear, the Tablet and the save button: T, or "+" on
+    // a pad, which is Start, where a Nintendo pad prints the plus. Reset
+    // moved off Start to make room and lives on L3 (click the left
+    // stick) as well as R. No menus over the top of GAME OVER.
     if (!gameOver.isOpen
-        && (input.keyboard.consumeJustPressed(['KeyE'])
+        && (input.keyboard.consumeJustPressed(['KeyT'])
             || input.gamepad.consumeJustPressed(BUTTONS.Start))) {
       inventory.toggle();
     }
-    // Closing it with the same button everything else closes with.
-    if (inventory.isOpen
+    // Closing them with the same button everything else closes with.
+    if ((inventory.isOpen || worldMap.isOpen)
         && (input.gamepad.consumeJustPressed(BUTTONS.B)
             || input.keyboard.consumeJustPressed(['Escape']))) {
       inventory.close();
+      worldMap.close();
     }
     // Reset: R key, or clicking the left stick.
     if (input.keyboard.consumeJustPressed(['KeyR']) || input.gamepad.consumeJustPressed(BUTTONS.L3)) {
@@ -481,6 +490,10 @@ function frame(now) {
       gameOver.update(input, BUTTONS);
       audio.setThrottle(0);
       audio.setSprinting(false);
+    } else if (worldMap.isOpen) {
+      audio.setThrottle(0);
+      audio.setSprinting(false);
+      if (surface.active) surface.update(ship, dt);
     } else if (inventory.isOpen) {
       inventory.update(dt, axes);
       audio.setThrottle(0);
@@ -550,6 +563,28 @@ function frame(now) {
   if (surface.active && !onFoot.active) monsters.update(dt, null, () => {});
   tracers.update(dt);
 
+  // The map draws itself in the background while you are down there, and
+  // keeps the two markers Marco asked for: an arrow for you, and the
+  // ship when you are out of it.
+  if (surface.active || worldMap.isOpen) {
+    const shipLocal = {
+      x: ship.mesh.position.x - SURFACE_ORIGIN.x,
+      z: ship.mesh.position.z - SURFACE_ORIGIN.z,
+      heading: _euler.setFromQuaternion(ship.mesh.quaternion, 'YXZ').y,
+    };
+    worldMap.setMarkers(
+      onFoot.active
+        ? {
+          x: onFoot.position.x - SURFACE_ORIGIN.x,
+          z: onFoot.position.z - SURFACE_ORIGIN.z,
+          heading: onFoot.heading,
+        }
+        : shipLocal,
+      onFoot.active ? shipLocal : null,
+    );
+    worldMap.update();
+  }
+
   fastTravel.update(dt);
   audio.update(dt);
   asteroids.update(dt);
@@ -607,6 +642,7 @@ if (import.meta.env.DEV) {
     renderer, camera,
     rovers: roverApi, mission, upgrades, missionScreens, surface, frameScaler,
     characterViewer, onFoot, monsters, tracers, inventory, saves, gameOver,
+    map: worldMap,
     shipConfig, shipConfigDefaults,
     resetGame,
     /** Which of title / fly / cinematic the game is in. */

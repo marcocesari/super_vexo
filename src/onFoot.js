@@ -986,6 +986,8 @@ export function createOnFoot({
     vexo,
     ladder,
     get position() { return foot; },
+    /** Which way he is facing, in radians. The map draws an arrow. */
+    get heading() { return heading; },
     /** The stamina wheel: 0 to 1, and whether he has run himself out. */
     get stamina() { return stamina; },
     get winded() { return winded > 0; },

@@ -86,7 +86,6 @@ export function createHud() {
   const elDamping = root.querySelector('[data-damping]');
   const elFastTravel = root.querySelector('[data-fast-travel]');
   const elUpgrades = root.querySelector('[data-upgrades]');
-  root.style.display = 'none';
   const elResetHint = root.querySelector('[data-reset-hint]');
   const elMission = root.querySelector('[data-mission]');
   const elRovers = root.querySelector('[data-rovers]');
@@ -101,6 +100,16 @@ export function createHud() {
   let fpsDisplayed = 0;
 
   return {
+    /**
+     * The Tablet's screen, for whoever is showing it.
+     *
+     * It used to be an overlay of its own with its own button. It is a
+     * page of the inventory now — Marco's words: "the tablet is the
+     * inventory" — so this module still owns what is ON the screen and
+     * no longer owns where the screen is.
+     */
+    element: root,
+
     update({ velocity, eulerDeg, dt, sources, dampingOn }) {
       elVelocity.textContent = velocity.toFixed(1);
       elOrientation.textContent =
@@ -119,22 +128,25 @@ export function createHud() {
       elDamping.textContent = dampingOn ? strings.hud.dampingOn : strings.hud.dampingOff;
     },
 
+    /**
+     * The Tablet is a page of the inventory now, so where it is and
+     * whether it is on screen belongs to that screen, not to this one.
+     * These three remain because they are what the rest of the game
+     * calls when a menu opens or closes, and all they still do is the
+     * little banner that names the button.
+     */
     show() {
-      root.style.display = '';
       hint.hidden = true;
     },
 
     hide() {
-      root.style.display = 'none';
       hint.hidden = false;
     },
 
     /** Toggle the tablet on/off. Returns the new visibility. */
     toggle() {
-      const willShow = root.style.display === 'none';
-      root.style.display = willShow ? '' : 'none';
-      hint.hidden = willShow;
-      return willShow;
+      hint.hidden = !hint.hidden;
+      return !hint.hidden;
     },
 
     /** Force the hint banner to a specific visibility. */

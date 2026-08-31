@@ -76,13 +76,15 @@ Then open http://localhost:5173.
 - **Shift / B (hold)** — sprint (6.2 m/s), for as long as your stamina lasts
 - **Space / X** — shoot. He draws the pistol off his thigh and holsters it again
   a few seconds after the last shot
-- **E, or + on a pad** — the inventory. A row of tabs, weapons down the left,
+- **T, or + on a pad** — the inventory. A row of tabs, weapons down the left,
   and Vexo on the right: drag him, or hold A / D, to turn him round and look at
   his kit from any side. He's a real model in a real scene, drawn into that
   corner of the game's own canvas, so he can never go stale the way a picture of
-  him would. **← → , or L / R on a pad**, walks along the tabs; the last one on
-  the right is **System**, and that's where the save button is. Escape or B
-  closes it
+  him would. **← → , or L / R on a pad**, walks along the tabs: **Weapons**,
+  the **Tablet** — which used to be an overlay with a button of its own and is a
+  page of this screen now — and **System** at the far right, where the save
+  button is. Escape or B closes it
+- **M, or − on a pad** — the map. See *The map*, below
 - **Right stick, or turning the phone** — swing the camera around him. Push and
   it keeps turning; let go and it stays where you left it. Walking forward
   eases it back behind him on its own, so there's no button to press
@@ -308,6 +310,33 @@ npm run smoke:world      # holes, overlap, and the cost of building ground
 `npm run dev` and open
 [/tools/world-preview.html](http://localhost:5173/tools/world-preview.html)
 — drag to look, W and S to fly, Shift to go faster.
+
+## The map
+
+**M**, or **−** on a pad, and the whole world is on the screen: one
+continent, 120 km by 80, drawn all the way to its coasts. It isn't a
+picture anybody made — it's the same terrain rules the ground itself is
+built from (`src/world/terrain.js`), run over every square kilometre of
+the world and shaded as though the sun were low in the north-west, which
+is where mapmakers have put it for two centuries because it's the light
+that makes a valley read as a valley.
+
+Drawing a continent takes a couple of seconds, so it starts the moment
+the game loads and draws a few rows at a time, a couple of milliseconds
+per frame. By the time you press M it's been ready for minutes; press it
+sooner and you watch the world appear. A green arrow shows where you
+are and which way you're facing, and when you're out on foot a blue one
+shows where you left the ship.
+
+The world has edges because of this. It ran on for ever before, which is
+a fine thing for ground to do and a useless thing to draw a map of —
+"every single inch" only means something if there's a last inch. Fly
+past the coast and there's open sea, not a wall.
+
+```bash
+node tools/worldstudy/map-preview.mjs world.ppm 900   # the map, to a file
+npm run smoke:map                                     # and the checks on it
+```
 
 ## Bokoblins
 

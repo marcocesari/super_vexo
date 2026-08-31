@@ -84,7 +84,7 @@ check('and it knows he is down in the town', save?.auto?.inTown === true);
 check('the manual slot is still empty', save?.manual == null);
 
 // --- The System tab and its SAVE button -----------------------------------------
-await page.keyboard.press('KeyE');
+await page.keyboard.press('KeyT');
 await page.waitForTimeout(400);
 check('the inventory opens on his weapons',
   await page.evaluate(() => window.__superVexo.inventory.tab) === 'weapons');
@@ -96,8 +96,13 @@ const tabs = await page.evaluate(() =>
 check('System is the tab at the far right',
   tabs.length >= 2 && /system/i.test(tabs[tabs.length - 1]), tabs.join(' | '));
 
-await page.keyboard.press('ArrowRight');
-await page.waitForTimeout(300);
+// However many pages there are between here and there — the Tablet
+// arrived in the middle of the row when it moved into the inventory.
+for (let i = 0; i < 6; i++) {
+  if (await page.evaluate(() => window.__superVexo.inventory.tab) === 'system') break;
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(220);
+}
 check('the right arrow (pad R) walks along to it',
   await page.evaluate(() => window.__superVexo.inventory.tab) === 'system');
 
@@ -122,8 +127,11 @@ check('and it says so on screen',
   /saved/i.test(await page.evaluate(() =>
     document.querySelector('.inventory__saved')?.textContent ?? '')));
 
-await page.keyboard.press('ArrowLeft');
-await page.waitForTimeout(250);
+for (let i = 0; i < 6; i++) {
+  if (await page.evaluate(() => window.__superVexo.inventory.tab) === 'weapons') break;
+  await page.keyboard.press('ArrowLeft');
+  await page.waitForTimeout(220);
+}
 check('and the arrow walks back to his weapons',
   await page.evaluate(() => window.__superVexo.inventory.tab) === 'weapons');
 await page.keyboard.press('Escape');
@@ -193,7 +201,7 @@ check('with a yes and a no', sign.buttons.length === 2
   && /yes/i.test(sign.buttons[0]) && /no/i.test(sign.buttons[1]), sign.buttons.join(' / '));
 
 // Nothing else may open over the top of it.
-await page.keyboard.press('KeyE');
+await page.keyboard.press('KeyT');
 await page.waitForTimeout(250);
 check('the inventory cannot be opened over it',
   !(await page.evaluate(() => window.__superVexo.inventory.isOpen)));

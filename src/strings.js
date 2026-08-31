@@ -60,6 +60,12 @@ export const strings = {
   },
 
   // Shown when the last heart goes (see gameOver.js).
+  map: {
+    title: 'THE WORLD',
+    hint: 'M / − — close · the whole continent, every inch of it',
+    scale: '{km} × {kmZ} km · {m} m per pixel',
+    building: 'drawing the world… {pct}%',
+  },
   gameOver: {
     title: 'GAME OVER',
     ask: 'Continue from your last save?',
@@ -74,8 +80,9 @@ export const strings = {
     title: 'GEAR',
     weapons: 'Weapons',
     empty: 'Nothing yet.',
-    hint: 'E / + — close · ← → or L / R — tabs · B / Esc — back',
+    hint: 'T / + — close · ← → or L / R — tabs · B / Esc — back',
     turnHint: 'Drag, or A / D, to turn him',
+    tablet: 'Tablet',
     system: 'System',
     save: 'SAVE GAME',
     neverSaved: 'Not saved yet.',
@@ -117,6 +124,6 @@ export const strings = {
 
     resetHint: 'L3 / R = reset',
 
-    tabletHint: '− / T = Tablet',
+    tabletHint: 'T / + — GEAR · M / − — MAP',
   },
 };

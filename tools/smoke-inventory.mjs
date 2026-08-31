@@ -41,9 +41,9 @@ await page.waitForTimeout(600);
 
 check('it starts closed', !(await page.evaluate(() => window.__superVexo.inventory.isOpen)));
 
-await page.keyboard.press('KeyE');
+await page.keyboard.press('KeyT');
 await page.waitForTimeout(500);
-check('E opens it', await page.evaluate(() => window.__superVexo.inventory.isOpen));
+check('T opens it', await page.evaluate(() => window.__superVexo.inventory.isOpen));
 
 const listed = await page.evaluate(() => {
   const items = [...document.querySelectorAll('.inventory__item')];
@@ -122,11 +122,11 @@ check('the ship does not fly while it is open', stillParked <= flying.before + 0
 await page.keyboard.press('Escape');
 await page.waitForTimeout(400);
 check('Escape closes it', !(await page.evaluate(() => window.__superVexo.inventory.isOpen)));
-await page.keyboard.press('KeyE');
+await page.keyboard.press('KeyT');
 await page.waitForTimeout(300);
-await page.keyboard.press('KeyE');
+await page.keyboard.press('KeyT');
 await page.waitForTimeout(300);
-check('and E is a toggle', !(await page.evaluate(() => window.__superVexo.inventory.isOpen)));
+check('and T is a toggle', !(await page.evaluate(() => window.__superVexo.inventory.isOpen)));
 
 // The canvas has to be handed back whole: a viewport left where the
 // panel was would draw the next frame of the game into that corner.

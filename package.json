@@ -22,6 +22,7 @@
     "smoke:inventory": "node tools/smoke-inventory.mjs",
     "smoke:gameover": "node tools/smoke-gameover.mjs",
     "smoke:world": "node tools/smoke-world.mjs",
+    "smoke:map": "node tools/smoke-map.mjs",
     "smoke:cinematic": "node tools/smoke-cinematic.mjs",
     "smoke:build": "node tools/smoke-build.mjs",
     "character-sheet": "node tools/character-sheet.mjs",

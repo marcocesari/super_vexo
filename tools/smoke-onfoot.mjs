@@ -420,17 +420,34 @@ async function turnDirection(key) {
     const y = g.onFoot.vexo.group.rotation.y;
     return { right: [m[0], m[2]], forward: [Math.sin(y), Math.cos(y)] };
   });
+  const swing = async () => {
+    const after = await page.evaluate(() => {
+      const y = window.__superVexo.onFoot.vexo.group.rotation.y;
+      return [Math.sin(y), Math.cos(y)];
+    });
+    const dx = after[0] - before.forward[0];
+    const dz = after[1] - before.forward[1];
+    return dx * before.right[0] + dz * before.right[1];
+  };
+  // Hold the key until he has turned far enough to be sure WHICH WAY,
+  // rather than for a fixed number of milliseconds and hoping.
+  //
+  // The game advances by the frame, so a fixed wall-clock hold turns him
+  // less on a busy machine than on a quiet one — and this suite failed
+  // about one run in three for that reason alone, on a game that was
+  // working perfectly. What is being tested is the direction, not the
+  // rate: the first version of the walk code had A turning him right.
   await page.keyboard.down(key);
-  await page.waitForTimeout(450);
+  const started = Date.now();
+  let towardScreenRight = 0;
+  while (Date.now() - started < 4000) {
+    await page.waitForTimeout(90);
+    towardScreenRight = await swing();
+    if (Math.abs(towardScreenRight) > 0.3) break;
+  }
   await page.keyboard.up(key);
-  await page.waitForTimeout(250);
-  const after = await page.evaluate(() => {
-    const y = window.__superVexo.onFoot.vexo.group.rotation.y;
-    return [Math.sin(y), Math.cos(y)];
-  });
-  const dx = after[0] - before.forward[0];
-  const dz = after[1] - before.forward[1];
-  const towardScreenRight = dx * before.right[0] + dz * before.right[1];
+  await page.waitForTimeout(200);
+  towardScreenRight = await swing();
   return { side: towardScreenRight > 0 ? 'right' : 'left', amount: Math.abs(towardScreenRight) };
 }
 const leftTurn = await turnDirection('KeyA');
@@ -441,11 +458,17 @@ check('D turns him right', rightTurn.side === 'right' && rightTurn.amount > 0.2,
   `${rightTurn.side} (${rightTurn.amount.toFixed(2)})`);
 
 // He carries a step or so past the key release now — the velocity eases
-// down rather than switching off — so give the momentum time to run out
-// before asking whether he has stopped.
-await page.waitForTimeout(600);
-const gaits = await page.evaluate(() => ({ still: window.__superVexo.onFoot.vexo.gait }));
-check('he comes to rest when the stick is centred', gaits.still === 'idle', gaits.still);
+// down rather than switching off — so wait for the momentum to run out
+// rather than guessing how long that takes. Half a second is plenty on
+// a quiet machine and not nearly enough on a busy one, and the game is
+// the same either way.
+let still = null;
+for (let i = 0; i < 25; i++) {
+  await page.waitForTimeout(120);
+  still = await page.evaluate(() => window.__superVexo.onFoot.vexo.gait);
+  if (still === 'idle') break;
+}
+check('he comes to rest when the stick is centred', still === 'idle', still);
 
 // --- The walk cycle keeps him on the ground ----------------------------------
 // The body's height through the cycle is derived from the leg angles

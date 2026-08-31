@@ -42,14 +42,19 @@ await page.waitForTimeout(400);
 // --- The world itself -------------------------------------------------------
 const world = await page.evaluate(() => {
   const w = window.__superVexo.surface.world;
-  // Sample a big square of the world and see what is in it.
+  // Sample the WHOLE world — it has edges now, 120 km by 80 — rather
+  // than a five-kilometre square around the origin. A continent that
+  // stands a hundred metres clear of the sea has no ocean in it at all
+  // at that scale, which is how this check came to fail on a world that
+  // is mostly coastline.
   const heights = [];
   const biomes = new Map();
-  const STEP = 340;
+  const HALF_X = 60000;
+  const HALF_Z = 40000;
   for (let j = -14; j <= 14; j++) {
     for (let i = -14; i <= 14; i++) {
-      const x = i * STEP;
-      const z = j * STEP;
+      const x = (i / 14) * HALF_X;
+      const z = (j / 14) * HALF_Z;
       heights.push(w.groundHeightAt(x, z));
       const b = w.info.biomeAt(x, z);
       biomes.set(b, (biomes.get(b) ?? 0) + 1);

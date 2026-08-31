@@ -231,11 +231,22 @@ check('a frame actually draws him', drawn.calls > 20 && drawn.triangles > 500,
 // the title card stay in the DOM — they're hidden with `display` and
 // `opacity` rather than removed — so this asks what's actually visible.
 const quiet = await page.evaluate(() => {
+  /**
+   * Is this actually on the screen?
+   *
+   * Asked of the element as RENDERED, not of its own style rules. The
+   * Tablet is a page of the inventory now rather than an overlay of its
+   * own, and an element inside a hidden parent still reports its own
+   * `display: block` — so the old test called the Tablet visible while
+   * it sat in a closed menu with zero width, and failed on a bug that
+   * was not there.
+   */
   const visible = (el) => {
     if (!el) return false;
+    if (el.checkVisibility && !el.checkVisibility()) return false;
     const style = getComputedStyle(el);
-    return style.display !== 'none' && style.visibility !== 'hidden'
-      && Number(style.opacity) > 0.01 && !el.hidden;
+    if (Number(style.opacity) <= 0.01) return false;
+    return el.getBoundingClientRect().width > 0;
   };
   return {
     tablet: visible(document.getElementById('tablet')),
