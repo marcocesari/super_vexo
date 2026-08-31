@@ -2,6 +2,62 @@
 
 Most recent entries on top.
 
+## 2026-08-31 (later) — A world with places in it, and a fast airship
+
+Marco: look at how Tears of the Kingdom's map is organised — a desert
+here, ice there, something unmistakable in the middle — and arrange this
+world that way, *without* copying that arrangement. And make the airship
+do 1000 km/h, 2000 with the boost.
+
+- **Two sessions were on this request at once.** The speed half was
+  already sitting uncommitted in his folder from the other one; the file
+  the layout had to go in had been saved four minutes earlier. Told him
+  before touching anything: last time two of us wrote the same files, the
+  game ended up importing a module nobody had written. He said to carry
+  on, so the layout is mine and the speed work is the other session's,
+  verified rather than rewritten.
+- **The climate is laid out by hand now.** It was three fields of noise,
+  which gives a world with everything in it and no arrangement to it —
+  nowhere can be learned because there is nowhere to learn. There are ten
+  PROVINCES, each a place with a climate of its own; every point takes a
+  weighted average of the ones near it. Ice and high snow in the
+  north-east, a sand sea filling the east, canyon country south-east,
+  forest along the south, open moor west, ash and bare stone north-west.
+- The first attempt came out flat and samey, and the reason is worth
+  remembering: with a gentle falloff and ten provinces contributing,
+  every point lands near the average of the lot — the desert only a
+  little drier than the forest, the mountains never rising. The weight
+  has to be nearly "nearest wins" (1/(d⁶+ε)) for a province to reach its
+  own climate in the middle.
+- **The Spire.** A volcano in the exact centre, 1.4 km tall with a
+  crater, snow on its shoulders and gullies down its flanks — the thing
+  everything else is placed around. It had to IMPOSE its shape rather
+  than be added to the ground: piled on top, the hills underneath moved
+  the summit by hundreds of metres and filled the crater in, so the one
+  unmistakable thing in the world was a different shape from every side.
+  The gullies come from the survey — Etna is the most radially
+  symmetrical thing on that list and its one decoration is a fan of
+  channels cut straight down it. Without them it rendered as a smooth
+  white dome: a snowy hill, not a mountain that erupted.
+- **Then the Spire broke two things, both found by testing rather than
+  by looking.** The game started the player ON it — the old rule wanted
+  flat ground and the rim of a crater is flat, so the ship landed on a
+  snowfield 1155 m up. And the ceiling that sends you back to space was
+  1500 m, below the crater rim: flying over the one landmark in the world
+  put you in orbit.
+- **The horizon had to move.** The ground was drawn to 12 km and the haze
+  closed at 11, which was plenty at 30 m/s with nothing to look at. The
+  ship now does 280 m/s and the Spire is meant to be visible from most of
+  the continent, so: nine rings instead of seven (49 km — the outer ones
+  are the cheapest there are, same triangles for sixteen times the
+  ground) and the haze out to 34 km.
+- The speed work checks out: 1000 km/h on the nose cruising, 2000 with
+  the boost, and the ground keeps up — 16.6 ms a frame, worst 21.9, with
+  the build queue running about 80 tiles behind at full boost, all of it
+  in the far rings, because the queue builds nearest-first.
+- The world grew to 130 × 86 km, Marco's call, once he saw that at
+  1000 km/h you cross it in seven minutes.
+
 ## 2026-08-31 — The Tablet moves in, and the world gets a map
 
 Marco: the Tablet *is* the inventory, so put its features in there; the

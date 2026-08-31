@@ -29,10 +29,11 @@ export const SURFACE_ORIGIN = new THREE.Vector3(0, -20000, 0);
 // Touch the atmosphere this close to the surface and you land.
 const LANDING_BAND = 22;
 // Climb this high above the ground and you're back in orbit. It has to
-// clear the tallest ground in the world with room to spare: mountains
-// here reach about 520 m, and a ceiling below them would throw you into
-// space every time you crossed a range.
-export const LEAVE_ALTITUDE = 1500;
+// clear the tallest ground in the world with room to spare — and the
+// tallest is now the Spire, whose crater rim stands about 1300 m up, so
+// a 1500 m ceiling meant flying over the one landmark in the world sent
+// you into space.
+export const LEAVE_ALTITUDE = 2800;
 // The ship never sinks below this — a soft floor instead of a crash.
 // It is also exactly where the ship sits when parked (PARK_CLEARANCE,
 // below): if the floor were higher, boarding would pop the ship into
@@ -57,8 +58,8 @@ const SKY_COLOR = 0x9dc9ef;
 // Air haze. Far enough out to show a mountain range on the horizon —
 // the old figures were built for a town 1.5 km across and would now
 // buried the whole world in fog a field away.
-const HAZE_NEAR = 700;
-const HAZE_FAR = 11000;
+const HAZE_NEAR = 1600;
+const HAZE_FAR = 34000;
 // While we are down here the camera has to see much further than it does
 // in space. This is a uniform, not a #define, so changing it is free —
 // unlike the number of lights, which recompiles every shader in the game.

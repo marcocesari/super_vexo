@@ -116,8 +116,13 @@ export function createHud() {
      */
     element: root,
 
-    update({ velocity, eulerDeg, dt, sources, dampingOn }) {
-      elVelocity.textContent = velocity.toFixed(1);
+    update({ velocity, eulerDeg, dt, sources, dampingOn, inKph = false }) {
+      // Down on the world one unit is one metre, so the speed is a real
+      // speed and is shown as one. Out in space nothing has a known
+      // size, so a number in kilometres an hour would be a fiction.
+      elVelocity.textContent = inKph
+        ? `${Math.round(velocity * 3.6)} km/h`
+        : velocity.toFixed(1);
       elOrientation.textContent =
         `${eulerDeg.x.toFixed(0)}°, ${eulerDeg.y.toFixed(0)}°, ${eulerDeg.z.toFixed(0)}°`;
 

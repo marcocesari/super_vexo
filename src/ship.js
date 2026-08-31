@@ -7,7 +7,7 @@
 // Quaternions are a 4-number representation of rotation that never has
 // this problem, so they are the standard for flight / space sims.
 import * as THREE from 'three';
-import { shipConfig } from './shipConfig.js';
+import { shipConfig, DEFAULTS } from './shipConfig.js';
 
 // Tunables live in `shipConfig` so the Upgrades app can mutate them.
 // Read them through `shipConfig.xyz` here — do NOT cache locally or
@@ -311,7 +311,13 @@ export function updateShip(ship, input, dt) {
 
   _forward.set(0, 0, 1).applyQuaternion(ship.mesh.quaternion);
 
-  const accel = input.throttle * shipConfig.maxThrottleAccel;
+  // How fast it may go right now. Space keeps the old figure; over the
+  // world the ship is given a speed in real metres a second, and the
+  // boost doubles it. Acceleration is scaled to match, or a ship with a
+  // 2000 km/h ceiling would spend half a minute getting there.
+  const limit = ship.speedLimit || shipConfig.maxSpeed;
+  const accel = input.throttle * shipConfig.maxThrottleAccel
+    * Math.max(1, limit / DEFAULTS.maxSpeed);
   // velocity += forward * accel * dt
   ship.velocity.addScaledVector(_forward, accel * dt);
 
@@ -322,8 +328,8 @@ export function updateShip(ship, input, dt) {
   }
 
   // Cap speed.
-  if (ship.velocity.lengthSq() > shipConfig.maxSpeed * shipConfig.maxSpeed) {
-    ship.velocity.setLength(shipConfig.maxSpeed);
+  if (ship.velocity.lengthSq() > limit * limit) {
+    ship.velocity.setLength(limit);
   }
 
   // position += velocity * dt

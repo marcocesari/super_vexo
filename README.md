@@ -314,7 +314,7 @@ npm run smoke:world      # holes, overlap, and the cost of building ground
 ## The map
 
 **M**, or **−** on a pad, and the whole world is on the screen: one
-continent, 120 km by 80, drawn all the way to its coasts. It isn't a
+continent, 130 km by 86, drawn all the way to its coasts. It isn't a
 picture anybody made — it's the same terrain rules the ground itself is
 built from (`src/world/terrain.js`), run over every square kilometre of
 the world and shaded as though the sun were low in the north-west, which
@@ -332,6 +332,38 @@ The world has edges because of this. It ran on for ever before, which is
 a fine thing for ground to do and a useless thing to draw a map of —
 "every single inch" only means something if there's a last inch. Fly
 past the coast and there's open sea, not a wall.
+
+### It's laid out on purpose
+
+The climate used to be three fields of noise, which gave a world with
+everything in it and no arrangement to it — nowhere could be learned,
+because there was nowhere to learn. *Tears of the Kingdom* is organised:
+a desert in one place, ice in another, and something unmistakable in the
+middle that everything else is placed around. This world is put together
+the same way, in an arrangement of its own:
+
+```
+                        north
+       ash and bare stone  |  ice and high snow
+                       ┌───┴───┐
+    west  open moor    │ SPIRE │   the sand sea   east
+                       └───┬───┘
+       low south coast     |  canyon country
+                        forest
+                        south
+```
+
+Each of those is a **province** — a place on the map with a climate of
+its own (`PROVINCES` in `src/world/terrain.js`). Every point takes a
+weighted average of the provinces near it, so borders are gradients
+rather than lines, and a little noise keeps them from being circles.
+
+**The Spire** stands in the middle: a volcano 1.4 km tall with a crater
+in its top, snow on its shoulders and gullies cut down its flanks — the
+one thing you can see from most of the continent, and what everything
+else is placed relative to. It imposes its own shape on the ground
+rather than being piled on top of it, because a landmark has to look the
+same every time you see it.
 
 ```bash
 node tools/worldstudy/map-preview.mjs world.ppm 900   # the map, to a file

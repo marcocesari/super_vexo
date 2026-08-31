@@ -334,6 +334,39 @@ function onCinematicDone() {
   if (!smallScreen.matches) hud.show();
 }
 
+/**
+ * Is the player asking for the boost?
+ *
+ * Two ways, because a pad and a keyboard ask for things differently:
+ * hold A while flying, or press W twice quickly and keep it down — the
+ * same double-tap that means "run" in most games. The second press has
+ * to arrive within DOUBLE_TAP_MS of the first, and the boost lasts as
+ * long as the key is held.
+ */
+const DOUBLE_TAP_MS = 320;
+let wPressedAt = -Infinity;
+let wDoubleTapped = false;
+function boosting(axes) {
+  // The keypress is read from the edge the keyboard recorded, not by
+  // looking at whether the key is down right now. A tap can begin and
+  // end between two frames — press W quickly enough and a once-a-frame
+  // look never sees it down at all, so the second tap of a double-tap
+  // went unnoticed.
+  const tapped = input.keyboard.consumeJustPressed(['KeyW']);
+  const wDown = input.keyboard.isDown('KeyW');
+  if (tapped) {
+    const now = performance.now();
+    wDoubleTapped = now - wPressedAt < DOUBLE_TAP_MS;
+    wPressedAt = now;
+  }
+  if (!wDown) wDoubleTapped = false;
+
+  // On a pad: A held, with the stick actually asking to move. Holding
+  // the boost while stationary should not do anything.
+  const padBoost = input.gamepad.isButtonDown(BUTTONS.A) && axes.throttle > 0.1;
+  return wDoubleTapped || padBoost;
+}
+
 // --- Game loop --------------------------------------------------------------
 let lastT = performance.now();
 const _euler = new THREE.Euler();
@@ -517,6 +550,13 @@ function frame(now) {
       // Ship on rails (warp) or player is in a menu → ignore flight input.
       audio.setThrottle(0);
     } else {
+      // How fast the airship may go this frame. Over the world it is a
+      // real speed — 1000 km/h, or 2000 with the boost — and in space
+      // the old figure stands, because nothing up there is a known size
+      // and "kilometres an hour" would mean nothing.
+      ship.speedLimit = surface.active
+        ? (boosting(axes) ? shipConfig.surfaceBoostSpeed : shipConfig.surfaceSpeed)
+        : 0;
       updateShip(ship, axes, dt);
       audio.setThrottle(axes.throttle);
       // Landing / take-off, and the ground itself while we're down.
@@ -607,6 +647,9 @@ function frame(now) {
   _euler.setFromQuaternion(ship.mesh.quaternion, 'YXZ');
   hud.update({
     velocity: ship.velocity.length(),
+    // Down on the world a unit is a metre, so the speed can be given in
+    // the units anybody actually thinks in.
+    inKph: surface.active,
     eulerDeg: {
       x: THREE.MathUtils.radToDeg(_euler.x),
       y: THREE.MathUtils.radToDeg(_euler.y),

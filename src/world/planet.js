@@ -42,7 +42,13 @@ const RING_TILES = 6;
 // 1.8 m tall walks up a slope rather than up a staircase.
 const TILE_VERTS = 17;
 const RING0_TILE = 64;
-const RINGS = 7;
+// Nine rings reach 49 km. Seven reached 12, which was plenty when the
+// ship did 30 m/s and there was nothing in particular to look at — but
+// it now flies at 280 and the Spire is meant to be visible from most of
+// the continent, and neither works if the world stops three miles out.
+// The outer rings are the cheapest there are: same triangle count,
+// sixteen times the ground, and nearly all of them outside the view.
+const RINGS = 9;
 // Each ring's tiles are twice the size of the one inside it. Four was
 // the first choice and it is what made the hollow rings pointless: with
 // tiles four times the size, the ring inside covers less than two of
@@ -531,18 +537,29 @@ export function createPlanet({ seed = 20260827 } = {}) {
     return out;
   }
 
-  /** Somewhere to begin: flat, dry, near the water, with a view. */
+  /**
+   * Somewhere to begin: mild, level, low-lying country.
+   *
+   * The search starts a good way out from the middle of the world, and
+   * that is deliberate — the middle is the Spire, and the first version
+   * of this happily landed the ship on its snowfield 1155 m up, because
+   * the rim of a crater is flat and the rule only asked for flat.
+   */
   function findLandingSite() {
-    for (let i = 1; i < 6000; i++) {
-      const r = 140 * Math.sqrt(i);
+    const AWAY_FROM_SPIRE = 14000;
+    for (let i = 1; i < 9000; i++) {
+      const r = AWAY_FROM_SPIRE + 90 * Math.sqrt(i);
       const x = Math.cos(i * 0.7) * r;
       const z = Math.sin(i * 0.7) * r;
       const s = terrain.sampleAt(x, z, 6);
-      if (s.height < 12 || s.slopeDeg > 5) continue;
-      if (s.biome === BIOME.SEA || s.biome === BIOME.SALT) continue;
+      // Low ground, gently sloping, and somewhere a person would want
+      // to stand: not a snowfield, not a salt pan, not the sea.
+      if (s.height < 20 || s.height > 320 || s.slopeDeg > 5) continue;
+      if (s.biome === BIOME.SEA || s.biome === BIOME.SALT || s.biome === BIOME.SNOW) continue;
       return { x, z, height: s.height, biome: s.biome };
     }
-    return { x: 0, z: 0, height: terrain.heightAt(0, 0), biome: terrain.biomeAt(0, 0) };
+    return { x: AWAY_FROM_SPIRE, z: 0, height: terrain.heightAt(AWAY_FROM_SPIRE, 0),
+      biome: terrain.biomeAt(AWAY_FROM_SPIRE, 0) };
   }
 
   const start = findLandingSite();

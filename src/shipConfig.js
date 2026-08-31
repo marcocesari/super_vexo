@@ -12,6 +12,13 @@ export const DEFAULTS = Object.freeze({
   maxThrottleAccel: 18,
   reverseThrottleAccel: 12,
   maxSpeed: 60,
+  // Down on the world, where one unit is one metre and the continent is
+  // hundreds of kilometres across, the ship flies at a real speed:
+  // 1000 km/h ordinarily and 2000 with the boost held. In space the
+  // units are not metres — nothing up there has a known size — so
+  // maxSpeed above still governs, and these do not apply.
+  surfaceSpeed: 1000 / 3.6,        // m/s
+  surfaceBoostSpeed: 2000 / 3.6,
   yawRate: 1.4,
   pitchRate: 1.4,
   rollRate: 2.0,

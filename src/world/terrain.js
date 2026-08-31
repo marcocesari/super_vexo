@@ -68,7 +68,11 @@ const REGION_SIZE = 20000;
 // the one continent it is meant to be.
 const CONTINENT_SIZE = 62000;
 
-// The world has edges now: one continent, 120 km by 80 km, with open sea
+// How high the ground is where the Spire's flanks meet the country
+// round them — the lift the whole continent stands at, below.
+const SPIRE_FOOT = 127;
+
+// The world has edges now: one continent, 130 km by 86 km, with open sea
 // all round it. It went on for ever before, which is a fine thing for
 // ground to do and a useless thing to draw a map of — "every single inch
 // of the world" only means something if there is a last inch. At the
@@ -77,14 +81,22 @@ const CONTINENT_SIZE = 62000;
 // The edge is not a wall. The land simply runs out: the coastline
 // wanders in and out as any coastline does, and past it there is water
 // for as far as anyone cares to fly.
-export const WORLD_HALF_X = 60000;
-export const WORLD_HALF_Z = 40000;
+export const WORLD_HALF_X = 65000;
+export const WORLD_HALF_Z = 43000;
 // How much of the way out the land starts giving way to sea. Inside
 // this the continent is whatever the noise says; outside it, the sea
 // wins by degrees, so the coast is a coast and not a cut edge.
 const SHELF_FROM = 0.80;
 
 export const SEA_LEVEL = 0;
+
+// THE SPIRE: one volcano in the middle of the world, and the reason the
+// map has a middle at all. Tears of the Kingdom puts something
+// unmistakable at the centre and arranges everything else around it;
+// this is ours. It stands about eleven hundred metres over ground that
+// is barely a hundred, with snow on the top half and a crater in it, and
+// it can be seen from most of the continent.
+export const SPIRE = { x: 0, z: 0, radius: 5200, height: 1450, craterR: 520, craterDepth: 320 };
 // Sand sits at the angle of repose and no steeper — 33° for dry sand,
 // which is why every dune on Earth has the same slipface angle.
 const REPOSE = Math.tan((33 * Math.PI) / 180);
@@ -308,20 +320,134 @@ export function createTerrain({ seed = 20260827 } = {}) {
     return inland - shelf;
   }
 
-  /** How mountainous this part of the world is: 0 flat, 1 alpine. */
+  /**
+   * WHERE THINGS ARE.
+   *
+   * The climate used to be three fields of noise, which gave a world
+   * with everything in it and no arrangement to it: nowhere could be
+   * learned, because there was nowhere to learn. Tears of the Kingdom is
+   * organised — a desert in one place, ice in another, and something
+   * unmistakable in the middle that everything else is placed around —
+   * and Marco asked for a world put together that way, in an arrangement
+   * of its own rather than a copy of that one.
+   *
+   * So the continent is laid out by hand. Each province below is a place
+   * on the map with a climate of its own; every point takes a weighted
+   * average of the provinces near it, which makes the borders gradients
+   * rather than lines, and a little noise on top keeps them from being
+   * circles.
+   *
+   *                     north
+   *        ash and stone   |   ice and high snow
+   *                    ┌───┴───┐
+   *          west moor │ SPIRE │ the sand sea      east
+   *                    └───┬───┘
+   *        south coast     |   canyon country
+   *                     forest
+   *
+   * Positions are fractions of the continent's half-width and
+   * half-depth, so the arrangement keeps its shape if the world is
+   * resized — which it has been three times already.
+   */
+  const PROVINCES = [
+    // The middle: the Spire, a lone volcano, and the high ground round
+    // its foot. Everything else is placed relative to this.
+    { at: [0.00, 0.00], r: 0.34, uplift: 0.97, moisture: 0.58, heat: 0.52 },
+
+    // North-east: ice. High, wet enough to snow, and cold.
+    { at: [0.62, -0.72], r: 0.62, uplift: 0.86, moisture: 0.62, heat: 0.05 },
+    { at: [0.22, -0.86], r: 0.50, uplift: 0.74, moisture: 0.58, heat: 0.12 },
+
+    // East: the sand sea. Low, hot and the driest ground there is.
+    { at: [1.02, 0.06], r: 0.66, uplift: 0.16, moisture: 0.03, heat: 0.93 },
+    { at: [0.70, 0.34], r: 0.52, uplift: 0.20, moisture: 0.09, heat: 0.88 },
+
+    // South-east: canyon country. Dry but lifted, which is what makes
+    // flat-lying rock wear back into steps instead of into dunes.
+    { at: [0.72, 0.82], r: 0.56, uplift: 0.50, moisture: 0.26, heat: 0.74 },
+
+    // South: forest, the wettest and warmest ground on the continent.
+    { at: [-0.10, 0.92], r: 0.66, uplift: 0.34, moisture: 0.97, heat: 0.72 },
+
+    // West: open moor and grassland. Gentle country, easy to cross.
+    { at: [-0.86, 0.18], r: 0.70, uplift: 0.24, moisture: 0.66, heat: 0.50 },
+
+    // North-west: ash and bare stone in the mountains' lee — the rain
+    // falls on the far side of them and never gets here.
+    { at: [-0.72, -0.66], r: 0.58, uplift: 0.58, moisture: 0.18, heat: 0.60 },
+
+    // South-west: low, mild coast, where the land runs out.
+    { at: [-0.94, 0.86], r: 0.48, uplift: 0.10, moisture: 0.80, heat: 0.62 },
+  ];
+
+  // Worked out once: how far each province reaches, in metres, squared.
+  const provinces = PROVINCES.map((p) => ({
+    x: p.at[0] * WORLD_HALF_X,
+    z: p.at[1] * WORLD_HALF_Z,
+    rr: (p.r * WORLD_HALF_X) ** 2,
+    uplift: p.uplift,
+    moisture: p.moisture,
+    heat: p.heat,
+  }));
+
+  const _climate = { uplift: 0.5, moisture: 0.5, heat: 0.5 };
+
+  /**
+   * The climate at a point: every province, weighted by how near it is.
+   *
+   * The weight falls off as 1/((d/r)^6 + a bit), which is very nearly
+   * "the nearest province wins" while still blending smoothly where two
+   * of them meet. A gentler falloff was the first attempt and it made a
+   * world with no places in it: with ten provinces all contributing,
+   * every point came out near the average of the lot, so the desert was
+   * only a little drier than the forest and the mountains never rose.
+   * A province has to be able to reach its own climate in the middle.
+   */
+  function climateAt(x, z) {
+    // Bend the point first, so borders wander the way real ones do
+    // instead of arcing neatly around each province.
+    const wobble = REGION_SIZE * 0.55;
+    const wx = x + fbm(n2, x, z, 2, REGION_SIZE * 2.2) * wobble;
+    const wz = z + fbm(n3, x, z, 2, REGION_SIZE * 2.2) * wobble;
+    let wu = 0;
+    let wm = 0;
+    let wh = 0;
+    let total = 0;
+    for (const p of provinces) {
+      const d2 = ((wx - p.x) ** 2 + (wz - p.z) ** 2) / p.rr;
+      const w = 1 / (d2 * d2 * d2 + 0.02);
+      wu += p.uplift * w;
+      wm += p.moisture * w;
+      wh += p.heat * w;
+      total += w;
+    }
+    _climate.uplift = wu / total;
+    _climate.moisture = wm / total;
+    _climate.heat = wh / total;
+    return _climate;
+  }
+
+  /**
+   * How mountainous this part of the world is: 0 flat, 1 alpine.
+   *
+   * The province decides; the noise only roughens the edges, so a range
+   * does not stop dead on a circle.
+   */
   function upliftField(x, z) {
-    return clamp01(0.5 + fbm(n2, x + 4000, z - 9000, 3, REGION_SIZE * 1.4, 0.45) * 0.95);
+    return clamp01(climateAt(x, z).uplift
+      + fbm(n2, x + 4000, z - 9000, 3, REGION_SIZE * 0.8, 0.45) * 0.22);
   }
 
   /** How wet: 0 desert, 1 rainforest. */
   function moistureField(x, z) {
-    return clamp01(0.5 + fbm(n3, x - 21000, z + 12000, 3, REGION_SIZE, 0.45) * 0.95);
+    return clamp01(climateAt(x, z).moisture
+      + fbm(n3, x - 21000, z + 12000, 3, REGION_SIZE * 0.7, 0.45) * 0.20);
   }
 
-  /** How warm: 0 polar, 1 tropical. Stretched along one axis, as
-   *  latitude is: climate comes in bands, not in blobs. */
+  /** How warm: 0 polar, 1 tropical. */
   function heatField(x, z) {
-    return clamp01(0.5 + fbm(n4, x * 0.3 + 7000, z, 2, REGION_SIZE * 2.4, 0.45) * 0.95);
+    return clamp01(climateAt(x, z).heat
+      + fbm(n4, x * 0.3 + 7000, z, 2, REGION_SIZE * 1.6, 0.45) * 0.14);
   }
 
   // --- The ground ---------------------------------------------------------------
@@ -471,6 +597,42 @@ export function createTerrain({ seed = 20260827 } = {}) {
       h = mix(h, terrace(top - cut, fromReal(170), 3.2), plateau);
     }
 
+    // The Spire. It REPLACES the ground it stands on rather than being
+    // added to it: a volcano builds its own mountain out of what it
+    // throws up, and — more to the point — a landmark has to be the same
+    // shape every time you see it. Added on top, the hills underneath
+    // moved the summit about by hundreds of metres and filled the crater
+    // in, so the one unmistakable thing in the world was a different
+    // shape depending on where it was measured.
+    const spireD = Math.hypot(x - SPIRE.x, z - SPIRE.z);
+    if (spireD < SPIRE.radius) {
+      const t = 1 - spireD / SPIRE.radius;
+      // Raised to a power so the flanks are gentle and the shoulders
+      // steepen towards the top, which is the shape a cone of ash and
+      // lava settles into.
+      // Gullies running down the flanks. Etna, in the survey, is the
+      // most radially symmetrical thing on the whole list and its one
+      // decoration is a fan of channels cut straight down the sides by
+      // the water and ash coming off the top. Without them a volcano
+      // renders as a smooth white dome — which is exactly what the first
+      // Spire looked like: a snowy hill, not a mountain that erupted.
+      // Strongest halfway down, fading out at the summit and the foot,
+      // because that is where the water has picked up speed and not yet
+      // spread out.
+      const angle = Math.atan2(z - SPIRE.z, x - SPIRE.x);
+      const gully = Math.sin(angle * 17 + fbm(n2, x, z, 2, 900) * 2.2)
+        * 34 * t * (1 - t) * 4;
+      const cone = SPIRE_FOOT + Math.pow(t, 1.6) * SPIRE.height
+        - smoothstep(SPIRE.craterR, SPIRE.craterR * 0.3, spireD) * SPIRE.craterDepth
+        - Math.abs(gully)
+        // And a little of the ground's own roughness, so the flanks are
+        // rock rather than glass.
+        + fbm(n4, x, z, 3, 120, 0.5) * 9;
+      // Taking over gradually at the foot, so it grows out of the
+      // country around it instead of standing on a shelf.
+      h = mix(h, cone, smoothstep(0, 0.34, t));
+    }
+
     // --- What lies on top ---------------------------------------------------
     if (sandy > 0.001) {
       // Dunes march in ranks, all facing the wind's way, the ranks
@@ -575,7 +737,7 @@ export function createTerrain({ seed = 20260827 } = {}) {
 
     // The snowline falls as the world gets colder, exactly as it falls
     // with latitude on Earth. Above it, nothing else matters.
-    const snowline = mix(fromReal(2700), fromReal(6400), heat);
+    const snowline = mix(fromReal(1500), fromReal(6400), heat);
     if (h > snowline && !(plateau > alpine)) return BIOME.SNOW;
     const treeline = snowline * 0.62;
 
@@ -629,13 +791,15 @@ export function createTerrain({ seed = 20260827 } = {}) {
     /**
      * Height above which snow lies, at this point.
      *
-     * Measured from the sea, like a real snowline — which is why it had
-     * to go up when the continent did: the land now stands a hundred
-     * metres or so clear of the water everywhere, and a snowline set for
-     * a world at sea level put snow on the fields.
+     * Measured from the sea, like a real snowline. It had to go up when
+     * the continent did — the land stands a hundred metres clear of the
+     * water everywhere, and a snowline set for a world at sea level put
+     * snow on the fields — and then the cold end had to come back down,
+     * because the ice province in the north-east came out green: a
+     * snowline of 450 m is above almost all of it, so nothing lay.
      */
     snowlineAt(x, z) {
-      return mix(fromReal(2700), fromReal(6400), heatField(x, z));
+      return mix(fromReal(1500), fromReal(6400), heatField(x, z));
     },
     seaLevel: SEA_LEVEL,
     /** For tools and tests that want to know what it was built to. */

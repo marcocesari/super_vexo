@@ -88,10 +88,14 @@ const clear = await page.evaluate(() => {
   const w = window.__superVexo.surface.world;
   let found = 0;
   let tried = 0;
+  // Across the whole continent, not in a spiral round the origin. The
+  // origin is the Spire now — a volcano — and asking a mountain how much
+  // flat ground the world has gets the answer "almost none".
   for (let i = 1; i < 400; i++) {
-    const r = 60 * Math.sqrt(i);
-    const x = Math.cos(i * 0.7) * r;
-    const z = Math.sin(i * 0.7) * r;
+    const a = i * 2.39996;
+    const r = Math.sqrt(i / 400);
+    const x = Math.cos(a) * r * 60000;
+    const z = Math.sin(a) * r * 40000;
     tried++;
     if (w.isClear(x, z, 3)) found++;
   }
@@ -179,10 +183,11 @@ check('the ship rests on the hill, not inside it',
 // --- Climbing out returns you to space ---------------------------------------
 const space = await page.evaluate(async () => {
   const sv = window.__superVexo;
-  // Above LEAVE_ALTITUDE, which is 1500 m now: the ceiling had to clear
-  // the tallest ground in the world, or crossing a mountain range would
-  // throw you into space.
-  sv.ship.mesh.position.y += 2200;
+  // Above LEAVE_ALTITUDE, which is 2800 m now: the ceiling has to clear
+  // the tallest thing in the world, and that is the Spire's crater rim
+  // at about 1300 m — fly over the one landmark there is and a lower
+  // ceiling would send you to space.
+  sv.ship.mesh.position.y += 3600;
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   await new Promise((r) => setTimeout(r, 250));
   // Earth sits at (-90, 25, -330) in the solar system; see world/earth.js.
