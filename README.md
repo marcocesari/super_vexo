@@ -425,8 +425,8 @@ npm run smoke:monsters   # camps, being spotted, being hit, shooting back, losin
 
 Lose the last heart and Vexo takes the hit, his knees give, and he goes over
 backwards — about a second and a half of it, and nothing interrupts it, because
-a sign that lands on top of the animation steals it. Then **GAME OVER**, and one
-question: continue from your last save, or back to the title screen. **← →** to
+a sign that lands on top of the animation steals it. Then **GAME OVER**, Marco's
+game-over music, and one question: continue from your last save, or back to the title screen. **← →** to
 choose, **Enter** or **A** to take it. With nothing saved, the offer changes
 rather than lying to you — *You have no saved game* — and only the title screen
 is on the table.

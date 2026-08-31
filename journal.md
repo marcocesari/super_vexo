@@ -2,6 +2,24 @@
 
 Most recent entries on top.
 
+## 2026-08-31 (evening) — Marco's game-over music
+
+- He added `game_over.mp3` and asked for it when Vexo dies — "only when
+  the animation finishes and the gameover text come on screen". So it
+  starts on the sign, not on the fall: the death has a beat of its own
+  and a tune underneath it would trample on it. It plays once, and stops
+  the moment he chooses.
+- **The file was not an MP3.** It is a WAV with the wrong name on it —
+  eight seconds of uncompressed 44.1 kHz stereo, 1.4 MB, which is bigger
+  than the entire rest of the game. Kept as `game_over.source.wav` and
+  shipped as 80 KB of AAC, which every browser and the iOS wrapper play.
+  Apple's `afconvert` cannot write MP3 any more, which is why it is
+  .m4a rather than matching the sprint theme's extension.
+- `smoke:gameover` watches every sound the game makes now, so the music
+  is checked for WHEN it starts rather than only that it exists: nothing
+  playing while he is still falling, exactly one play when the sign comes
+  up, and stopped again when the choice is made.
+
 ## 2026-08-31 (later) — A world with places in it, and a fast airship
 
 Marco: look at how Tears of the Kingdom's map is organised — a desert

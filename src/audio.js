@@ -30,6 +30,12 @@
 // Outside of that gesture we silently do nothing.
 
 import sprintThemeUrl from './assets/invincibility_theme.mp3';
+// Marco's game-over music. He handed it over as `game_over.mp3`, which
+// turned out to be a WAV with the wrong name on it — eight seconds of
+// uncompressed audio, 1.4 MB, bigger than the whole game. The original
+// is kept beside this as `game_over.source.wav`; what ships is 80 KB of
+// AAC, which every browser and the iOS wrapper play.
+import gameOverThemeUrl from './assets/game_over.m4a';
 
 const HUM_BASE_HZ = 80;
 const HUM_DETUNE_CENTS = 18;
@@ -43,6 +49,9 @@ const THRUST_GAIN_HALFLIFE = 0.18; // smoothing on throttle changes
 
 const THEME_GAIN = 0.45;
 const THEME_FADE_S = 0.3;          // seconds to fade in and out
+// The game-over sting is louder than the sprint theme and does not fade
+// in: it is the last thing that happens, and it should land.
+const GAME_OVER_GAIN = 0.6;
 
 export function createAudio() {
   let ctx = null;
@@ -50,6 +59,7 @@ export function createAudio() {
   // download nobody has asked for yet is not worth blocking anything.
   let themeEl = null;
   let themeWanted = false;
+  let gameOverEl = null;
   let themeLevel = 0;
   let started = false;
   let masterGain = null;
@@ -106,6 +116,34 @@ export function createAudio() {
     }
   }
 
+  /**
+   * The game-over music: once, from the top, now.
+   *
+   * Played when the sign comes up rather than when he starts falling —
+   * Marco was specific about that, and he is right. The death animation
+   * has its own beat and a tune starting under it would trample on it.
+   */
+  function playGameOver() {
+    if (!gameOverEl) {
+      gameOverEl = new Audio(gameOverThemeUrl);
+      gameOverEl.preload = 'auto';
+    }
+    gameOverEl.loop = false;
+    gameOverEl.volume = GAME_OVER_GAIN;
+    gameOverEl.currentTime = 0;
+    // A rejected play() means the browser has had no gesture yet, which
+    // cannot happen by the time somebody has died, but it is not worth
+    // a console error if it ever does.
+    gameOverEl.play().catch(() => {});
+  }
+
+  /** Stop it: the player has chosen, and the run is over either way. */
+  function stopGameOver() {
+    if (!gameOverEl) return;
+    gameOverEl.pause();
+    gameOverEl.currentTime = 0;
+  }
+
   function updateTheme(dt) {
     if (!themeEl) return;
     const target = themeWanted ? THEME_GAIN : 0;
@@ -134,6 +172,7 @@ export function createAudio() {
 
   /** Stop and release. Optional — useful for tests / teardown. */
   function dispose() {
+    stopGameOver();
     if (themeEl) {
       themeEl.pause();
       themeEl = null;
@@ -178,6 +217,8 @@ export function createAudio() {
   return {
     start,
     setSprinting,
+    playGameOver,
+    stopGameOver,
     update,
     setThrottle,
     chirp,

@@ -28,6 +28,22 @@ function check(label, ok, detail = '') {
 
 const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 900, height: 640 } });
+// Watch every sound the game makes, so the game-over music can be
+// checked for WHEN it starts rather than only that it exists. Marco was
+// specific: not while he is falling — only once the animation has
+// finished and the sign is up.
+await page.addInitScript(() => {
+  window.__music = [];
+  const Real = window.Audio;
+  window.Audio = function (src) {
+    const el = new Real(src);
+    const play = el.play.bind(el);
+    const pause = el.pause.bind(el);
+    el.play = () => { window.__music.push({ src: el.src, at: performance.now(), on: true }); return play(); };
+    el.pause = () => { window.__music.push({ src: el.src, at: performance.now(), on: false }); return pause(); };
+    return el;
+  };
+});
 page.on('console', (m) => {
   const t = m.text();
   if (isNoise(t)) return;
@@ -159,6 +175,12 @@ const dying = await page.evaluate(() => ({
 check('losing the last heart plays a death, not a sign', dying.gait === 'dying' && !dying.sign,
   `gait ${dying.gait}, sign ${dying.sign ? 'up already' : 'waiting'}`);
 
+// The music must not start under the death animation.
+const musicDuringFall = await page.evaluate(() =>
+  window.__music.filter((m) => /game_over/.test(m.src) && m.on).length);
+check('and the music has not started yet', musicDuringFall === 0,
+  `${musicDuringFall} plays while he is still falling`);
+
 // He should be visibly on his way down: the fall rotates his body and
 // drops it, so his head ends up lower than his hips.
 await page.waitForTimeout(900);
@@ -189,6 +211,12 @@ const signUp = await (async () => {
   return false;
 })();
 check('then GAME OVER comes up', signUp);
+
+const music = await page.evaluate(() => window.__music.filter((m) => /game_over/.test(m.src)));
+check('and the music comes up with it',
+  music.filter((m) => m.on).length === 1,
+  music.length ? `${music.filter((m) => m.on).length} play(s) of ${music[0].src.split('/').pop()}`
+    : 'nothing played');
 
 const sign = await page.evaluate(() => ({
   title: document.querySelector('.game-over__sign')?.textContent.trim(),
@@ -221,6 +249,11 @@ const continued = await page.evaluate(() => {
   };
 });
 check('YES puts the sign away', !continued.open);
+const stopped = await page.evaluate(() => {
+  const m = window.__music.filter((x) => /game_over/.test(x.src));
+  return m.length ? m[m.length - 1].on === false : false;
+});
+check('and the music stops when you choose', stopped);
 check('and drops him back into the game flying', continued.state === 'fly',
   `state ${continued.state}`);
 check('in the town he saved in', continued.inTown);

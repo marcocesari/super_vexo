@@ -270,7 +270,13 @@ const tracers = createTracers(scene);
 const onFoot = createOnFoot({
   scene, camera, ship, surface, input, renderer, monsters,
   // He has finished falling over.
-  onDown: () => gameOver.show(saves.has),
+  onDown: () => {
+    gameOver.show(saves.has);
+    // The music starts HERE — when the sign comes up, not when he
+    // starts falling. The death has its own beat and a tune underneath
+    // it would trample on it.
+    audio.playGameOver();
+  },
   // Two of the three moments worth coming back from; the third is a
   // camp being cleared, below in `onShot`.
   onLanded: () => saves.saveAuto('landed'),
@@ -297,12 +303,14 @@ const saves = createSaves({
 // GAME OVER, once he has finished falling over.
 const gameOver = createGameOver({
   onContinue: () => {
+    audio.stopGameOver();
     const data = saves.latest;
     resetGame();
     saves.restore(data);
     state = STATE.FLY;
   },
   onTitle: () => {
+    audio.stopGameOver();
     resetGame();
     state = STATE.TITLE;
     titleCard.show();
