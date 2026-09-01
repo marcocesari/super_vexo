@@ -2,6 +2,49 @@
 
 Most recent entries on top.
 
+## 2026-09-01 (night) — Estronic made much bigger, and properly full
+
+Marco: much, much bigger, and take Kakariko Village in Tears of the
+Kingdom for how many people should be about.
+
+- **Three times across, nine times the ground.** 620 m to 1800, so the
+  city is 3.6 km wide. The street grid works itself out from the radius
+  now rather than being a fixed number of blocks — it has been resized
+  once already and a hard-coded eleven would have quietly left nine
+  tenths of the ground empty. Thirteen hundred buildings, and a tower of
+  sixty storeys, because at forty it was merely the tallest building
+  rather than something to steer by across a city that wide.
+- **The first build came to 235,000 triangles**, four times what the
+  whole world costs to draw. Cut to 69,000 by making each building
+  cheaper rather than by having fewer of them: one box a band instead of
+  two, no more than four bands, and a parapet only where a building is
+  tall enough to show one. A band that stands proud of all four walls
+  glazes the whole building at once.
+- **NaN in the geometry.** Three refused to work out the city's bounding
+  sphere, and the reason was one line: a block just outside the middle
+  has `fromMiddle` a shade over 1, and `(1 - fromMiddle) ** 1.6` on a
+  negative number is NaN. 7416 NaN coordinates from one missing clamp.
+- **Kakariko density.** 257 people, gathered towards the middle rather
+  than spread evenly — even spread over three square kilometres puts
+  everybody out of sight of everybody else. Seventeen within sixty metres
+  of where you stand in the middle. Frames hold at 16.6 ms.
+- Two dozen of them are named residents with something worth hearing;
+  the rest have a name and one remark apiece, because a passer-by says
+  one thing.
+- **They walk through walls no longer.** Somebody was always caught
+  standing inside a building: they have no route-finding, and a straight
+  line to a spot on the far side of a block goes through the block. A
+  destination is now sampled along the way and rejected if it crosses
+  anything.
+- The shipport had moved outside the city when the grid grew — "three
+  blocks short of the edge" is a different place when there are fifteen
+  blocks instead of four.
+- Two tests were looking in the wrong place rather than finding faults:
+  `smoke:onfoot` searched for a spot with no room for a ladder around the
+  world's ORIGIN, where there used to be a town and is now open country,
+  and `smoke:towns` set the ship down 120 m from the middle of the
+  capital, which used to be a field and is now downtown.
+
 ## 2026-09-01 (evening) — Estronic rebuilt modern, with a shipport and people in it
 
 - **Modern.** It was a walled medieval town: curtain wall, gate towers, a

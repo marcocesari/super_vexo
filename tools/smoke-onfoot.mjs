@@ -722,8 +722,12 @@ const blocked = await page.evaluate(() => {
   const fx = Math.sin(yaw);
   const fz = Math.cos(yaw);
   const scale = ship.scale.x;
-  for (let x = -300; x <= 300; x += 2) {
-    for (let z = -300; z <= 300; z += 2) {
+  // Searched around the CAPITAL, not around the origin. There used to be
+  // a town at the origin; there is open country there now, and a search
+  // for somewhere with no room for a ladder found nowhere at all.
+  const city = town.info.settlements.find((s) => s.kind === 'capital');
+  for (let x = city.x - 300; x <= city.x + 300; x += 2) {
+    for (let z = city.z - 300; z <= city.z + 300; z += 2) {
       let walls = 0;
       for (const side of [-1, 1]) {
         const lx = x + (fx * 0.55 + fz * side * 0.5) * scale;

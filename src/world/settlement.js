@@ -40,38 +40,41 @@ const STOREY = 3.2;          // metres, floor to floor
 const WALL_H = 7.5;          // the capital's curtain wall
 
 /**
- * One modern block: flat roof, a parapet round it, and glass down two
- * faces.
+ * One modern block: flat roof, a parapet round it, and bands of glass.
  *
  * The glass is what does the work. A grid of plain boxes reads as a
- * warehouse estate; the same boxes with a dark band down each front read
- * as a city, because that is the one thing every modern building has and
- * no old one does.
+ * warehouse estate; the same boxes with dark bands across them read as a
+ * city, because that is the one thing every modern building has and no
+ * old one does.
+ *
+ * Kept cheap on purpose. Estronic has the better part of a thousand
+ * buildings in it now, so every triangle here is a thousand triangles in
+ * the city: at two boxes a band and a band every other floor it came to
+ * 235,000 triangles, which is four times what the whole world costs to
+ * draw. One box a band, no more than four of them, and a parapet only on
+ * buildings tall enough to show one.
  */
+const MAX_BANDS = 4;
 function block(walls, glass, { x, z, w, d, storeys }) {
   const h = storeys * STOREY;
   const body = new THREE.BoxGeometry(w, h, d);
   body.translate(x, h / 2, z);
   walls.push(body);
-  // A parapet, so the roofline is a line rather than an edge.
-  const parapet = new THREE.BoxGeometry(w + 1.2, 1.1, d + 1.2);
-  parapet.translate(x, h + 0.55, z);
-  walls.push(parapet);
-  // Glazing on the two long faces, inset so it reads as windows rather
-  // than as a stripe painted on.
-  // Bands, floor by floor, rather than one sheet over the whole front.
-  // Glazing the entire face made every building read as a black hole
-  // with a concrete frame round it.
-  const bands = Math.max(1, Math.round(storeys / 2));
+  if (storeys >= 4) {
+    // A parapet, so the roofline is a line rather than an edge.
+    const parapet = new THREE.BoxGeometry(w + 1.4, 1.2, d + 1.4);
+    parapet.translate(x, h + 0.6, z);
+    walls.push(parapet);
+  }
+  // One box a band, standing a little proud of the walls, so the same
+  // box glazes all four faces at once.
+  const bands = Math.max(1, Math.min(MAX_BANDS, Math.round(storeys / 3)));
   for (let i = 0; i < bands; i++) {
-    const y = ((i + 0.62) / bands) * h;
-    const bandH = Math.min(2.2, (h / bands) * 0.5);
-    const gz = new THREE.BoxGeometry(w * 0.82, bandH, d + 0.5);
-    gz.translate(x, y, z);
-    glass.push(gz);
-    const gx = new THREE.BoxGeometry(w + 0.5, bandH, d * 0.82);
-    gx.translate(x, y, z);
-    glass.push(gx);
+    const y = ((i + 0.6) / bands) * h;
+    const bandH = Math.min(2.4, (h / bands) * 0.42);
+    const g = new THREE.BoxGeometry(w + 0.5, bandH, d + 0.5);
+    g.translate(x, y, z);
+    glass.push(g);
   }
 }
 
@@ -137,9 +140,13 @@ export function createSettlement(place, x, z, level) {
     // The grid is what makes it read as modern more than the buildings
     // do. Rings and radiating lanes are how a town grows over centuries;
     // straight streets crossing at right angles are how one gets planned.
-    const BLOCK = 62;          // street centre to street centre
-    const STREET = 16;         // how wide a street is
-    const half = 4;            // blocks either side of the middle
+    const BLOCK = 96;          // street centre to street centre
+    const STREET = 20;         // how wide a street is
+    // Blocks either side of the middle, worked out from the city's size
+    // rather than fixed: Marco has already made it three times wider
+    // once, and a hard-coded eleven would have quietly left nine tenths
+    // of the ground empty.
+    const half = Math.max(3, Math.round((place.r * 0.78) / BLOCK));
 
     // Paving. A modern city standing on a meadow reads as a model on a
     // billiard table; the ground it stands on has to be made of the same
@@ -149,20 +156,21 @@ export function createSettlement(place, x, z, level) {
     ground.push(paving);
 
     // The tower in the middle: the one thing visible from outside.
-    // Forty storeys. It has to be taller than everything else by a lot,
+    // Sixty storeys. It has to be taller than everything else by a lot,
     // or it is just the tallest building rather than a landmark you can
-    // steer by from outside the city.
-    const towerH = STOREY * 40;
-    const tower = new THREE.BoxGeometry(19, towerH, 19);
+    // steer by from outside the city — and the city is a great deal
+    // wider than it was.
+    const towerH = STOREY * 60;
+    const tower = new THREE.BoxGeometry(26, towerH, 26);
     tower.translate(0, towerH / 2, 0);
     walls.push(tower);
-    const towerGlass = new THREE.BoxGeometry(19.6, towerH * 0.82, 13);
+    const towerGlass = new THREE.BoxGeometry(26.6, towerH * 0.82, 18);
     towerGlass.translate(0, towerH * 0.5, 0);
     glass.push(towerGlass);
-    const mast = new THREE.CylinderGeometry(0.7, 1.1, 26, 6);
-    mast.translate(0, towerH + 13, 0);
+    const mast = new THREE.CylinderGeometry(0.8, 1.3, 38, 6);
+    mast.translate(0, towerH + 19, 0);
     trim.push(mast);
-    footprints.push({ x: 0, z: 0, halfX: 11, halfZ: 11 });
+    footprints.push({ x: 0, z: 0, halfX: 15, halfZ: 15 });
 
     // The blocks. Taller in the middle and lower towards the edge, which
     // is what a city looks like from the air.
@@ -173,19 +181,21 @@ export function createSettlement(place, x, z, level) {
         const cz = bz * BLOCK;
         const fromMiddle = Math.hypot(bx, bz) / (half + 0.5);
         if (fromMiddle > 1.05) continue;                    // keep it round-ish
-        // The south-east quarter is the shipport; leave it clear.
-        if (bx >= 1 && bz >= 2) continue;
+        // The south-east corner is the shipport; leave it clear.
+        if (bx >= half - 5.4 && bz >= half - 5.0) continue;
         // One in eight blocks is left open — a square, a park, a car
         // park, whatever you like. A city with a building on every
         // single block reads as a printed pattern rather than a place.
-        if (rnd() < 0.13) continue;
+        if (rnd() < 0.19) continue;
 
         // Two to four buildings to a block, each its own size and set
         // back from its neighbours. All the same shape in rows was what
         // made the first attempt look like a barcode from the air.
         const inner = BLOCK - STREET;
-        const across = rnd() < 0.45 ? 1 : 2;
-        const along = rnd() < 0.4 ? 1 : 2;
+        // One or two buildings each way — four to a block was a lot of
+        // very small buildings and a lot of triangles for them.
+        const across = rnd() < 0.62 ? 1 : 2;
+        const along = rnd() < 0.58 ? 1 : 2;
         for (let a = 0; a < across; a++) {
           for (let bq = 0; bq < along; bq++) {
             const cellW = inner / across;
@@ -197,8 +207,14 @@ export function createSettlement(place, x, z, level) {
             const oz = (bq - (along - 1) / 2) * cellD;
             // Tall in the middle, low at the edges, and a few surprises
             // either way so the skyline is not a smooth dome.
+            // Clamped at zero before the power. A block just outside the
+            // middle has `fromMiddle` a little over 1, and a NEGATIVE
+            // number raised to a fractional power is NaN — which put
+            // 7416 NaN coordinates into the city's geometry and made
+            // Three refuse to work out its bounding sphere.
+            const inwards = Math.max(0, 1 - fromMiddle);
             const storeys = Math.max(2, Math.round(
-              (1 - fromMiddle) ** 1.6 * 20 + 2 + (rnd() < 0.12 ? 9 : 0) + rnd() * 3,
+              inwards ** 1.6 * 20 + 2 + (rnd() < 0.12 ? 9 : 0) + rnd() * 3,
             ));
             block(walls, glass, { x: cx + ox, z: cz + oz, w, d, storeys });
             footprints.push({ x: cx + ox, z: cz + oz, halfX: w / 2, halfZ: d / 2 });
@@ -211,8 +227,11 @@ export function createSettlement(place, x, z, level) {
     // On the south-east side, with its pads open to the sky and a
     // control tower looking over them. Marco asked for one somewhere in
     // the city; a quarter of the grid was left empty above to make room.
-    const portX = BLOCK * 2.4;
-    const portZ = BLOCK * 2.9;
+    // Well inside the city, not hanging off its corner: with the grid
+    // grown to fifteen blocks each way, "three blocks short of the edge"
+    // put the whole shipport outside the ground the city stands on.
+    const portX = BLOCK * (half - 3.4);
+    const portZ = BLOCK * (half - 3.0);
     const apron = new THREE.BoxGeometry(BLOCK * 3.4, 0.5, BLOCK * 2.6);
     apron.translate(portX, 0.25, portZ);
     ground.push(apron);

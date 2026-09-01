@@ -367,10 +367,11 @@ drew them (`src/world/settlement.js`). They're laid out rather than
 scattered, because that's what makes a place read as somewhere people
 live: you can tell which way is *in*.
 
-- **Estronic**, capital of Continent Alpha — modern. A grid of paved
-  streets, concrete blocks with window bands storey by storey, tallest in
-  the middle and low at the edges, and one tower with a mast on it that
-  can be seen from outside the city. On the south-east side is the
+- **Estronic**, capital of Continent Alpha — modern, and 3.6 km across.
+  A grid of paved streets thirty blocks square, thirteen hundred concrete
+  blocks with window bands across them, tallest in the middle and low at
+  the edges, and a sixty-storey tower with a mast on it that can be seen
+  from outside the city. Inside its south-east quarter is the
   **shipport**: a paved apron with four lit landing rings, two hangars
   and a control tower with a glass head. Set down on a ring.
 - **West Village** — mud brick and reed, out where the Camelloo's sand
@@ -389,9 +390,14 @@ Each town is merged into three meshes — walls, roofs, trim — so all
 three cost six draw calls between them, and they're hidden until you're
 within about four kilometres.
 
-**People live there.** Sixteen in Estronic and three in each village,
-walking from one spot on the street to another and standing about in
-between. Walk up to one and the prompt names them; press **E** and they
+**People live there.** Two hundred and fifty-seven in Estronic and three
+in each village, walking from one spot on the street to another and
+standing about in between — gathered towards the middle rather than
+spread evenly, because *Kakariko Village* in **Tears of the Kingdom** is
+small and full, and what makes a place feel busy is people where the
+streets are busiest. Cross the middle of Estronic and you will pass a
+dozen. They keep to the streets: a destination whose straight line would
+cross a building is rejected before they set off. Walk up to one and the prompt names them; press **E** and they
 tell you something about the world — where the Camelloo starts, what the
 Rock People say about the Spire, why you should not cross the invisible
 barrier uninvited. They stop and turn to face you while they talk, and

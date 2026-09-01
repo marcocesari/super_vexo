@@ -34,7 +34,7 @@
 // the middle cut out of every ring there is only ever one sheet.
 import * as THREE from 'three';
 import { createTerrain, BIOME, GROUND_COLOR, SEA_LEVEL, fromReal } from './terrain.js';
-import { PLACES, TOWNSFOLK } from './continentAlpha.js';
+import { PLACES, TOWNSFOLK, CROWD_NAMES, CROWD_LINES } from './continentAlpha.js';
 import { createSettlement } from './settlement.js';
 import { createTownsfolk } from './townsfolk.js';
 
@@ -171,9 +171,20 @@ export function createPlanet({ seed = 20260827 } = {}) {
     // to say apiece from his own map — see TOWNSFOLK.
     const who = TOWNSFOLK[place.name] ?? [];
     if (who.length) {
+      // How many people are about.
+      //
+      // Kakariko Village in Tears of the Kingdom is small and full: you
+      // cannot cross it without passing four or five people. Marco asked
+      // for that here, in a city nine times the size — so the count goes
+      // with the ground rather than being a fixed handful, and they are
+      // gathered towards the middle where the streets are, not spread
+      // evenly over three square kilometres.
+      const crowd = place.kind === 'capital'
+        ? Math.round(place.r / 7)
+        : who.length;
       s.people = createTownsfolk({
         town: s,
-        count: who.length,
+        count: Math.max(who.length, crowd),
         seed: 7 + place.name.length * 31,
         // Somewhere out on the street: inside the town, and not inside
         // anything that has been built on it.
@@ -181,9 +192,18 @@ export function createPlanet({ seed = 20260827 } = {}) {
           (f) => Math.abs(x - f.x) < f.halfX + 1.4 && Math.abs(z - f.z) < f.halfZ + 1.4,
         ),
       });
+      // The named residents first — the ones with something worth
+      // hearing — and then everybody else, who each have a name and one
+      // remark, because a passer-by says one thing.
       for (const [i, person] of s.people.folk.entries()) {
-        person.name = who[i].name;
-        person.lines = who[i].lines;
+        if (i < who.length) {
+          person.name = who[i].name;
+          person.lines = who[i].lines;
+        } else {
+          const n = i - who.length;
+          person.name = CROWD_NAMES[n % CROWD_NAMES.length];
+          person.lines = [CROWD_LINES[(n * 7 + i) % CROWD_LINES.length]];
+        }
         person.said = 0;
         person.town = place.name;
       }

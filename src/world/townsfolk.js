@@ -99,12 +99,49 @@ export function createTownsfolk({ town, count, isStreet, seed = 1 }) {
   function pickSpot() {
     for (let i = 0; i < 40; i++) {
       const a = rnd() * Math.PI * 2;
-      const r = Math.sqrt(rnd()) * town.radius * 0.62;
+      // Weighted towards the middle rather than spread evenly. Even
+      // spread over a city three kilometres across puts everybody out of
+      // sight of everybody else; what makes a place feel busy is people
+      // where the streets are busiest.
+      const r = rnd() ** 1.7 * town.radius * 0.7;
       const x = town.x + Math.cos(a) * r;
       const z = town.z + Math.sin(a) * r;
       if (isStreet(x, z)) return { x, z };
     }
-    return { x: town.x, z: town.z };
+    // Nowhere on a street after forty tries: stand just off the middle
+    // rather than in it. The middle of a capital is the foot of its
+    // tower, and somebody who could not find a street ended up inside it.
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2;
+      const x = town.x + Math.cos(a) * town.radius * 0.12;
+      const z = town.z + Math.sin(a) * town.radius * 0.12;
+      if (isStreet(x, z)) return { x, z };
+    }
+    return { x: town.x + town.radius * 0.2, z: town.z };
+  }
+
+  /**
+   * Somewhere to walk to that can be walked to in a straight line.
+   *
+   * They have no route-finding and do not need any — but a straight line
+   * from here to a spot on the far side of a block goes through the
+   * block, and somebody was always caught standing in a wall. Sampling
+   * the way there and rejecting anything that crosses a building keeps
+   * them on the streets, which is where the streets came from.
+   */
+  function pickWalk(fromX, fromZ) {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const spot = pickSpot();
+      const steps = Math.min(14, Math.ceil(Math.hypot(spot.x - fromX, spot.z - fromZ) / 6));
+      let clear = true;
+      for (let k = 1; k <= steps && clear; k++) {
+        const t = k / steps;
+        clear = isStreet(fromX + (spot.x - fromX) * t, fromZ + (spot.z - fromZ) * t);
+      }
+      if (clear) return spot;
+    }
+    // Nowhere reachable: stay put rather than walk through a wall.
+    return { x: fromX, z: fromZ };
   }
 
   const folk = [];
@@ -115,9 +152,9 @@ export function createTownsfolk({ town, count, isStreet, seed = 1 }) {
       x: at.x,
       z: at.z,
       heading: rnd() * Math.PI * 2,
-      to: pickSpot(),
+      to: { x: at.x, z: at.z },
       phase: rnd() * Math.PI * 2,
-      wait: rnd() * 3,
+      wait: rnd() * 2.2,
       shirt,
       skinTone: SKINS[Math.floor(rnd() * SKINS.length)],
       talking: false,
@@ -176,7 +213,7 @@ export function createTownsfolk({ town, count, isStreet, seed = 1 }) {
           const dz = p.to.z - p.z;
           const d = Math.hypot(dx, dz);
           if (d < 1.2) {
-            p.to = pickSpot();
+            p.to = pickWalk(p.x, p.z);
             p.wait = 0.8 + Math.random() * 3.5;
             p.moving = false;
           } else {

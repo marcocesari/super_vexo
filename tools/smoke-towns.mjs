@@ -164,7 +164,10 @@ await page.waitForTimeout(300);
 await page.evaluate(() => {
   const g = window.__superVexo;
   const t = g.surface.world.info.settlements.find((s) => s.kind === 'capital');
-  g.ship.mesh.position.set(t.x + 120, -20000 + t.level + 40, t.z + 120);
+  // On a landing pad, which is what they are for — and, in a city this
+  // size, the difference between open ground and the middle of a block.
+  const pad = t.pads[0];
+  g.ship.mesh.position.set(pad.x, -20000 + t.level + 40, pad.z);
   g.ship.velocity.set(0, 0, 0);
 });
 await page.waitForTimeout(900);

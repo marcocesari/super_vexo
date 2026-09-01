@@ -185,7 +185,9 @@ export const PLACES = [
     of: 'capital of Continent Alpha',
     kind: 'capital',
     at: [0.49, 0.47],
-    r: 620,
+    // Three times across what it was, and nine times the ground. A
+    // capital that you can see the far side of from the gate is a town.
+    r: 1800,
     // Modern: pale concrete, dark glass, and steel for the masts and
     // the shipport's ironwork. The red-tiled roofs went when the town
     // did — a flat-roofed block does not have one.
@@ -296,6 +298,49 @@ export const TOWNSFOLK = {
     ] },
   ],
 };
+
+/**
+ * The rest of the crowd.
+ *
+ * Kakariko Village in Tears of the Kingdom is not big, and it is full:
+ * you cannot cross it without passing four or five people, and they all
+ * have something to say. Marco asked for that, in a city nine times the
+ * size — so as well as the named residents above there are a couple of
+ * hundred other people about, drawn from these names and these remarks.
+ *
+ * They are short on purpose. A passer-by says one thing.
+ */
+export const CROWD_NAMES = [
+  'Anse', 'Bett', 'Calla', 'Dov', 'Emm', 'Faro', 'Gale', 'Hesk', 'Ivet',
+  'Jarn', 'Kesta', 'Lom', 'Mira', 'Noll', 'Orin', 'Pell', 'Quill', 'Rue',
+  'Semm', 'Tavi', 'Ubba', 'Vell', 'Wick', 'Xan', 'Ysolde', 'Zeb', 'Arno',
+  'Bru', 'Cassi', 'Dell', 'Efa', 'Fitz', 'Gerd', 'Halm', 'Iska', 'Jory',
+  'Kip', 'Lenn', 'Morra', 'Nen', 'Obb', 'Pim', 'Ras', 'Sena', 'Toft',
+  'Ulla', 'Vero', 'Wenn', 'Yara', 'Zorn',
+];
+
+export const CROWD_LINES = [
+  'Mind the ships. They come in over the south side all day.',
+  'You are not from the city. Nobody from here looks up that much.',
+  'Market is better in the morning. Everything worth having has gone by noon.',
+  'That tower? Climb it if they let you. They will not let you.',
+  'Rain off the lake by evening, I should think.',
+  'Careful past the barrier. The wizards do not send anybody back.',
+  'The Camelloo road is dry the whole way. Take more water than you think.',
+  'My cousin walked to Bobo Village. Took her nine days and she has not stopped talking about it.',
+  'The rivers all start somewhere up in the Vulcans. All of them.',
+  'Do not camp in the open country. There are things out there with clubs.',
+  'Every street in this city ends at a gate. That was on purpose, they say.',
+  'You get used to the noise from the shipport. Mostly.',
+  'The Dwellers keep to their forest and we keep to our streets.',
+  'Estronic was three streets and a well, once. My grandfather says.',
+  'There is nothing north of the lake but weather.',
+  'If you are flying west, go over the sand, not round it. Round it takes a week.',
+  'Nobody has ever counted the buildings. People have tried.',
+  'Good day for it, whatever you are doing.',
+  'Astro Lake freezes at the edges some winters. Never the middle.',
+  'They light the landing rings at dusk. Prettiest thing in the city.',
+];
 
 /** The Spire goes where he drew volcanoes: with the Rock People. */
 export const SPIRE_AT = [0.89, 0.20];
