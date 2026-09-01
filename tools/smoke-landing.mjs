@@ -126,7 +126,11 @@ const landed = await page.evaluate(async () => {
   };
 });
 check('flying into the planet lands the ship', landed.active);
-check('you arrive hovering over the ground', landed.altitude > 10 && landed.altitude < 220,
+// You now arrive over Estronic's shipport rather than over whatever flat
+// spot the world picked, and the ship is put down ninety metres above
+// the ground it is going to land on — which, with the city standing at
+// 127 m, is a little over two hundred.
+check('you arrive hovering over the ground', landed.altitude > 10 && landed.altitude < 300,
   `${landed.altitude}m up`);
 check('the ground is rendered', landed.worldVisible);
 check('and it was actually built', landed.tiles > 100, `${landed.tiles} tiles`);

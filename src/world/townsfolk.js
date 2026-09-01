@@ -65,7 +65,14 @@ function buildLeg() {
  * @param {object} opts      town centre, radius, ground level, and a way
  *                           to ask whether a spot is out on the street
  */
-export function createTownsfolk({ town, count, isStreet, seed = 1 }) {
+/**
+ * @param {object[]} [anchors]  places people gather, each { x, z, spread,
+ *        share }. Without them everybody heads for the middle, and in a
+ *        city 3.6 km across that means the rest of it is deserted.
+ */
+export function createTownsfolk({
+  town, count, isStreet, seed = 1, anchors = [], lift = 0,
+}) {
   const rnd = mulberry32(seed);
   const bodyGeom = buildBody();
   const legGeom = buildLeg();
@@ -95,17 +102,25 @@ export function createTownsfolk({ town, count, isStreet, seed = 1 }) {
   const _v = new THREE.Vector3();
   const _s = new THREE.Vector3(1, 1, 1);
 
-  /** Somewhere on a street inside the town, not inside a building. */
-  function pickSpot() {
+  /**
+   * Somewhere on a street, near where this person spends their time.
+   *
+   * Everybody used to head for the middle of the town, which looked
+   * right standing in the square and was wrong everywhere else: Marco
+   * landed at the shipport — which is where anybody lands — and there
+   * was not one person within a hundred and fifty metres of him. People
+   * belong where people have reason to be, and a city has more than one
+   * such place.
+   */
+  function pickSpot(home) {
+    const spread = home ? home.spread : town.radius * 0.7;
+    const cx = home ? home.x : town.x;
+    const cz = home ? home.z : town.z;
     for (let i = 0; i < 40; i++) {
       const a = rnd() * Math.PI * 2;
-      // Weighted towards the middle rather than spread evenly. Even
-      // spread over a city three kilometres across puts everybody out of
-      // sight of everybody else; what makes a place feel busy is people
-      // where the streets are busiest.
-      const r = rnd() ** 1.7 * town.radius * 0.7;
-      const x = town.x + Math.cos(a) * r;
-      const z = town.z + Math.sin(a) * r;
+      const r = Math.sqrt(rnd()) * spread;
+      const x = cx + Math.cos(a) * r;
+      const z = cz + Math.sin(a) * r;
       if (isStreet(x, z)) return { x, z };
     }
     // Nowhere on a street after forty tries: stand just off the middle
@@ -129,9 +144,9 @@ export function createTownsfolk({ town, count, isStreet, seed = 1 }) {
    * the way there and rejecting anything that crosses a building keeps
    * them on the streets, which is where the streets came from.
    */
-  function pickWalk(fromX, fromZ) {
+  function pickWalk(fromX, fromZ, home) {
     for (let attempt = 0; attempt < 8; attempt++) {
-      const spot = pickSpot();
+      const spot = pickSpot(home);
       const steps = Math.min(14, Math.ceil(Math.hypot(spot.x - fromX, spot.z - fromZ) / 6));
       let clear = true;
       for (let k = 1; k <= steps && clear; k++) {
@@ -144,9 +159,22 @@ export function createTownsfolk({ town, count, isStreet, seed = 1 }) {
     return { x: fromX, z: fromZ };
   }
 
+  // Who gathers where. The shares are cumulative, so a roll of the dice
+  // lands each person in one of them.
+  const places = anchors.length ? anchors : [{
+    x: town.x, z: town.z, spread: town.radius * 0.7, share: 1,
+  }];
+  let running = 0;
+  const ladder = places.map((p) => {
+    running += p.share;
+    return { ...p, upTo: running };
+  });
+
   const folk = [];
   for (let i = 0; i < count; i++) {
-    const at = pickSpot();
+    const roll = rnd() * running;
+    const home = ladder.find((p) => roll <= p.upTo) ?? ladder[ladder.length - 1];
+    const at = pickSpot(home);
     const shirt = SHIRTS[Math.floor(rnd() * SHIRTS.length)];
     folk.push({
       x: at.x,
@@ -155,6 +183,7 @@ export function createTownsfolk({ town, count, isStreet, seed = 1 }) {
       to: { x: at.x, z: at.z },
       phase: rnd() * Math.PI * 2,
       wait: rnd() * 2.2,
+      home,
       shirt,
       skinTone: SKINS[Math.floor(rnd() * SKINS.length)],
       talking: false,
@@ -213,7 +242,7 @@ export function createTownsfolk({ town, count, isStreet, seed = 1 }) {
           const dz = p.to.z - p.z;
           const d = Math.hypot(dx, dz);
           if (d < 1.2) {
-            p.to = pickWalk(p.x, p.z);
+            p.to = pickWalk(p.x, p.z, p.home);
             p.wait = 0.8 + Math.random() * 3.5;
             p.moving = false;
           } else {
@@ -230,7 +259,10 @@ export function createTownsfolk({ town, count, isStreet, seed = 1 }) {
             p.phase += step * STRIDE;
           }
         }
-        place(i, p, groundAt(p.x, p.z));
+        // `lift` is how far the town's paving stands above the ground it
+        // was laid on. Without it everybody walks about shin-deep in
+        // their own streets.
+        place(i, p, groundAt(p.x, p.z) + lift);
       }
       bodies.instanceMatrix.needsUpdate = true;
       legL.instanceMatrix.needsUpdate = true;

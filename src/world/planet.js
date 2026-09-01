@@ -180,10 +180,29 @@ export function createPlanet({ seed = 20260827 } = {}) {
       // gathered towards the middle where the streets are, not spread
       // evenly over three square kilometres.
       const crowd = place.kind === 'capital'
-        ? Math.round(place.r / 7)
+        ? Math.round(place.r / 6)
         : who.length;
+      // Where they gather. The middle of a city is busy; so is its
+      // shipport, which is also where anybody arriving actually sets
+      // down — and with everybody drawn to the middle, that was the one
+      // place in Estronic with nobody in it.
+      // The spreads are tight on purpose. How many people you can see is
+      // the count divided by the square of how far they are scattered,
+      // so widening a gathering from 240 m to 400 m does not thin it by
+      // a half but by nearly three quarters.
+      const anchors = place.kind === 'capital'
+        ? [
+          { x: s.x, z: s.z, spread: 240, share: 0.40 },
+          ...s.pads.map((pad) => ({ x: pad.x, z: pad.z, spread: 120, share: 0.06 })),
+          { x: s.x, z: s.z, spread: place.r * 0.62, share: 0.36 },
+        ]
+        : [];
       s.people = createTownsfolk({
         town: s,
+        anchors,
+        // The capital's streets are paved, and the paving stands 0.4 m
+        // proud of the ground it was laid on.
+        lift: place.kind === 'capital' ? 0.4 : 0,
         count: Math.max(who.length, crowd),
         seed: 7 + place.name.length * 31,
         // Somewhere out on the street: inside the town, and not inside
@@ -665,7 +684,26 @@ export function createPlanet({ seed = 20260827 } = {}) {
       biome: terrain.biomeAt(AWAY_FROM_SPIRE, 0) };
   }
 
-  const start = findLandingSite();
+  /**
+   * Where the game puts you the first time you come down.
+   *
+   * At the capital's shipport, which is what a shipport is for. It used
+   * to be a flat spot the world picked out on its own, and that spot was
+   * sixteen kilometres from Estronic — so unless you happened to fly to
+   * the middle of the map you never saw the city, never met anybody in
+   * it, and would reasonably report that there were no people in this
+   * game at all.
+   */
+  function startingPoint() {
+    const capital = settlements.find((s) => s.kind === 'capital' && s.pads.length);
+    if (capital) {
+      const pad = capital.pads[0];
+      return { x: pad.x, z: pad.z, height: capital.level, biome: 'the shipport' };
+    }
+    return findLandingSite();
+  }
+
+  const start = startingPoint();
 
   return {
     group,

@@ -125,7 +125,15 @@ export function createMonsters({ scene, world, origin }) {
     if (hash2(i, j, 7) <= 0.42) {
       const x = (i + 0.2 + hash2(i, j, 11) * 0.6) * CAMP_CELL;
       const z = (j + 0.2 + hash2(i, j, 13) * 0.6) * CAMP_CELL;
-      site = findClearGround(x, z, 7);
+      // Not in anybody's town. Monsters camp in the wild country: a fire
+      // and four bokoblins in the middle of the capital's streets is not
+      // a decision the player gets to make anything of, and once the
+      // game started putting you down at Estronic they were pitching on
+      // the shipport apron.
+      const inTown = (world.info.settlements ?? []).some(
+        (town) => Math.hypot(x - town.x, z - town.z) < town.radius + 500,
+      );
+      if (!inTown) site = findClearGround(x, z, 7);
     }
     siteCache.set(key, site);
     return site;

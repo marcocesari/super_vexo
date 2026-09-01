@@ -240,7 +240,7 @@ export function createSettlement(place, x, z, level) {
       const pz = portZ + (Math.floor(i / 2) - 0.5) * BLOCK * 1.2;
       // A pad: a light ring on the apron, and a rim you can see from
       // the air, which is the whole point of a landing pad.
-      const ring = new THREE.TorusGeometry(13, 1.1, 6, 20);
+      const ring = new THREE.TorusGeometry(13, 0.7, 5, 20);
       ring.rotateX(Math.PI / 2);
       ring.translate(px, 0.7, pz);
       lights.push(ring);
@@ -303,8 +303,10 @@ export function createSettlement(place, x, z, level) {
     [ground, new THREE.MeshStandardMaterial({ color: 0x6e7076, roughness: 0.98 })],
     // Emissive rather than lit: a light per landing pad would recompile
     // every shader in the game the first time one came into view.
+    // Bright enough to read as lit, not so bright that standing in one
+    // fills the screen with cyan. You land inside these.
     [lights, new THREE.MeshStandardMaterial({
-      color: 0x8ff0ff, emissive: 0x2fd6ff, emissiveIntensity: 1.4, roughness: 0.5,
+      color: 0x9fdcea, emissive: 0x2fd6ff, emissiveIntensity: 0.45, roughness: 0.6,
     })],
   ];
   for (const [list, material] of pieces) {

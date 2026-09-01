@@ -2,6 +2,38 @@
 
 Most recent entries on top.
 
+## 2026-09-01 (late) — "I don't see the people walking around"
+
+He was right, and the crowd was not the fault.
+
+- **The game landed you sixteen kilometres from Estronic.** The world
+  picked its own flat spot to set you down on, and unless you happened to
+  fly to the middle of the map you never saw the city, never met anybody
+  in it, and would reasonably report that there was nobody in this game.
+  You arrive at the capital's shipport now, which is what a shipport is
+  for.
+- **And the crowd was all in the middle.** Measured standing where a
+  player actually lands: nought people within a hundred and fifty metres
+  of a landing pad, against sixty in the square. Weighting everybody
+  towards the centre looked right from the square and was wrong
+  everywhere else. They gather at places now — the middle, and each
+  landing pad — so wherever there is reason for people to be, there are
+  people. Eleven within sixty metres on the apron, thirteen in the
+  square.
+- The spreads are tight on purpose. How many you can see goes as the
+  count over the SQUARE of how far they are scattered, so widening a
+  gathering from 240 m to 400 m does not thin it by half but by nearly
+  three quarters.
+- **They were also standing in the road.** Their feet were placed on the
+  terrain, and the capital's paving stands 0.4 m proud of it, so
+  everybody was ankle-deep in their own streets.
+- And once the game started putting you down at Estronic, the bokoblins
+  followed: camps are pitched on the squares of the world nearest the
+  player, and four of them were squatting on the shipport apron. Camps
+  keep out of towns now.
+- The pad lights were turned down. Standing in one filled the screen
+  with cyan.
+
 ## 2026-09-01 (night) — Estronic made much bigger, and properly full
 
 Marco: much, much bigger, and take Kakariko Village in Tears of the

@@ -390,13 +390,19 @@ Each town is merged into three meshes — walls, roofs, trim — so all
 three cost six draw calls between them, and they're hidden until you're
 within about four kilometres.
 
-**People live there.** Two hundred and fifty-seven in Estronic and three
+**You arrive at Estronic's shipport.** That's where the game sets you
+down the first time — which is what a shipport is for, and it means the
+capital and everybody in it is the first thing you see rather than
+something you'd only find by flying to the middle of the map.
+
+**People live there.** Three hundred in Estronic and three
 in each village, walking from one spot on the street to another and
-standing about in between — gathered towards the middle rather than
-spread evenly, because *Kakariko Village* in **Tears of the Kingdom** is
-small and full, and what makes a place feel busy is people where the
-streets are busiest. Cross the middle of Estronic and you will pass a
-dozen. They keep to the streets: a destination whose straight line would
+standing about in between — gathered where people have
+reason to be — the middle of the city, and the shipport — because
+*Kakariko Village* in **Tears of the Kingdom** is small and full, and
+what makes a place feel busy is people where the streets are busiest.
+Standing anywhere in the middle or on the apron there are a dozen or
+more within eighty metres of you. They keep to the streets: a destination whose straight line would
 cross a building is rejected before they set off. Walk up to one and the prompt names them; press **E** and they
 tell you something about the world — where the Camelloo starts, what the
 Rock People say about the Spire, why you should not cross the invisible
