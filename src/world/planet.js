@@ -34,8 +34,9 @@
 // the middle cut out of every ring there is only ever one sheet.
 import * as THREE from 'three';
 import { createTerrain, BIOME, GROUND_COLOR, SEA_LEVEL, fromReal } from './terrain.js';
-import { PLACES } from './continentAlpha.js';
+import { PLACES, TOWNSFOLK } from './continentAlpha.js';
 import { createSettlement } from './settlement.js';
+import { createTownsfolk } from './townsfolk.js';
 
 // Tiles across each ring, odd so there is a middle one.
 const RING_TILES = 6;
@@ -165,6 +166,35 @@ export function createPlanet({ seed = 20260827 } = {}) {
     const s = createSettlement(place, town.x, town.z, town.level);
     s.group.visible = false;
     group.add(s.group);
+
+    // And the people who live there. They are given a name and something
+    // to say apiece from his own map — see TOWNSFOLK.
+    const who = TOWNSFOLK[place.name] ?? [];
+    if (who.length) {
+      s.people = createTownsfolk({
+        town: s,
+        count: who.length,
+        seed: 7 + place.name.length * 31,
+        // Somewhere out on the street: inside the town, and not inside
+        // anything that has been built on it.
+        isStreet: (x, z) => !s.footprints.some(
+          (f) => Math.abs(x - f.x) < f.halfX + 1.4 && Math.abs(z - f.z) < f.halfZ + 1.4,
+        ),
+      });
+      for (const [i, person] of s.people.folk.entries()) {
+        person.name = who[i].name;
+        person.lines = who[i].lines;
+        person.said = 0;
+        person.town = place.name;
+      }
+      // Added to the WORLD, not to the town. The town's group is moved
+      // to where the town stands, and the people work in world
+      // coordinates already — parenting them to it put everybody a
+      // kilometre east and a hundred metres up, which is why the first
+      // person anyone talked to was invisible.
+      s.people.group.visible = false;
+      group.add(s.people.group);
+    }
     return s;
   });
   // How far off a town can be seen. Beyond this it is hidden, which also
@@ -485,6 +515,11 @@ export function createPlanet({ seed = 20260827 } = {}) {
     sea.position.z = z;
     for (const s of settlements) {
       s.group.visible = Math.hypot(s.x - x, s.z - z) < TOWN_SIGHT + s.radius;
+      // The people are only worth drawing from close up: they are 1.75 m
+      // tall and there are eight of them.
+      if (s.people) {
+        s.people.group.visible = Math.hypot(s.x - x, s.z - z) < s.radius + 700;
+      }
     }
     work(BUILD_BUDGET_MS);
   }
@@ -618,8 +653,32 @@ export function createPlanet({ seed = 20260827 } = {}) {
     setFocus,
     /** Build everything outstanding now — for landing and for tests. */
     flush() { work(Infinity); },
-    /** Nothing animates in the ground itself — yet. */
-    update() {},
+    /**
+     * The towns' people walk about while you are near enough to see it.
+     * Nothing else in the ground animates.
+     */
+    update(dt) {
+      for (const s of settlements) {
+        if (!s.people || !s.people.group.visible) continue;
+        s.people.update(dt, groundHeightAt);
+      }
+    },
+
+    /**
+     * Whoever is standing close enough to talk to, or null.
+     *
+     * Only in a town that is on screen: a person you cannot see is not
+     * somebody you can strike up a conversation with.
+     */
+    nearestPerson(x, z) {
+      for (const s of settlements) {
+        if (!s.people || !s.people.group.visible) continue;
+        if (Math.hypot(s.x - x, s.z - z) > s.radius * 1.6) continue;
+        const who = s.people.nearest(x, z);
+        if (who) return { person: who, people: s.people };
+      }
+      return null;
+    },
     groundHeightAt,
     resolveWalk,
     isClear,

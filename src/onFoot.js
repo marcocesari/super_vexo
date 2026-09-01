@@ -194,7 +194,7 @@ function angleDelta(a, b) {
  */
 export function createOnFoot({
   scene, camera, ship, surface, input, renderer,
-  monsters = null, onShot = () => {},
+  monsters = null, onShot = () => {}, dialogue = null,
   onDown = () => {}, onLanded = () => {}, onAboard = () => {},
 }) {
   // Something for the armour to reflect. A small box of lit panels,
@@ -282,6 +282,8 @@ export function createOnFoot({
   let sprintWasHeld = false;
   let sprintingNow = false;
   // Health, the pistol, and dying.
+  // Who is being talked to, and which town they belong to.
+  let talking = null;
   let heartsLeft = MAX_HEARTS;
   let down = false;
   let hurtCooldown = 0;
@@ -587,6 +589,46 @@ export function createOnFoot({
     vexo.setGait('idle');
     applyVexoTransform();
     enterWalk();
+  }
+
+  /**
+   * Talking to the people of a town.
+   *
+   * Returns true when it has taken over the prompt — which it does both
+   * while somebody is close enough to speak to and while a conversation
+   * is going on, so the boarding hint does not fight it for the same
+   * line of screen.
+   */
+  function talkTo() {
+    if (!dialogue) return false;
+    const met = world.nearestPerson
+      ? world.nearestPerson(foot.x - SURFACE_ORIGIN.x, foot.z - SURFACE_ORIGIN.z)
+      : null;
+
+    // Walked away mid-sentence: that is an answer too.
+    if (dialogue.isOpen && (!met || met.person !== dialogue.person)) {
+      const who = dialogue.person;
+      dialogue.close();
+      if (talking) talking.people.stopTalking(who);
+      talking = null;
+    }
+    if (!met) return false;
+
+    if (input.keyboard.consumeJustPressed(['KeyE'])
+        || input.gamepad.consumeJustPressed(BUTTONS.Y)) {
+      met.people.startTalking(met.person, foot.x - SURFACE_ORIGIN.x, foot.z - SURFACE_ORIGIN.z);
+      talking = met;
+      if (!dialogue.next(met.person)) {
+        met.people.stopTalking(met.person);
+        talking = null;
+      }
+    }
+    if (!dialogue.isOpen) {
+      setPrompt(strings.onFoot.talk.replace('{name}', met.person.name));
+    } else {
+      setPrompt(null);
+    }
+    return true;
   }
 
   /** A club landed. `fromX/fromZ` is who swung it, for the knockback. */
@@ -953,6 +995,14 @@ export function createOnFoot({
     }
     // Pistol out while he is shooting or has just shot; away otherwise.
     vexo.setArmed(drawnFor > 0, heading);
+
+    // Somebody to talk to.
+    //
+    // Checked before the ladder, because standing at the foot of the
+    // ship is not a reason to be unable to say hello to whoever has
+    // walked up to you.
+    const met = talkTo();
+    if (met) return;
 
     // Boarding.
     const nearLadder = Math.hypot(foot.x - ladderBase.x, foot.z - ladderBase.z) < BOARD_RANGE;

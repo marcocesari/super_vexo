@@ -2,6 +2,49 @@
 
 Most recent entries on top.
 
+## 2026-09-01 (evening) — Estronic rebuilt modern, with a shipport and people in it
+
+- **Modern.** It was a walled medieval town: curtain wall, gate towers, a
+  keep. It is now a grid of paved streets with concrete blocks along
+  them, window bands storey by storey, tallest in the middle, and one
+  forty-storey tower with a mast that can be seen from outside the city.
+  The GRID is what makes it read as modern more than the buildings do —
+  rings and radiating lanes are how a town grows over centuries, straight
+  streets crossing at right angles are how one gets planned.
+- Two goes at the buildings. The first came out as a barcode from the
+  air: every block one long slab, all the same way round, all the same
+  height. Fixed by giving each block two to four buildings of their own
+  sizes, leaving one block in eight open, and raising the height sharply
+  towards the middle.
+- The glass was worse: a sheet over each whole face made every building
+  a black hole with a concrete frame round it. It is bands now, floor by
+  floor, which is the one thing every modern building has and no old one
+  does.
+- And the city was standing on a meadow, which reads as a model on a
+  billiard table, so the built area is paved.
+- **The shipport** is on the south-east side: an apron with four lit
+  landing rings, two hangars and a control tower with a glass head. A
+  quarter of the street grid is left empty to make room for it. The rings
+  are checked to be somewhere the ship is actually allowed to set down.
+- **People.** Sixteen in Estronic, three in each village. Three draw
+  calls for the lot: a body and two legs, each an instanced mesh, so the
+  legs can swing — an instance carries its own matrix, which a merged
+  crowd would not. They pick a spot on a street, walk to it, stand about
+  and pick another.
+- Talking is E. They stop, turn to face you, and say something about
+  Marco's own world — where the Camelloo starts, what the Rock People say
+  about the Spire, why not to cross the invisible barrier uninvited.
+  Walking away ends it.
+- **The first person anyone talked to was invisible.** The dialogue
+  worked, the name was right, and there was nobody there: the crowd was
+  parented to the town's group, which is moved to where the town stands,
+  and they were already working in world coordinates — so everybody was a
+  kilometre east and a hundred metres up.
+- And a test of my own that lied: it moved the world's focus by hand to
+  make the crowd visible, but the game moves the focus back to the ship
+  on the very next frame, so nobody was being updated and nobody moved.
+  It brings the ship to the city now.
+
 ## 2026-09-01 (later) — Estronic and the two villages
 
 Nothing has been built in this game since the old town was deleted. He

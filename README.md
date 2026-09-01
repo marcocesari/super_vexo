@@ -367,10 +367,12 @@ drew them (`src/world/settlement.js`). They're laid out rather than
 scattered, because that's what makes a place read as somewhere people
 live: you can tell which way is *in*.
 
-- **Estronic**, capital of Continent Alpha — a curtain wall with towers
-  and four gates where his roads come in, streets running from the gates
-  to a square in the middle, and a keep standing in the square.
-  Whitewashed walls and red roofs, so it can be seen across the plain.
+- **Estronic**, capital of Continent Alpha — modern. A grid of paved
+  streets, concrete blocks with window bands storey by storey, tallest in
+  the middle and low at the edges, and one tower with a mast on it that
+  can be seen from outside the city. On the south-east side is the
+  **shipport**: a paved apron with four lit landing rings, two hangars
+  and a control tower with a glass head. Set down on a ring.
 - **West Village** — mud brick and reed, out where the Camelloo's sand
   begins.
 - **Bobo Village** — basalt and ash, in the Rock People's country under
@@ -386,6 +388,18 @@ won't set down on a roof.
 Each town is merged into three meshes — walls, roofs, trim — so all
 three cost six draw calls between them, and they're hidden until you're
 within about four kilometres.
+
+**People live there.** Sixteen in Estronic and three in each village,
+walking from one spot on the street to another and standing about in
+between. Walk up to one and the prompt names them; press **E** and they
+tell you something about the world — where the Camelloo starts, what the
+Rock People say about the Spire, why you should not cross the invisible
+barrier uninvited. They stop and turn to face you while they talk, and
+walking away ends it.
+
+The whole crowd is three draw calls: a body and two legs, each an
+instanced mesh, so the legs can still swing because an instance carries
+its own matrix.
 
 ```bash
 npm run smoke:towns

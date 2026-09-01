@@ -44,6 +44,7 @@ import { createInventory } from './inventory.js';
 import { createSaves } from './save.js';
 import { createGameOver } from './gameOver.js';
 import { createMap } from './map.js';
+import { createDialogue } from './dialogue.js';
 import { strings } from './strings.js';
 import { createTracers } from './world/tracers.js';
 
@@ -267,8 +268,11 @@ const tracers = createTracers(scene);
 
 // Getting out and walking around: set the ship down in town and this
 // takes the ship, the camera and the input until Vexo climbs back in.
+// Talking to the people of a town: a name and a line along the bottom.
+const dialogue = createDialogue();
+
 const onFoot = createOnFoot({
-  scene, camera, ship, surface, input, renderer, monsters,
+  scene, camera, ship, surface, input, renderer, monsters, dialogue,
   // He has finished falling over.
   onDown: () => {
     gameOver.show(saves.has);
@@ -692,7 +696,7 @@ if (import.meta.env.DEV) {
     ship, asteroids, audio, fastTravel, physics,
     renderer, camera,
     rovers: roverApi, mission, upgrades, missionScreens, surface, frameScaler,
-    characterViewer, onFoot, monsters, tracers, inventory, saves, gameOver,
+    characterViewer, onFoot, monsters, tracers, inventory, saves, gameOver, dialogue,
     map: worldMap,
     shipConfig, shipConfigDefaults,
     resetGame,

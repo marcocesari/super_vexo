@@ -186,9 +186,10 @@ export const PLACES = [
     kind: 'capital',
     at: [0.49, 0.47],
     r: 620,
-    // Whitewashed walls and pale roofs: the capital in the middle of the
-    // green country, meant to be seen from a long way off.
-    walls: 0xe8ded0, roofs: 0xb0603f, trim: 0x8a7c68,
+    // Modern: pale concrete, dark glass, and steel for the masts and
+    // the shipport's ironwork. The red-tiled roofs went when the town
+    // did — a flat-roofed block does not have one.
+    walls: 0xd9d6cf, roofs: 0x9c9890, trim: 0x7d8288, glass: 0x3f6b80,
   },
   {
     name: 'West Village',
@@ -209,6 +210,92 @@ export const PLACES = [
     walls: 0x6b6560, roofs: 0x40382f, trim: 0x2e2926,
   },
 ];
+
+/**
+ * Who you meet in the street, and what they tell you.
+ *
+ * All of it is about the world Marco drew: his kingdoms, his rivers, his
+ * lake, the Spire standing over the Rock People. That is the point of
+ * having anyone to talk to — a town where everybody says "hello" twice
+ * is emptier than a town with nobody in it.
+ */
+export const TOWNSFOLK = {
+  Estronic: [
+    { name: 'Ferra', lines: [
+      'Estronic sits in the middle of Continent Alpha, and every road you can see runs out to somewhere worth going.',
+      'The shipport is on the south side. Set down on a lit ring and nobody will complain.',
+    ] },
+    { name: 'Oben', lines: [
+      'Fly north-east far enough and the ground goes white. That is the Spire, over in the Vulcans.',
+      'The Rock People live under it. They say the mountain is quiet. They say that every year.',
+    ] },
+    { name: 'Sil', lines: [
+      'Astro Lake is a morning north of here. Big water, cold, and no bottom that anyone has found.',
+    ] },
+    { name: 'Marn', lines: [
+      'West of us the green runs out and the Camelloo begins. Sand as far as you can fly.',
+      'There is one river into the Camelloo. One. Do not go out there expecting a second.',
+    ] },
+    { name: 'Yeska', lines: [
+      'South and west is the Dwellers\u2019 forest. Elves. Polite, and they would rather you did not.',
+    ] },
+    { name: 'Colm', lines: [
+      'Do not cross the invisible barrier in the south-east without being asked. The Magica Republic keeps to itself.',
+    ] },
+    { name: 'Vess', lines: [
+      'The tower in the middle? You can see it from outside the city. That is what it is for.',
+    ] },
+    { name: 'Tarro', lines: [
+      'Monsters camp out in the wild country. Fires at night. Give them a wide berth or bring the gun.',
+    ] },
+    { name: 'Enna', lines: [
+      'Two villages worth the trip: West Village out towards the sand, Bobo under the mountain.',
+    ] },
+    { name: 'Rulf', lines: [
+      'Nine kingdoms\u2019 worth of road meets in this city, and every one of them is somebody else\u2019s edge of the world.',
+    ] },
+    { name: 'Miot', lines: [
+      'Rivers run out of here in every direction. Follow one and you will get somewhere eventually.',
+    ] },
+    { name: 'Sabb', lines: [
+      'I have never left the walls. There are no walls any more, and I have still never left.',
+    ] },
+    { name: 'Della', lines: [
+      'Weather comes off Astro Lake. When the north goes grey, get indoors.',
+    ] },
+    { name: 'Poy', lines: [
+      'Watch where you set that ship down. The pads are lit for a reason.',
+    ] },
+    { name: 'Ivo', lines: [
+      'Everything north-east of here is uphill. Everything. I have walked it.',
+    ] },
+    { name: 'Wren', lines: [
+      'You are the one with the spacecraft, then. We do not get many.',
+    ] },
+  ],
+  'West Village': [
+    { name: 'Idra', lines: [
+      'We are the last green thing before the sand. Fill your water here.',
+    ] },
+    { name: 'Bo', lines: [
+      'The artificial river runs past us. Somebody dug it, long ago. Nobody remembers who.',
+    ] },
+    { name: 'Halle', lines: [
+      'Camels come through in the season, out of the Camelloo. Big feet, worse tempers.',
+    ] },
+  ],
+  'Bobo Village': [
+    { name: 'Grud', lines: [
+      'You are standing on the Vulcans. Under us it is warm all the way down.',
+    ] },
+    { name: 'Ashet', lines: [
+      'The Spire has a hole in the top and snow round it. Both true at once. That is the mountain for you.',
+    ] },
+    { name: 'Perrin', lines: [
+      'A lava river ran through here once. You are walking on it.',
+    ] },
+  ],
+};
 
 /** The Spire goes where he drew volcanoes: with the Rock People. */
 export const SPIRE_AT = [0.89, 0.20];

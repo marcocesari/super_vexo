@@ -139,6 +139,102 @@ const onMap = await page.evaluate(() => {
 });
 check('the towns are marked on the map', onMap > 200, `${onMap} pixels of mark and lettering`);
 
+// --- The shipport ------------------------------------------------------------------
+const port = await page.evaluate(() => {
+  const w = window.__superVexo.surface.world;
+  const t = w.info.settlements.find((s) => s.kind === 'capital');
+  return {
+    pads: t.pads.length,
+    // Every pad has to be somewhere the ship is actually allowed down.
+    landable: t.pads.filter((p) => w.isClear(p.x, p.z, 3)).length,
+    inTown: t.pads.every((p) => Math.hypot(p.x - t.x, p.z - t.z) < t.radius),
+  };
+});
+check('the capital has a shipport', port.pads >= 4, `${port.pads} pads`);
+check('and the ship can set down on every pad', port.landable === port.pads,
+  `${port.landable} of ${port.pads}`);
+check('which is inside the city', port.inTown);
+
+// --- People, walking ------------------------------------------------------------------
+// Bring the ship to the city first. They only walk while somebody is
+// near enough to watch them, and setting the focus by hand does not
+// count: the game moves it back to the ship on the very next frame.
+await page.keyboard.press('KeyM');   // shut the map
+await page.waitForTimeout(300);
+await page.evaluate(() => {
+  const g = window.__superVexo;
+  const t = g.surface.world.info.settlements.find((s) => s.kind === 'capital');
+  g.ship.mesh.position.set(t.x + 120, -20000 + t.level + 40, t.z + 120);
+  g.ship.velocity.set(0, 0, 0);
+});
+await page.waitForTimeout(900);
+const crowd = await page.evaluate(async () => {
+  const w = window.__superVexo.surface.world;
+  const t = w.info.settlements.find((s) => s.kind === 'capital');
+  const before = t.people.folk.map((p) => ({ x: p.x, z: p.z }));
+  const named = t.people.folk.every((p) => p.name && p.lines && p.lines.length);
+  await new Promise((r) => setTimeout(r, 1800));
+  const moved = t.people.folk.filter(
+    (p, i) => Math.hypot(p.x - before[i].x, p.z - before[i].z) > 0.4,
+  ).length;
+  // And nobody may end up standing inside a building.
+  const indoors = t.people.folk.filter(
+    (p) => t.footprints.some((f) => Math.abs(p.x - f.x) < f.halfX && Math.abs(p.z - f.z) < f.halfZ),
+  ).length;
+  return { count: t.people.folk.length, moved, named, indoors };
+});
+check('there are people in the capital', crowd.count >= 10, `${crowd.count} of them`);
+check('and they walk about', crowd.moved >= 3,
+  `${crowd.moved} of ${crowd.count} moved in under two seconds`);
+check('none of them is standing inside a building', crowd.indoors === 0,
+  `${crowd.indoors} indoors`);
+check('every one has a name and something to say', crowd.named);
+
+// --- Talking to one -------------------------------------------------------------------
+await page.keyboard.press('KeyL');
+let onFoot = false;
+for (let i = 0; i < 260; i++) {
+  if (await page.evaluate(() => window.__superVexo.onFoot.state) === 'walk') { onFoot = true; break; }
+  await page.waitForTimeout(100);
+}
+check('you can get out in the city', onFoot);
+
+const met = await page.evaluate(() => {
+  const g = window.__superVexo;
+  const t = g.surface.world.info.settlements.find((s) => s.kind === 'capital');
+  const p = t.people.folk[0];
+  g.onFoot.position.x = p.x + 1.5;
+  g.onFoot.position.z = p.z + 1.5;
+  return p.name;
+});
+await page.waitForTimeout(500);
+const prompt = await page.evaluate(() => document.getElementById('foot-prompt')?.textContent ?? '');
+check('standing by somebody offers a word with them',
+  prompt.toLowerCase().includes('talk') && prompt.includes(met), prompt);
+
+await page.keyboard.press('KeyE');
+await page.waitForTimeout(400);
+const said = await page.evaluate(() => ({
+  open: window.__superVexo.dialogue.isOpen,
+  who: document.querySelector('.dialogue__who')?.textContent ?? '',
+  line: document.querySelector('.dialogue__line')?.textContent ?? '',
+  stopped: !window.__superVexo.surface.world.info.settlements
+    .find((s) => s.kind === 'capital').people.folk[0].moving,
+}));
+check('and they answer', said.open && said.line.length > 20, `${said.who}: ${said.line.slice(0, 60)}…`);
+check('by name', said.who === met, `${said.who} vs ${met}`);
+check('and they stop walking to say it', said.stopped);
+
+// Walking off ends it, which is what walking off means.
+await page.evaluate(() => {
+  const g = window.__superVexo;
+  g.onFoot.position.x += 30;
+  g.onFoot.position.z += 30;
+});
+await page.waitForTimeout(500);
+check('walking away ends the conversation',
+  !(await page.evaluate(() => window.__superVexo.dialogue.isOpen)));
+
 check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 
 await browser.close();

@@ -544,6 +544,43 @@ canvas {
   border-radius: 5px;
 }
 
+/* Somebody talking to you: a name and a line along the bottom. */
+#dialogue {
+  position: fixed;
+  left: 50%;
+  bottom: 5%;
+  transform: translateX(-50%);
+  z-index: 9;
+  pointer-events: none;
+  width: min(680px, 92vw);
+}
+#dialogue[hidden] { display: none; }
+.dialogue__box {
+  background: rgba(8, 18, 28, 0.9);
+  border: 1px solid rgba(120, 180, 240, 0.35);
+  border-left: 3px solid #7dff9f;
+  border-radius: 8px;
+  padding: 0.7rem 1rem 0.6rem;
+}
+.dialogue__who {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #7dff9f;
+}
+.dialogue__line {
+  margin: 0.35rem 0 0.45rem;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: #eaf3fb;
+}
+.dialogue__hint {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #6f9dc4;
+}
+
 /* GAME OVER. Deliberately not a `.screen-overlay`: this one blacks the
    game out rather than dimming it, because the point is that the run
    has stopped. */

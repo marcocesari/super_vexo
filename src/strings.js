@@ -57,9 +57,13 @@ export const strings = {
     down: 'Down! Hauling him back to the ship…',
     shoot: 'Space / X — shoot · they hit back',
     controls: 'W A S D / stick — walk · Shift / B — sprint',
+    talk: 'E — talk to {name}',
   },
 
   // Shown when the last heart goes (see gameOver.js).
+  dialogue: {
+    more: 'E — go on · walk away to leave',
+  },
   map: {
     title: 'THE WORLD',
     hint: 'M / − — close · the whole continent, every inch of it',
