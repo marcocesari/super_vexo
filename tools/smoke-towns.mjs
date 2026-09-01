@@ -18,6 +18,18 @@ function check(label, ok, detail = '') {
 
 const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 940, height: 560 } });
+// A pad the test can press. Talking is E on a keyboard and A on a pad,
+// and A is also the button that climbs in and out of the ship, so both
+// have to keep working.
+await page.addInitScript(() => {
+  window.__pad = {
+    buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })),
+    axes: [0, 0, 0, 0],
+    id: 'test pad', index: 0, connected: true, mapping: 'standard', timestamp: 0,
+  };
+  navigator.getGamepads = () => [window.__pad];
+  window.dispatchEvent(new Event('gamepadconnected'));
+});
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
 page.on('console', (m) => {
   if (m.type() === 'error' && !/404|ReadPixels|CONTEXT_LOST/i.test(m.text())) errors.push(m.text());
@@ -237,6 +249,57 @@ await page.evaluate(() => {
 await page.waitForTimeout(500);
 check('walking away ends the conversation',
   !(await page.evaluate(() => window.__superVexo.dialogue.isOpen)));
+
+// --- And on a pad -------------------------------------------------------------------
+const padPress = async (button) => {
+  await page.evaluate((b) => {
+    window.__pad.buttons[b] = { pressed: true, value: 1 };
+    window.__pad.timestamp++;
+  }, button);
+  await page.waitForTimeout(120);
+  await page.evaluate((b) => {
+    window.__pad.buttons[b] = { pressed: false, value: 0 };
+    window.__pad.timestamp++;
+  }, button);
+  await page.waitForTimeout(400);
+};
+
+const padWho = await page.evaluate(() => {
+  const g = window.__superVexo;
+  const t = g.surface.world.info.settlements.find((s) => s.kind === 'capital');
+  const lad = g.onFoot.ladder.group.position;
+  // Somebody well away from the ladder, so the two uses of A cannot be
+  // confused with one another.
+  const p = t.people.folk
+    .filter((q) => Math.hypot(q.x - lad.x, q.z - lad.z) > 25)
+    .sort((a, c) => Math.hypot(a.x - g.onFoot.position.x, a.z - g.onFoot.position.z)
+      - Math.hypot(c.x - g.onFoot.position.x, c.z - g.onFoot.position.z))[0];
+  g.onFoot.position.x = p.x + 1.5;
+  g.onFoot.position.z = p.z + 1.5;
+  return p.name;
+});
+await page.waitForTimeout(500);
+const bothButtons = await page.evaluate(() => document.getElementById('foot-prompt')?.textContent ?? '');
+check('the prompt names both buttons', /E/.test(bothButtons) && /A/.test(bothButtons), bothButtons);
+await padPress(0);   // A
+check('A on the pad talks to them too',
+  await page.evaluate(() => window.__superVexo.dialogue.isOpen), `to ${padWho}`);
+
+// A is also the button for the ship, and standing at the ladder it has
+// to still be the ship: somebody wandering past must not be able to get
+// between you and your own way home.
+await page.evaluate(() => {
+  const g = window.__superVexo;
+  g.dialogue.close();
+  const lad = g.onFoot.ladder.group.position;
+  g.onFoot.position.x = lad.x + 1.0;
+  g.onFoot.position.z = lad.z + 1.0;
+});
+await page.waitForTimeout(500);
+await padPress(0);
+check('and at the ladder A still climbs aboard',
+  await page.evaluate(() => window.__superVexo.onFoot.state) !== 'walk',
+  await page.evaluate(() => window.__superVexo.onFoot.state));
 
 check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 

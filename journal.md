@@ -2,6 +2,25 @@
 
 Most recent entries on top.
 
+## 2026-09-02 — Talking on the pad
+
+- Marco: E on the keyboard, A on the pad. It was on Y, which nobody would
+  guess.
+- **A is already the ship's button** — climb out, climb back in — so the
+  two needed an order. The ladder wins when it is nearer than the person
+  is: it stands in one place and you have walked to it on purpose, while
+  somebody who has wandered past should not be able to get between you
+  and your own way home.
+- `smoke:towns` drives a pad now: it checks the prompt names both
+  buttons, that A opens a conversation, and that A at the foot of the
+  ladder still climbs aboard.
+- And a fault the pad work turned up by accident: people were still
+  ending up inside buildings, one run in two. The check that keeps them
+  out samples the way to wherever they are going, and it was capped at
+  fourteen samples — so a two-hundred-metre walk was checked every
+  fourteen metres, and a fifteen-metre building fits between two of
+  those. Every five metres now, however long the walk.
+
 ## 2026-09-01 (late) — "I don't see the people walking around"
 
 He was right, and the crowd was not the fault.

@@ -403,8 +403,8 @@ reason to be — the middle of the city, and the shipport — because
 what makes a place feel busy is people where the streets are busiest.
 Standing anywhere in the middle or on the apron there are a dozen or
 more within eighty metres of you. They keep to the streets: a destination whose straight line would
-cross a building is rejected before they set off. Walk up to one and the prompt names them; press **E** and they
-tell you something about the world — where the Camelloo starts, what the
+cross a building is rejected before they set off. Walk up to one and the prompt names them; press **E**, or **A** on a
+pad, and they tell you something about the world — where the Camelloo starts, what the
 Rock People say about the Spire, why you should not cross the invisible
 barrier uninvited. They stop and turn to face you while they talk, and
 walking away ends it.

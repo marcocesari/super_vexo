@@ -147,7 +147,12 @@ export function createTownsfolk({
   function pickWalk(fromX, fromZ, home) {
     for (let attempt = 0; attempt < 8; attempt++) {
       const spot = pickSpot(home);
-      const steps = Math.min(14, Math.ceil(Math.hypot(spot.x - fromX, spot.z - fromZ) / 6));
+      // Every five metres, however long the walk. Capping the number of
+      // samples at fourteen meant a two-hundred-metre walk was checked
+      // every fourteen metres, and a building fifteen metres wide fits
+      // between two of those: people kept turning up inside them.
+      const steps = Math.max(2, Math.min(90,
+        Math.ceil(Math.hypot(spot.x - fromX, spot.z - fromZ) / 5)));
       let clear = true;
       for (let k = 1; k <= steps && clear; k++) {
         const t = k / steps;

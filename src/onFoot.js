@@ -605,6 +605,20 @@ export function createOnFoot({
       ? world.nearestPerson(foot.x - SURFACE_ORIGIN.x, foot.z - SURFACE_ORIGIN.z)
       : null;
 
+    // Talking and boarding share a button on the pad, so they need an
+    // order. The ladder wins when it is nearer than the person is: it
+    // stands in one place and you have walked to it on purpose, while
+    // somebody who has wandered past should not be able to stand between
+    // you and your own ship.
+    if (met && !dialogue.isOpen) {
+      const toLadder = Math.hypot(foot.x - ladderBase.x, foot.z - ladderBase.z);
+      const toPerson = Math.hypot(
+        met.person.x - (foot.x - SURFACE_ORIGIN.x),
+        met.person.z - (foot.z - SURFACE_ORIGIN.z),
+      );
+      if (toLadder < BOARD_RANGE && toLadder < toPerson) return false;
+    }
+
     // Walked away mid-sentence: that is an answer too.
     if (dialogue.isOpen && (!met || met.person !== dialogue.person)) {
       const who = dialogue.person;
@@ -615,7 +629,7 @@ export function createOnFoot({
     if (!met) return false;
 
     if (input.keyboard.consumeJustPressed(['KeyE'])
-        || input.gamepad.consumeJustPressed(BUTTONS.Y)) {
+        || input.gamepad.consumeJustPressed(BUTTONS.A)) {
       met.people.startTalking(met.person, foot.x - SURFACE_ORIGIN.x, foot.z - SURFACE_ORIGIN.z);
       talking = met;
       if (!dialogue.next(met.person)) {
