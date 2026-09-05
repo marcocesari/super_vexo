@@ -731,10 +731,13 @@ export function createPlanet({ seed = 20260827 } = {}) {
      * The towns' people walk about while you are near enough to see it.
      * Nothing else in the ground animates.
      */
-    update(dt) {
+    update(dt, atX = 0, atZ = 0) {
       for (const s of settlements) {
         if (!s.people || !s.people.group.visible) continue;
-        s.people.update(dt, groundHeightAt);
+        // Where it is being watched from, so the crowd can draw the
+        // people near enough to make out and leave the rest to walk
+        // about unseen.
+        s.people.update(dt, groundHeightAt, atX, atZ);
       }
     },
 

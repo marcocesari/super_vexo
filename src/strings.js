@@ -92,7 +92,7 @@ export const strings = {
   },
   map: {
     title: 'THE WORLD',
-    hint: 'M / − — close · the whole continent, every inch of it',
+    hint: 'M / − — close · W S / left stick — zoom · right stick — scroll · C — back to you',
     scale: '{km} × {kmZ} km · {m} m per pixel',
     building: 'drawing the world… {pct}%',
   },

@@ -160,6 +160,140 @@ check('and the arrow moves when you do',
     ? `${Math.round(moved.before.x)} → ${Math.round(moved.after.x)} px across`
     : 'lost the arrow');
 
+// --- Zooming ------------------------------------------------------------------------
+// Marco asked for the left stick — up to come closer, down to pull back —
+// and W and S on the keyboard, which is the same axis.
+//
+// What is checked here is not the number in `zoom` but the picture: the
+// world has to actually get bigger, and it has to come closer to YOU
+// rather than to the middle of the ocean.
+const arrowAt = async () => page.evaluate(() => {
+  const canvas = document.querySelector('.map-canvas');
+  const d = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+  let sx = 0; let sy = 0; let n = 0; let covered = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] > 8) covered++;
+    if (d[i + 1] > 200 && d[i] < 160 && d[i + 2] < 190 && d[i + 2] > 100) {
+      const p = i / 4;
+      sx += p % canvas.width;
+      sy += Math.floor(p / canvas.width);
+      n++;
+    }
+  }
+  return {
+    x: n ? sx / n : null,
+    y: n ? sy / n : null,
+    // How much of the frame the world covers. Letterboxed at ×1.
+    covered: covered / (canvas.width * canvas.height),
+    w: canvas.width,
+    h: canvas.height,
+    zoom: window.__superVexo.map.zoom,
+  };
+});
+
+// Stand in the middle of the world, so nothing is clamped by an edge.
+await page.evaluate(() => {
+  window.__superVexo.ship.mesh.position.x = 0;
+  window.__superVexo.ship.mesh.position.z = 0;
+});
+await page.waitForTimeout(200);
+const wide = await arrowAt();
+check('the map opens on the whole world', Math.abs(wide.zoom - 1) < 0.001,
+  `×${wide.zoom.toFixed(2)}`);
+
+// Held down until it gets there, rather than for a fixed 900 ms: how
+// far it zooms in that time depends on how many frames the machine
+// managed, and a check that fails when the laptop is busy is a check
+// nobody believes.
+await page.keyboard.down('KeyW');
+for (let i = 0; i < 40; i++) {
+  if (await page.evaluate(() => window.__superVexo.map.zoom) > 1.8) break;
+  await page.waitForTimeout(100);
+}
+await page.keyboard.up('KeyW');
+await page.waitForTimeout(200);
+const close = await arrowAt();
+check('W zooms in', close.zoom > 1.8, `×${wide.zoom.toFixed(2)} → ×${close.zoom.toFixed(2)}`);
+check('and the world really is drawn bigger', close.covered > wide.covered + 0.05,
+  `${Math.round(wide.covered * 100)}% → ${Math.round(close.covered * 100)}% of the frame`);
+check('and it comes closer to you, not to the middle of the sea',
+  close.x != null && Math.abs(close.x - close.w / 2) < close.w * 0.06
+    && Math.abs(close.y - close.h / 2) < close.h * 0.06,
+  close.x != null
+    ? `arrow ${Math.round(close.x)},${Math.round(close.y)} of ${close.w}x${close.h}`
+    : 'lost the arrow');
+
+await page.keyboard.down('KeyS');
+for (let i = 0; i < 40; i++) {
+  if (await page.evaluate(() => window.__superVexo.map.zoom) <= 1.0001) break;
+  await page.waitForTimeout(100);
+}
+await page.keyboard.up('KeyS');
+await page.waitForTimeout(200);
+const back = await arrowAt();
+check('S zooms out again, and stops at the whole world',
+  Math.abs(back.zoom - 1) < 0.001, `×${back.zoom.toFixed(2)}`);
+
+// Marco said the zoom did nothing, and the first thing wrong with a
+// control you cannot find is that there is nothing on the screen saying
+// it is there. So: a bar that fills, buttons to press, and every key
+// anybody might try.
+const barAt = () => page.evaluate(() =>
+  parseFloat(document.querySelector('.map-zoom__fill')?.style.height) || 0);
+check('there is a zoom bar, empty at the whole world', (await barAt()) < 1);
+
+await page.click('.map-zoom__btn[data-in]');
+await page.waitForTimeout(250);
+const clicked = await page.evaluate(() => window.__superVexo.map.zoom);
+check('the + button zooms in', clicked > 1.2, `×${clicked.toFixed(2)}`);
+check('and the bar fills as it goes', (await barAt()) > 10, `${Math.round(await barAt())}% full`);
+
+await page.mouse.move(500, 320);
+await page.mouse.wheel(0, -240);
+await page.waitForTimeout(250);
+const wheeled = await page.evaluate(() => window.__superVexo.map.zoom);
+check('the mouse wheel zooms too', wheeled > clicked, `×${clicked.toFixed(2)} → ×${wheeled.toFixed(2)}`);
+
+await page.keyboard.down('ArrowUp');
+for (let i = 0; i < 30; i++) {
+  if (await page.evaluate(() => window.__superVexo.map.zoom) > wheeled * 1.2) break;
+  await page.waitForTimeout(100);
+}
+await page.keyboard.up('ArrowUp');
+const arrowKeyed = await page.evaluate(() => window.__superVexo.map.zoom);
+check('and so do the arrow keys', arrowKeyed > wheeled, `×${arrowKeyed.toFixed(2)}`);
+
+// Scrolling, which is the other half of a map you can zoom into.
+const scrolled = await page.evaluate(async () => {
+  const g = window.__superVexo;
+  const before = { ...g.map.view };
+  for (let i = 0; i < 30; i++) {
+    g.map.panBy(1, 0, 0.016);
+    await new Promise((r) => requestAnimationFrame(r));
+  }
+  const after = { ...g.map.view };
+  g.map.recentre();
+  await new Promise((r) => requestAnimationFrame(r));
+  return { before, after, home: { ...g.map.view } };
+});
+check('the map scrolls east when you push it east',
+  scrolled.after.panX > scrolled.before.panX + 100,
+  `${Math.round(scrolled.before.panX)} → ${Math.round(scrolled.after.panX)} m`);
+check('and comes back to you when asked',
+  Math.abs(scrolled.home.panX) < 0.001);
+
+// All the way out forgets the scrolling, or you open the map next time
+// looking at the sea.
+await page.evaluate(() => {
+  const g = window.__superVexo;
+  g.map.panBy(1, 1, 0.5);
+  for (let i = 0; i < 60; i++) g.map.zoomBy(-1, 0.1);
+});
+const zeroed = await page.evaluate(() => ({ ...window.__superVexo.map.view, zoom: window.__superVexo.map.zoom }));
+check('and zooming all the way out puts the whole world back, centred',
+  Math.abs(zeroed.zoom - 1) < 0.001 && zeroed.panX === 0 && zeroed.panZ === 0,
+  `×${zeroed.zoom.toFixed(2)}, pan ${zeroed.panX},${zeroed.panZ}`);
+
 // --- Closing, and the other button --------------------------------------------------
 await page.keyboard.press('KeyM');
 await page.waitForTimeout(300);

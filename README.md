@@ -84,7 +84,9 @@ Then open http://localhost:5173.
   the **Tablet** — which used to be an overlay with a button of its own and is a
   page of this screen now — and **System** at the far right, where the save
   button is. Escape or B closes it
-- **M, or − on a pad** — the map. See *The map*, below
+- **M, or − on a pad** — the map. **W / S**, the arrow keys, **+ / −**,
+  the left stick or the mouse wheel zoom it; the right stick scrolls it.
+  See *The map*, below
 - **Right stick, or turning the phone** — swing the camera around him. Push and
   it keeps turning; let go and it stays where you left it. Walking forward
   eases it back behind him on its own, so there's no button to press
@@ -328,6 +330,28 @@ sooner and you watch the world appear. A green arrow shows where you
 are and which way you're facing, and when you're out on foot a blue one
 shows where you left the ship.
 
+**Push the left stick up to zoom in and down to zoom out.** So do **W**
+and **S**, the arrow keys, **+** and **−**, the D-pad, the mouse wheel,
+and the **+ / −** buttons beside the zoom bar down the right of the
+map — because nothing about a map tells you which of those it wants, and
+a control nobody finds may as well not be there. The **bar fills as you
+go in**, so the zoom is something you can see happening.
+
+It goes to ×8, where a pixel of the drawing is eighteen metres of
+ground; past that you'd be looking at the pixels rather than at the
+world. The zooming is exponential, so ×1 to ×2 and ×4 to ×8 take the
+same time, because they're the same amount of zooming to look at. Past
+×2.5 the smoothing is turned off, because a blurred pixel tells you less
+than a square one.
+
+**The right stick scrolls it**, the way it does in *Tears of the
+Kingdom* — zoomed in you want to look at where you're going, not only at
+where you are. It scrolls a screenful a second whatever the zoom, so a
+close-up map moves under your hand the same way a far-off one does, and
+it stops at the coasts. **C**, or clicking the right stick, puts the map
+back on you; zooming all the way out does too, because the whole world
+centred is what "all the way out" means.
+
 The world has edges because of this. It ran on for ever before, which is
 a fine thing for ground to do and a useless thing to draw a map of —
 "every single inch" only means something if there's a last inch. Fly
@@ -409,9 +433,45 @@ Rock People say about the Spire, why you should not cross the invisible
 barrier uninvited. They stop and turn to face you while they talk, and
 walking away ends it.
 
-The whole crowd is three draw calls: a body and two legs, each an
-instanced mesh, so the legs can still swing because an instance carries
-its own matrix.
+**They're dressed like Vexo.** Plated suit, pauldrons, gauntlets, boots
+and a lit green visor across the eyes — the same green that runs through
+his own armour — because they live in his world, and a crowd in T-shirts
+made him look like a visitor from another game. The armour is standard
+issue and the same on everybody; the suit underneath is a colour of
+their own, one of twelve, so a street reads as a crowd rather than a
+squad. (None of the twelve is anywhere near a skin tone. The first set
+had a tan and a light brown in it, and a person wearing either looked
+like a person wearing nothing at all.)
+
+**And they walk properly now.** Two things had been wrong with it, and
+both were arithmetic rather than taste:
+
+- Their legs swung about the *world's* X axis whatever way they were
+  facing, so somebody walking east splayed their legs out sideways
+  instead of stepping. A leg has to swing about its owner's axis: one
+  letter, `YXZ` instead of the default `XYZ` in the rotation order.
+- The stride didn't match the speed. A straight leg of length *L*
+  swinging *A* each way covers `2·L·sin A` per step and takes half a
+  cycle to do it, so the swing per metre walked isn't a knob to tune by
+  eye — it's `π / (2·L·sin A)`, and anything else is skating. It had
+  been set by eye, and they were covering 1.2 m per step while their
+  feet stepped 0.7.
+
+The hips drop as the legs spread, which is what keeps both feet on the
+ground through a step, and the 8 cm rise and fall it gives is the bob
+you see in a real walk — twice a stride, not once. Arms swing against
+the legs.
+
+Nine draw calls for the whole crowd, whether there are six of them or
+three hundred: suit, plates, skin, hair and visor all ride one matrix,
+and an arm and a leg each side carry their own. Only the people within
+190 m are drawn — about seventy of the three hundred — and they take
+the instance slots nearest you. That isn't mainly about triangles: three
+hundred people is three hundred questions a frame about how high the
+ground is under each foot, which costs more than the drawing does.
+Everybody keeps walking whether or not they're being drawn, so a street
+you haven't looked at yet isn't full of people standing exactly where
+you left them.
 
 ### Shops
 

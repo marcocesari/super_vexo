@@ -130,6 +130,11 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
 
   let active = false;
   let parked = false;
+  // Where the world is being looked at from, when that is not the ship:
+  // on foot Vexo walks away from where he parked, and the town's crowd
+  // is drawn around whoever is there to see it.
+  let watchX = null;
+  let watchZ = null;
   let bannerTimer = 0;
   const spaceReturn = new THREE.Vector3();
   const savedBackground = scene.background;
@@ -255,6 +260,12 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
   }
 
   return {
+    /** Watch from here instead of from the ship. Null goes back to it. */
+    watchFrom(x, z) {
+      watchX = x;
+      watchZ = z;
+    },
+
     get active() { return active; },
     /**
      * True while the ship is sitting on its skids with the player out of
@@ -324,7 +335,11 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
         return;
       }
 
-      world.update(dt);
+      // Whoever is looking. Out on foot that is the walker, who can be
+      // a long way from where the ship is parked.
+      world.update(dt,
+        watchX ?? ship.mesh.position.x - SURFACE_ORIGIN.x,
+        watchZ ?? ship.mesh.position.z - SURFACE_ORIGIN.z);
       // The ground travels with the ship. Only the tiles that changed
       // place are rebuilt, so this is nearly free while hovering and
       // costs a few tiles a second at full speed.

@@ -2,6 +2,71 @@
 
 Most recent entries on top.
 
+## 2026-09-04 — "Nothing works"
+
+- Marco, on the map zoom: "Nothing works, when I pull the joystick up or
+  down or w or s, nothing happens."
+- **I could not reproduce it.** Flying and on foot, dev server, keyboard
+  and code path all zoom exactly as they should — and both Vite servers
+  running on this machine serve this same directory, so neither is
+  stale. What is stale is **the deployed game**: nothing has been pushed
+  since the airship commit, so the site has no shops, no new townsfolk
+  and no zoom. Told him rather than guessing at a fix for a bug I could
+  not find.
+- What I did fix is the part that is my fault either way: **there was
+  nothing on the screen to say the zoom existed.** A control with no
+  visible response is indistinguishable from a broken one.
+  - A zoom bar down the right of the map that fills as you go in, with
+    **+** and **−** buttons you can click or tap.
+  - The mouse wheel.
+  - Every key anybody might try: W/S, the arrow keys, + and −, the
+    D-pad, as well as the left stick.
+- And the piece of Tears of the Kingdom that was missing: **the right
+  stick scrolls the map.** A screenful a second whatever the zoom, so a
+  close-up map moves under your hand the way a far-off one does. C, or
+  clicking the right stick, puts it back on you.
+- The map takes the right stick off the game camera while it is open. It
+  was swinging a camera nobody could see.
+- **Made the zoom test stop lying.** It held W for 900 ms and checked
+  how far it got, which is a check on how busy the laptop is: it failed
+  at ×1.19 on a loaded machine and passed at ×2.08 on an idle one. It
+  holds the key until the zoom arrives now, or gives up.
+
+## 2026-09-03 — The people walk properly, and the map zooms
+
+- Marco: "Make the people walk normally and dress up similar to vexo,
+  but in suits of different colors."
+- **Two things were wrong with the walk, and neither was a matter of
+  taste.** Their legs swung about the world's X axis whatever way they
+  were facing — walk east and you splayed your legs out sideways — which
+  is one letter: `YXZ` rather than the default `XYZ` in the Euler order,
+  so the heading is applied outside the swing instead of inside it. And
+  the swing per metre walked had been set by eye, when it is fixed by
+  the length of the leg: `π / (2·L·sin A)`. They had been covering
+  1.2 m of street per step while their feet stepped 0.7 m of it. That is
+  what skating looks like.
+- The hips drop as the legs spread now, which is what keeps both feet on
+  the ground through a step and gives the body its 8 cm bob — twice a
+  stride, not once. Arms swing against the legs.
+- Dressed as Vexo: plated suit, pauldrons, gauntlets, boots, and the
+  same green visor. The armour is standard issue and identical on
+  everybody; the suit under it is one of twelve colours.
+- **The first twelve colours included a tan and a light brown, and the
+  people wearing them looked like people wearing nothing.** Replaced.
+- **A person cost 5,674 triangles at first** — three hundred of them is
+  1.7 million, against a whole city's 69,000. Rounded rectangles extruded
+  with bevels are lovely and they are not what a crowd is made of: the
+  pauldrons are squashed spheres and the small plates are boxes, which
+  took it to 1,780.
+- Then only the people within 190 m are drawn at all, packed into the
+  instance slots nearest you — about seventy of the three hundred. The
+  triangles were the smaller half of it: three hundred people is three
+  hundred questions a frame about the height of the ground.
+- Marco: zoom the map with the left stick, up to come in and down to go
+  out; W and S on the keyboard. Exponential, so every doubling takes the
+  same time. Zoomed in it hangs off the player's arrow and stops at the
+  coasts.
+
 ## 2026-09-02 (later) — Shops in Estronic
 
 - Three counters on the square, each with a striped awning and a keeper

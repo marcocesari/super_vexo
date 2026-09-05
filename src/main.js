@@ -479,7 +479,7 @@ function frame(now) {
     const axes = input.sample();
     // The camera gimbal is live whenever flight is: not on warp rails,
     // not behind a menu.
-    const canLook = !fastTravel.suppressInput && !missionScreens.isOpen();
+    const canLook = !fastTravel.suppressInput && !missionScreens.isOpen() && !worldMap.isOpen;
     look.x = canLook ? axes.lookX : 0;
     look.y = canLook ? axes.lookY : 0;
     // How far the phone turned this frame, in radians — motion control,
@@ -558,6 +558,13 @@ function frame(now) {
     // `null` axes means the stick belongs to something else this frame.
     const footAxes = (missionScreens.isOpen() || fastTravel.suppressInput) ? null : axes;
 
+    // The town's crowd is drawn around whoever is there to see it: the
+    // walker while he is out, and the ship the rest of the time.
+    if (surface.active) {
+      if (onFoot.active) surface.watchFrom(onFoot.position.x, onFoot.position.z);
+      else surface.watchFrom(null, null);
+    }
+
     // GAME OVER takes everything: no flying, no walking, no menus.
     if (gameOver.isOpen) {
       gameOver.update(input, BUTTONS);
@@ -571,6 +578,29 @@ function frame(now) {
       audio.setSprinting(false);
       if (surface.active) surface.update(ship, dt);
     } else if (worldMap.isOpen) {
+      // The map has the stick. Up zooms in and down zooms out — the left
+      // stick, the D-pad, W and S, the arrow keys, or + and −, because
+      // nothing about a map says which of those it wants and a control
+      // nobody finds may as well not be there. (There are buttons beside
+      // the zoom bar too, and the mouse wheel, both inside map.js.)
+      // Nothing flies while the map is up, so these axes are free to
+      // mean something else here.
+      const kb = input.keyboard;
+      const dpad = (input.gamepad.isButtonDown(BUTTONS.Up) ? 1 : 0)
+                 - (input.gamepad.isButtonDown(BUTTONS.Down) ? 1 : 0);
+      const keys = (kb.isDown('ArrowUp') || kb.isDown('Equal') || kb.isDown('NumpadAdd') ? 1 : 0)
+                 - (kb.isDown('ArrowDown') || kb.isDown('Minus') || kb.isDown('NumpadSubtract') ? 1 : 0);
+      worldMap.zoomBy(axes.throttle || dpad || keys, dt);
+      // And the right stick scrolls it, the way it scrolls in Tears of
+      // the Kingdom: zoomed in, you want to look at where you are going
+      // and not only at where you are. Up the map is −Z in the world.
+      worldMap.panBy(axes.lookX, -axes.lookY, dt);
+      // B and Escape close the map (further up); R3 puts it back on you
+      // without closing it.
+      if (input.gamepad.consumeJustPressed(BUTTONS.R3)
+          || kb.consumeJustPressed(['KeyC'])) {
+        worldMap.recentre();
+      }
       audio.setThrottle(0);
       audio.setSprinting(false);
       if (surface.active) surface.update(ship, dt);

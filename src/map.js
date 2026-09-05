@@ -24,6 +24,16 @@ const BUDGET_MS = 2.5;
 const YOU = '#7dff9f';
 const SHIP = '#8fd0ff';
 
+// How far in the map will go. At ×8 a pixel of the drawing is eighteen
+// metres of ground, which is about as far as it is worth stretching a
+// picture drawn at 144 m to the pixel — past that you are looking at
+// the pixels rather than at the world.
+const ZOOM_MAX = 8;
+// Doublings per second at full stick. A little over one, so a flick of
+// the stick nudges it and a held stick crosses the whole range in about
+// three seconds.
+const ZOOM_RATE = 1.15;
+
 export function createMap({ world }) {
   const root = document.createElement('div');
   root.id = 'map-screen';
@@ -37,6 +47,11 @@ export function createMap({ world }) {
       <div class="map-frame">
         <canvas class="map-canvas" data-canvas></canvas>
         <p class="map-building" data-building></p>
+        <div class="map-zoom">
+          <button class="map-zoom__btn" data-in type="button" aria-label="zoom in">+</button>
+          <div class="map-zoom__bar"><div class="map-zoom__fill" data-fill></div></div>
+          <button class="map-zoom__btn" data-out type="button" aria-label="zoom out">&minus;</button>
+        </div>
       </div>
       <p class="screen-card__hint">${strings.map.hint}</p>
     </div>
@@ -44,13 +59,15 @@ export function createMap({ world }) {
   document.body.appendChild(root);
   const canvas = root.querySelector('[data-canvas]');
   const buildingEl = root.querySelector('[data-building]');
+  const fillEl = root.querySelector('[data-fill]');
   const scaleEl = root.querySelector('[data-scale]');
   const ctx = canvas.getContext('2d');
 
-  scaleEl.textContent = strings.map.scale
+  const scaleText = strings.map.scale
     .replace('{km}', Math.round((WORLD_HALF_X * 2) / 1000))
     .replace('{kmZ}', Math.round((WORLD_HALF_Z * 2) / 1000))
     .replace('{m}', Math.round((WORLD_HALF_X * 2) / MAP_W));
+  scaleEl.textContent = scaleText;
 
   // The world is drawn once into a canvas of its own at its own size,
   // and copied onto the screen whenever anything moves. Redrawing the
@@ -71,10 +88,23 @@ export function createMap({ world }) {
     maxZ: WORLD_HALF_Z,
   });
 
+  // The + and − beside the bar, and the mouse wheel over the map. The
+  // stick is what Marco asked for; these are so that nobody can be
+  // holding the map open wondering whether the zoom is there at all.
   let open = false;
   let you = null;
   let ship = null;
   let dirty = true;
+  // 1 is the whole continent on the screen at once, which is where it
+  // starts and what the map is for. Zoomed in, the view follows the
+  // player: an arrow you cannot find is worse than no arrow.
+  let zoom = 1;
+  // How far the view has been pushed off the player, in metres. Zoomed
+  // in, the right stick scrolls the map the way it does in Tears of the
+  // Kingdom — you look at where you are going, not only at where you
+  // are. Zooming back out to the whole world forgets it.
+  let panX = 0;
+  let panZ = 0;
 
   /** Keep drawing the world in the background until it is finished. */
   function keepDrawing() {
@@ -88,6 +118,24 @@ export function createMap({ world }) {
     if (!drawing.done) requestAnimationFrame(keepDrawing);
   }
   requestAnimationFrame(keepDrawing);
+
+  /** A nudge of the zoom, for the buttons and the wheel. */
+  function step(dir) {
+    zoom = Math.min(ZOOM_MAX, Math.max(1, zoom * (dir > 0 ? 1.45 : 1 / 1.45)));
+    if (zoom <= 1.0001) {
+      panX = 0;
+      panZ = 0;
+    }
+    dirty = true;
+    repaint();
+  }
+  root.querySelector('[data-in]').addEventListener('click', () => step(1));
+  root.querySelector('[data-out]').addEventListener('click', () => step(-1));
+  root.addEventListener('wheel', (e) => {
+    if (!open) return;
+    e.preventDefault();
+    step(e.deltaY < 0 ? 1 : -1);
+  }, { passive: false });
 
   /** Where a point of the world lands on the canvas, in canvas pixels. */
   const _at = { x: 0, y: 0 };
@@ -135,14 +183,29 @@ export function createMap({ world }) {
     // Fit the world into the frame without stretching it. A continent
     // half as tall as it is wide must stay that shape whatever shape the
     // window is.
-    const scale = Math.min(w / MAP_W, h / MAP_H);
+    const scale = Math.min(w / MAP_W, h / MAP_H) * zoom;
+    const drawW = MAP_W * scale;
+    const drawH = MAP_H * scale;
+    // Zoomed in, centre on the player — and stop at the edges of the
+    // world, so the continent never slides off into empty space with
+    // half the frame showing nothing.
+    const home = you ?? ship ?? { x: 0, z: 0 };
+    const fu = (home.x + panX + WORLD_HALF_X) / (WORLD_HALF_X * 2);
+    const fv = (home.z + panZ + WORLD_HALF_Z) / (WORLD_HALF_Z * 2);
     placed = {
-      w: MAP_W * scale,
-      h: MAP_H * scale,
-      x: (w - MAP_W * scale) / 2,
-      y: (h - MAP_H * scale) / 2,
+      w: drawW,
+      h: drawH,
+      x: drawW <= w
+        ? (w - drawW) / 2
+        : Math.min(0, Math.max(w - drawW, w / 2 - fu * drawW)),
+      y: drawH <= h
+        ? (h - drawH) / 2
+        : Math.min(0, Math.max(h - drawH, h / 2 - fv * drawH)),
     };
-    ctx.imageSmoothingEnabled = true;
+    // Smoothed while the whole world is in frame; sharp once it is
+    // stretched past its own resolution, because a blurred pixel tells
+    // you less than a square one.
+    ctx.imageSmoothingEnabled = zoom < 2.5;
     ctx.drawImage(sheet, placed.x, placed.y, placed.w, placed.h);
 
     // The towns he drew, named. A capital gets a bigger mark than a
@@ -171,6 +234,11 @@ export function createMap({ world }) {
     if (ship) marker(ship.x, ship.z, ship.heading, SHIP, 9 * dpr);
     if (you) marker(you.x, you.z, you.heading, YOU, 8 * dpr);
 
+    scaleEl.textContent = scaleText + (zoom > 1.02 ? ` · ×${zoom.toFixed(1)}` : '');
+    // The bar down the side of the map, so the zoom is something you can
+    // SEE happening and not only something you can feel.
+    fillEl.style.height = `${(Math.log(zoom) / Math.log(ZOOM_MAX)) * 100}%`;
+
     buildingEl.hidden = drawing.done;
     if (!drawing.done) {
       buildingEl.textContent = strings.map.building
@@ -183,6 +251,10 @@ export function createMap({ world }) {
     get isOpen() { return open; },
     /** How much of the world has been drawn, 0 to 1. For tests. */
     get progress() { return drawing.progress; },
+    /** How far in the map is, 1 being the whole continent. */
+    get zoom() { return zoom; },
+    /** How far it has been scrolled off the player, in metres. For tests. */
+    get view() { return { panX, panZ }; },
 
     /**
      * Where the player is and, when he is out of it, where the ship is.
@@ -191,13 +263,63 @@ export function createMap({ world }) {
     setMarkers(player, parkedShip = null) {
       you = player;
       ship = parkedShip;
+      // Zoomed in, the view is hung off the player, so it has to be
+      // repainted whenever he moves and not only when he is on screen.
       if (open) dirty = true;
+    },
+
+    /**
+     * Zoom, from the left stick: push up to come closer, down to pull
+     * back. W and S do the same on a keyboard.
+     *
+     * Exponential, not linear: going from ×1 to ×2 and from ×4 to ×8
+     * are the same amount of zooming to look at, so they should take
+     * the same time to do.
+     */
+    zoomBy(dir, dt) {
+      if (!open || !dir) return zoom;
+      const was = zoom;
+      zoom = Math.min(ZOOM_MAX, Math.max(1, zoom * 2 ** (dir * ZOOM_RATE * dt)));
+      // All the way back out is all the way back out: the whole world in
+      // frame, centred, with no scrolling left over from last time.
+      if (zoom <= 1.0001) {
+        panX = 0;
+        panZ = 0;
+      }
+      if (zoom !== was) dirty = true;
+      return zoom;
+    },
+
+    /**
+     * Scroll the map, from the right stick. Only worth anything zoomed
+     * in — at ×1 the whole world is already on the screen and there is
+     * nowhere to scroll to.
+     */
+    panBy(dx, dz, dt) {
+      if (!open || zoom <= 1.0001 || (!dx && !dz)) return;
+      // A screenful a second, whatever the zoom: at ×8 the same push of
+      // the stick moves you an eighth as far across the world, which is
+      // what makes scrolling a close-up map feel the same as scrolling a
+      // far-off one.
+      const speed = (WORLD_HALF_X * 2) / zoom;
+      panX = Math.max(-WORLD_HALF_X, Math.min(WORLD_HALF_X, panX + dx * speed * dt));
+      panZ = Math.max(-WORLD_HALF_Z, Math.min(WORLD_HALF_Z, panZ + dz * speed * dt));
+      dirty = true;
+    },
+
+    /** Back to the player, wherever the map has been scrolled to. */
+    recentre() {
+      panX = 0;
+      panZ = 0;
+      dirty = true;
     },
 
     toggle() { return open ? this.close() : this.show(); },
 
     show() {
       open = true;
+      panX = 0;
+      panZ = 0;
       root.hidden = false;
       dirty = true;
       repaint();
