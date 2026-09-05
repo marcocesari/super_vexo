@@ -121,6 +121,19 @@ export function createMission(roverApi) {
     get repairing() { return repairing; },
     /** Put credits back after a save is loaded. */
     grantCredits(n) { credits = Math.max(0, Math.round(n)); },
+
+    /**
+     * Money earned down on the ground — a bounty on a monster, say.
+     *
+     * Separate from grantCredits, which SETS the total when a save is
+     * loaded. Until the shops opened, the only money in the game came
+     * from rovers in orbit around Mars, and the player now starts on the
+     * other side of the world from them with nothing to spend.
+     */
+    earn(n) {
+      credits += Math.max(0, Math.round(n));
+      return credits;
+    },
     remaining,
     totalRovers,
     update,

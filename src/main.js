@@ -45,6 +45,8 @@ import { createSaves } from './save.js';
 import { createGameOver } from './gameOver.js';
 import { createMap } from './map.js';
 import { createDialogue } from './dialogue.js';
+import { createPerks } from './perks.js';
+import { createShop } from './shop.js';
 import { strings } from './strings.js';
 import { createTracers } from './world/tracers.js';
 
@@ -188,6 +190,7 @@ function resetGame() {
   mission.reset();
   roverApi.reset();
   upgrades.reset();
+  perks.reset();
   // The camps back on their feet: a new run should not start in a town
   // that has already been half-cleared.
   monsters.reset();
@@ -246,6 +249,13 @@ const MENU_SCROLL_SPEED = 900;
 // CINEMATIC (opening intro) → TITLE → FLY. `?skipIntro=1` skips the cinematic.
 const STATE = { CINEMATIC: 'cinematic', TITLE: 'title', FLY: 'fly' };
 
+// What a monster is worth. Set so that clearing one camp — four
+// monsters, one of them a boss, and the bonus — pays for the cheapest
+// thing in the shops with a little over.
+const MONSTER_BOUNTY = 14;
+const BOSS_BOUNTY = 40;
+const CAMP_BOUNTY = 60;
+
 const characterViewer = characterMode
   ? createCharacterViewer({ renderer, modelUrl: characterModelUrl, who: params.get('who') ?? 'vexo' })
   : null;
@@ -271,8 +281,18 @@ const tracers = createTracers(scene);
 // Talking to the people of a town: a name and a line along the bottom.
 const dialogue = createDialogue();
 
+// What the shops in Estronic sell, and what owning it does.
+const perks = createPerks();
+const shop = createShop({
+  perks,
+  mission,
+  audio,
+  // Hearts bought are hearts you have now, not next time you land.
+  onBought: () => onFoot.refreshHearts(),
+});
+
 const onFoot = createOnFoot({
-  scene, camera, ship, surface, input, renderer, monsters, dialogue,
+  scene, camera, ship, surface, input, renderer, monsters, dialogue, shop, perks,
   // He has finished falling over.
   onDown: () => {
     gameOver.show(saves.has);
@@ -290,8 +310,15 @@ const onFoot = createOnFoot({
     audio.chirp(hit
       ? { fromHz: 900, toHz: 260, durationS: 0.16, peakGain: 0.16 }
       : { fromHz: 1400, toHz: 700, durationS: 0.08, peakGain: 0.09 });
+    // A bounty, so that fighting pays for the shops in Estronic. Without
+    // it the only money in the game comes from rovers in orbit around
+    // Mars, and the player starts on the ground half a world away.
+    if (hit && hit.state === 'dead') {
+      mission.earn(hit.boss ? BOSS_BOUNTY : MONSTER_BOUNTY);
+    }
     // Clearing a camp is an achievement worth not having to repeat.
     if (hit && hit.camp.members.every((m) => m.state === 'dead')) {
+      mission.earn(CAMP_BOUNTY);
       audio.fanfare();
       saves.saveAuto('camp cleared');
     }
@@ -301,7 +328,7 @@ const onFoot = createOnFoot({
 // Saving: a manual slot for the button in the inventory's System tab,
 // and an auto slot the game writes at moments worth returning from.
 const saves = createSaves({
-  ship, surface, onFoot, monsters, mission, upgrades, rovers: roverApi,
+  ship, surface, onFoot, monsters, mission, upgrades, rovers: roverApi, perks,
 });
 
 // GAME OVER, once he has finished falling over.
@@ -513,11 +540,12 @@ function frame(now) {
       inventory.toggle();
     }
     // Closing them with the same button everything else closes with.
-    if ((inventory.isOpen || worldMap.isOpen)
+    if ((inventory.isOpen || worldMap.isOpen || shop.isOpen)
         && (input.gamepad.consumeJustPressed(BUTTONS.B)
             || input.keyboard.consumeJustPressed(['Escape']))) {
       inventory.close();
       worldMap.close();
+      shop.close();
     }
     // Reset: R key, or clicking the left stick.
     if (input.keyboard.consumeJustPressed(['KeyR']) || input.gamepad.consumeJustPressed(BUTTONS.L3)) {
@@ -535,6 +563,13 @@ function frame(now) {
       gameOver.update(input, BUTTONS);
       audio.setThrottle(0);
       audio.setSprinting(false);
+    } else if (shop.isOpen) {
+      // Standing at a counter: the stick and the buttons belong to the
+      // shop, and Vexo waits outside himself.
+      shop.update(input, BUTTONS);
+      audio.setThrottle(0);
+      audio.setSprinting(false);
+      if (surface.active) surface.update(ship, dt);
     } else if (worldMap.isOpen) {
       audio.setThrottle(0);
       audio.setSprinting(false);
@@ -566,8 +601,10 @@ function frame(now) {
       // real speed — 1000 km/h, or 2000 with the boost — and in space
       // the old figure stands, because nothing up there is a known size
       // and "kilometres an hour" would mean nothing.
+      // The shipwright's tuned thrusters, if they have been bought.
       ship.speedLimit = surface.active
         ? (boosting(axes) ? shipConfig.surfaceBoostSpeed : shipConfig.surfaceSpeed)
+          * perks.shipSpeed
         : 0;
       updateShip(ship, axes, dt);
       audio.setThrottle(axes.throttle);
@@ -697,6 +734,7 @@ if (import.meta.env.DEV) {
     renderer, camera,
     rovers: roverApi, mission, upgrades, missionScreens, surface, frameScaler,
     characterViewer, onFoot, monsters, tracers, inventory, saves, gameOver, dialogue,
+    perks, shop,
     map: worldMap,
     shipConfig, shipConfigDefaults,
     resetGame,

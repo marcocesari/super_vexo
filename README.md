@@ -413,8 +413,32 @@ The whole crowd is three draw calls: a body and two legs, each an
 instanced mesh, so the legs can still swing because an instance carries
 its own matrix.
 
+### Shops
+
+Three counters on Estronic's square, each with an awning over its door
+and a keeper standing under it who doesn't wander off. Walk up and press
+**E**, or **A** on a pad.
+
+| shop | sells |
+| --- | --- |
+| **The Apothecary** | a **vital patch** — one more heart, and you can stack three; a **lung filter** — sprint lasts half as long again |
+| **The Gunsmith** | a **quickdraw kit** — the pistol fires half as fast again; a **long barrel** — shots carry almost half again as far |
+| **The Shipwright** | **tuned thrusters** — the airship flies 15% faster |
+
+Everything takes effect the moment you buy it: a heart bought is a heart
+you have this minute, not one that turns up next time you land. Hearts
+get dearer each time, because a shop you can empty in one visit is a shop
+you visit once.
+
+**Money comes from fighting.** Every bokoblin carries a bounty — 14
+credits, 40 for a boss, and 60 more for clearing out a camp — so
+fighting pays for the gear that makes fighting easier. Before the shops
+opened, the only money in the game came from rovers in orbit around Mars,
+which is half a world away from where you now land.
+
 ```bash
 npm run smoke:towns
+npm run smoke:shops
 ```
 
 ### The ground rules underneath

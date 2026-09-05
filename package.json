@@ -24,6 +24,7 @@
     "smoke:world": "node tools/smoke-world.mjs",
     "smoke:map": "node tools/smoke-map.mjs",
     "smoke:towns": "node tools/smoke-towns.mjs",
+    "smoke:shops": "node tools/smoke-shops.mjs",
     "smoke:cinematic": "node tools/smoke-cinematic.mjs",
     "smoke:build": "node tools/smoke-build.mjs",
     "character-sheet": "node tools/character-sheet.mjs",

@@ -187,7 +187,11 @@ const crowd = await page.evaluate(async () => {
   const w = window.__superVexo.surface.world;
   const t = w.info.settlements.find((s) => s.kind === 'capital');
   const before = t.people.folk.map((p) => ({ x: p.x, z: p.z }));
-  const named = t.people.folk.every((p) => p.name && p.lines && p.lines.length);
+  // Everybody has a name; everybody except the shopkeepers has a line as
+  // well, because a keeper's answer is their shop.
+  const named = t.people.folk.every(
+    (p) => p.name && (p.shop || (p.lines && p.lines.length)),
+  );
   await new Promise((r) => setTimeout(r, 1800));
   const moved = t.people.folk.filter(
     (p, i) => Math.hypot(p.x - before[i].x, p.z - before[i].z) > 0.4,
@@ -217,7 +221,9 @@ check('you can get out in the city', onFoot);
 const met = await page.evaluate(() => {
   const g = window.__superVexo;
   const t = g.surface.world.info.settlements.find((s) => s.kind === 'capital');
-  const p = t.people.folk[0];
+  // Somebody who is not minding a shop: a keeper opens their counter
+  // rather than passing the time of day, which smoke:shops covers.
+  const p = t.people.folk.find((q) => !q.shop);
   g.onFoot.position.x = p.x + 1.5;
   g.onFoot.position.z = p.z + 1.5;
   return p.name;
@@ -271,7 +277,7 @@ const padWho = await page.evaluate(() => {
   // Somebody well away from the ladder, so the two uses of A cannot be
   // confused with one another.
   const p = t.people.folk
-    .filter((q) => Math.hypot(q.x - lad.x, q.z - lad.z) > 25)
+    .filter((q) => !q.shop && Math.hypot(q.x - lad.x, q.z - lad.z) > 25)
     .sort((a, c) => Math.hypot(a.x - g.onFoot.position.x, a.z - g.onFoot.position.z)
       - Math.hypot(c.x - g.onFoot.position.x, c.z - g.onFoot.position.z))[0];
   g.onFoot.position.x = p.x + 1.5;

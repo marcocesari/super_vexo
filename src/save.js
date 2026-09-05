@@ -19,7 +19,9 @@ import { SURFACE_ORIGIN } from './surface.js';
 const KEY = 'super-vexo/save';
 // 4: the town went and a whole world took its place, so every save
 // written before it describes ground that no longer exists.
-const VERSION = 4;
+// 5: the shops opened, and a save without them would load a game where
+// everything bought had been forgotten but the money had been spent.
+const VERSION = 5;
 
 function read() {
   try {
@@ -49,7 +51,9 @@ function write(slots) {
  *        asked for a plain object and handed one back later; nothing in
  *        here knows what a rover or an upgrade actually is.
  */
-export function createSaves({ ship, surface, onFoot, monsters, mission, upgrades, rovers }) {
+export function createSaves({
+  ship, surface, onFoot, monsters, mission, upgrades, rovers, perks = null,
+}) {
   /** Everything worth remembering, as JSON. */
   function snapshot(kind) {
     return {
@@ -73,6 +77,8 @@ export function createSaves({ ship, surface, onFoot, monsters, mission, upgrades
       // keyed by square rather than by position in a list.
       camps: monsters.snapshot(),
       credits: mission.credits,
+      // What has been bought in Estronic.
+      perks: perks ? perks.snapshot() : null,
       upgrades: upgrades.upgrades.filter((u) => u.bought).map((u) => u.id),
       rovers: rovers.rovers.map((r) => r.fixed),
     };
@@ -140,6 +146,7 @@ export function createSaves({ ship, surface, onFoot, monsters, mission, upgrades
 
       mission.reset();
       mission.grantCredits(data.credits ?? 0);
+      if (perks) perks.restore(data.perks);
       upgrades.reset();
       for (const id of data.upgrades ?? []) upgrades.buyFree(id);
       return true;

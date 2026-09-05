@@ -237,7 +237,8 @@ export function createTownsfolk({
     update(dt, groundAt) {
       for (let i = 0; i < folk.length; i++) {
         const p = folk[i];
-        if (p.talking) {
+        if (p.talking || p.stays) {
+          // Shopkeepers stay at their own doors.
           p.moving = false;
         } else if (p.wait > 0) {
           p.wait -= dt;

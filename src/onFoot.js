@@ -144,6 +144,9 @@ const CONTROLS_HINT_TIME = 5;
 // is FACING, not where the camera points: the camera can be swung round
 // to look at him, and a shot that came out of the back of his head
 // because the player was admiring the view would be indefensible.
+// How many hearts he starts with. The apothecary in Estronic sells more,
+// so what the game actually uses is `maxHearts()` below — this is the
+// figure before anybody has bought anything.
 const MAX_HEARTS = 5;
 const SHOT_INTERVAL = 0.32;     // seconds between shots
 const SHOT_RANGE = 55;
@@ -194,7 +197,7 @@ function angleDelta(a, b) {
  */
 export function createOnFoot({
   scene, camera, ship, surface, input, renderer,
-  monsters = null, onShot = () => {}, dialogue = null,
+  monsters = null, onShot = () => {}, dialogue = null, shop = null, perks = null,
   onDown = () => {}, onLanded = () => {}, onAboard = () => {},
 }) {
   // Something for the armour to reflect. A small box of lit panels,
@@ -284,7 +287,9 @@ export function createOnFoot({
   // Health, the pistol, and dying.
   // Who is being talked to, and which town they belong to.
   let talking = null;
-  let heartsLeft = MAX_HEARTS;
+  /** Hearts he can carry, once the shops have had their say. */
+  const maxHearts = () => (perks ? perks.maxHearts : MAX_HEARTS);
+  let heartsLeft = maxHearts();
   let down = false;
   let hurtCooldown = 0;
   let shotCooldown = 0;
@@ -628,8 +633,20 @@ export function createOnFoot({
     }
     if (!met) return false;
 
-    if (input.keyboard.consumeJustPressed(['KeyE'])
-        || input.gamepad.consumeJustPressed(BUTTONS.A)) {
+    const pressed = input.keyboard.consumeJustPressed(['KeyE'])
+      || input.gamepad.consumeJustPressed(BUTTONS.A);
+
+    // A shopkeeper opens their shop rather than passing the time of day.
+    if (met.person.shop) {
+      if (pressed && shop) shop.show(met.person.shop);
+      setPrompt(shop && shop.isOpen
+        ? null
+        : strings.shop.keeper[met.person.shop] ?? strings.onFoot.talk
+          .replace('{name}', met.person.name));
+      return true;
+    }
+
+    if (pressed) {
       met.people.startTalking(met.person, foot.x - SURFACE_ORIGIN.x, foot.z - SURFACE_ORIGIN.z);
       talking = met;
       if (!dialogue.next(met.person)) {
@@ -657,7 +674,7 @@ export function createOnFoot({
       vel.z = (dz / d) * KNOCKBACK;
     }
     heartsLeft = Math.max(0, heartsLeft - damage);
-    hearts.set(heartsLeft, MAX_HEARTS);
+    hearts.set(heartsLeft, maxHearts());
     hearts.flash();
     // Being hit knocks the wind out of him: the wheel empties, so you
     // cannot simply sprint away from a mistake.
@@ -677,8 +694,8 @@ export function createOnFoot({
   /** Unused now that Game Over owns what happens after he falls, but
    *  kept because `reset()` wants the same clearing-up. */
   function revive() {
-    heartsLeft = MAX_HEARTS;
-    hearts.set(heartsLeft, MAX_HEARTS);
+    heartsLeft = maxHearts();
+    hearts.set(heartsLeft, maxHearts());
     stamina = 1;
     winded = 0;
     if (monsters) monsters.reset();
@@ -697,11 +714,11 @@ export function createOnFoot({
     stamina = 1;
     winded = 0;
     sprintingNow = false;
-    heartsLeft = MAX_HEARTS;
+    heartsLeft = maxHearts();
     hurtCooldown = 0;
     dying = 0;
     down = false;
-    hearts.set(heartsLeft, MAX_HEARTS);
+    hearts.set(heartsLeft, maxHearts());
     // He is out of the ship and on his feet: a good place to come back
     // to if the next few minutes go badly.
     onLanded();
@@ -859,7 +876,9 @@ export function createOnFoot({
       // The last quarter goes at half rate: a nearly empty wheel lasts
       // longer than it looks, which is what makes running it close
       // worth doing.
-      const rate = stamina < STAMINA_LOW ? STAMINA_DRAIN * 0.5 : STAMINA_DRAIN;
+      // The lung filter from the apothecary makes a sprint last longer.
+      const drain = STAMINA_DRAIN * (perks ? perks.staminaDrain : 1);
+      const rate = stamina < STAMINA_LOW ? drain * 0.5 : drain;
       stamina -= rate * dt;
       if (stamina <= 0) {
         stamina = 0;
@@ -990,11 +1009,12 @@ export function createOnFoot({
       // shot happens.
       drawnFor = HOLSTER_AFTER;
       if (vexo.getMuzzle(_muzzle)) {
-        shotCooldown = SHOT_INTERVAL;
+        shotCooldown = SHOT_INTERVAL * (perks ? perks.shotInterval : 1);
         // Soft lock: anything within thirty degrees of where he is
         // facing gets shot AT, rather than requiring the player to line
         // a moving target up with a thumbstick.
-        const locked = monsters.aimAt(_muzzle, heading, AIM_CONE, SHOT_RANGE);
+        const range = SHOT_RANGE * (perks ? perks.shotRange : 1);
+        const locked = monsters.aimAt(_muzzle, heading, AIM_CONE, range);
         if (locked) {
           _aim.copy(locked).sub(_muzzle).normalize();
           // And he turns to it, so the shot doesn't come out sideways.
@@ -1002,7 +1022,7 @@ export function createOnFoot({
         } else {
           _aim.set(Math.sin(heading), 0, Math.cos(heading));
         }
-        const hit = monsters.shoot(_muzzle, _aim, SHOT_RANGE);
+        const hit = monsters.shoot(_muzzle, _aim, range);
         vexo.fire();                    // muzzle flash on the gun itself
         onShot(_muzzle, _aim, hit);
       }
@@ -1059,7 +1079,19 @@ export function createOnFoot({
     get sprinting() { return sprintingNow; },
     /** Hearts left, for the HUD and the tests. */
     get hearts() { return heartsLeft; },
-    get maxHearts() { return MAX_HEARTS; },
+    get maxHearts() { return maxHearts(); },
+    /**
+     * Take the hearts up to whatever he can carry now.
+     *
+     * Called when something is bought that changes the number: a heart
+     * bought at the apothecary is a heart you have this minute, not one
+     * that turns up the next time you land.
+     */
+    refreshHearts() {
+      heartsLeft = Math.min(maxHearts(), Math.max(heartsLeft, maxHearts()));
+      hearts.set(heartsLeft, maxHearts());
+    },
+
     /** True while he is falling over, or lying there afterwards. */
     get down() { return dying > 0 || down; },
     /** Where the monsters should hunt, or null if he is not out here. */
@@ -1166,8 +1198,8 @@ export function createOnFoot({
       dying = 0;
       // Back to full health: whatever happened out there, the next time
       // he climbs down that ladder he does it on his feet.
-      heartsLeft = MAX_HEARTS;
-      hearts.set(heartsLeft, MAX_HEARTS);
+      heartsLeft = maxHearts();
+      hearts.set(heartsLeft, maxHearts());
       camInit = false;
       vexo.group.visible = false;
       ladder.setExtension(0);

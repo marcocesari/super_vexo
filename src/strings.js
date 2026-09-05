@@ -61,6 +61,32 @@ export const strings = {
   },
 
   // Shown when the last heart goes (see gameOver.js).
+  shop: {
+    credits: 'cr',
+    hint: '↑ ↓ — choose · E / A — buy · B / Esc — leave',
+    welcome: 'Have a look. Everything here works.',
+    bought: '{name} — yours. Mind how you go.',
+    tooDear: 'Not enough credits for that one.',
+    alreadyHave: 'You have that already.',
+    sold: 'owned',
+    names: {
+      apothecary: 'THE APOTHECARY',
+      gunsmith: 'THE GUNSMITH',
+      shipwright: 'THE SHIPWRIGHT',
+    },
+    keeper: {
+      apothecary: 'E / A — the apothecary',
+      gunsmith: 'E / A — the gunsmith',
+      shipwright: 'E / A — the shipwright',
+    },
+    goods: {
+      heart: { name: 'Vital patch', note: 'One more heart. Stacks.' },
+      wind: { name: 'Lung filter', note: 'Sprint lasts about half as long again.' },
+      quickdraw: { name: 'Quickdraw kit', note: 'The pistol fires half as fast again.' },
+      barrel: { name: 'Long barrel', note: 'Shots carry almost half again as far.' },
+      thrusters: { name: 'Tuned thrusters', note: 'The airship flies 15% faster.' },
+    },
+  },
   dialogue: {
     more: 'E / A — go on · walk away to leave',
   },

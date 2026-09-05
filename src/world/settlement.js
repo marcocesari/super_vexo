@@ -118,10 +118,15 @@ export function createSettlement(place, x, z, level) {
   const glass = [];
   const ground = [];
   const lights = [];
+  // Shop awnings, in a colour of their own so a shop can be picked out
+  // of a street of concrete from a hundred metres away.
+  const awnings = [];
   /** Rectangles a walker cannot walk through. */
   const footprints = [];
   /** Where the airship can set down, if this place has anywhere. */
   const pads = [];
+  /** Shops, and the spot outside each door where its keeper stands. */
+  const shops = [];
 
   const put = (opts) => {
     footprints.push(house(walls, roofs, opts));
@@ -223,6 +228,53 @@ export function createSettlement(place, x, z, level) {
       }
     }
 
+    // --- The shops ----------------------------------------------------------
+    // On the first ring of blocks around the square, where the streets
+    // are busiest, each with a striped awning over its door so you can
+    // tell one from a street of concrete.
+    const TRADES = ['apothecary', 'gunsmith', 'shipwright'];
+    for (const [i, kind] of TRADES.entries()) {
+      const a = (i / TRADES.length) * Math.PI * 2 + 0.55;
+      const rr = BLOCK * 1.15;
+      const sx = Math.cos(a) * rr;
+      const sz = Math.sin(a) * rr;
+      // A low, wide building, turned to face the middle of the city.
+      const facing = a + Math.PI;
+      const w = 26;
+      const d = 17;
+      const h = STOREY * 2;
+      const body = new THREE.BoxGeometry(w, h, d);
+      body.translate(0, h / 2, 0);
+      body.rotateY(-facing);
+      body.translate(sx, 0, sz);
+      walls.push(body);
+      // The awning: a slab out over the pavement on the side facing in.
+      const awn = new THREE.BoxGeometry(w * 0.8, 0.6, 4.5);
+      awn.translate(0, h * 0.62, d / 2 + 2);
+      awn.rotateY(-facing);
+      awn.translate(sx, 0, sz);
+      awnings.push(awn);
+      // And a sign board above it.
+      const sign = new THREE.BoxGeometry(w * 0.5, 2.2, 0.5);
+      sign.translate(0, h * 0.82, d / 2 + 0.4);
+      sign.rotateY(-facing);
+      sign.translate(sx, 0, sz);
+      awnings.push(sign);
+      footprints.push({ x: sx, z: sz, halfX: Math.max(w, d) / 2, halfZ: Math.max(w, d) / 2 });
+      // Where the keeper stands: out on the pavement, clear of the shop.
+      //
+      // The footprint above is a square as wide as the building is long,
+      // so "just past the front wall" was still inside it — and three
+      // keepers were standing in their own shops as far as anything that
+      // asks about buildings was concerned.
+      const outward = Math.max(w, d) / 2 + 4.5;
+      shops.push({
+        kind,
+        x: sx + Math.sin(facing) * outward,
+        z: sz + Math.cos(facing) * outward,
+      });
+    }
+
     // --- The shipport -------------------------------------------------------
     // On the south-east side, with its pads open to the sky and a
     // control tower looking over them. Marco asked for one somewhere in
@@ -292,6 +344,33 @@ export function createSettlement(place, x, z, level) {
     footprints.push({ x: 0, z: 0, halfX: 2.6, halfZ: 2.6 });
   }
 
+  // Somewhere for each keeper to stand that is not inside anything.
+  //
+  // Standing them "just outside their own front door" was not enough:
+  // the shops sit on the first ring of blocks, and the pavement outside
+  // one shop is often the inside of the building next to it. This walks
+  // outwards and around until it finds pavement.
+  const clearOf = (px, pz) => !footprints.some(
+    (f) => Math.abs(px - f.x) < f.halfX + 0.8 && Math.abs(pz - f.z) < f.halfZ + 0.8,
+  );
+  for (const sh of shops) {
+    if (clearOf(sh.x, sh.z)) continue;
+    const from = Math.atan2(sh.z, sh.x);
+    let found = false;
+    for (let out = 4; out <= 40 && !found; out += 4) {
+      for (let k = 0; k < 12 && !found; k++) {
+        const a = from + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.42;
+        const px = sh.x + Math.cos(a) * out;
+        const pz = sh.z + Math.sin(a) * out;
+        if (clearOf(px, pz)) {
+          sh.x = px;
+          sh.z = pz;
+          found = true;
+        }
+      }
+    }
+  }
+
   const group = new THREE.Group();
   const pieces = [
     [walls, new THREE.MeshStandardMaterial({ color: place.walls, roughness: 0.92 })],
@@ -301,6 +380,7 @@ export function createSettlement(place, x, z, level) {
       color: place.glass ?? 0x24404e, roughness: 0.12, metalness: 0.72,
     })],
     [ground, new THREE.MeshStandardMaterial({ color: 0x6e7076, roughness: 0.98 })],
+    [awnings, new THREE.MeshStandardMaterial({ color: 0xc4553f, roughness: 0.85 })],
     // Emissive rather than lit: a light per landing pad would recompile
     // every shader in the game the first time one came into view.
     // Bright enough to read as lit, not so bright that standing in one
@@ -339,5 +419,7 @@ export function createSettlement(place, x, z, level) {
     radius: place.r,
     /** Landing pads, in world metres. Empty for a village. */
     pads: pads.map((p) => ({ x: p.x + x, z: p.z + z, r: p.r })),
+    /** Shops, and where each keeper stands, in world metres. */
+    shops: shops.map((sh) => ({ ...sh, x: sh.x + x, z: sh.z + z })),
   };
 }

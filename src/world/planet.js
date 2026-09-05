@@ -211,11 +211,27 @@ export function createPlanet({ seed = 20260827 } = {}) {
           (f) => Math.abs(x - f.x) < f.halfX + 1.4 && Math.abs(z - f.z) < f.halfZ + 1.4,
         ),
       });
-      // The named residents first — the ones with something worth
+      // The shopkeepers first: they stand at their own doors and do not
+      // wander, because a shop with nobody in it is a wall.
+      for (const [i, shop] of (s.shops ?? []).entries()) {
+        const keeper = s.people.folk[i];
+        if (!keeper) break;
+        keeper.x = shop.x;
+        keeper.z = shop.z;
+        keeper.to = { x: shop.x, z: shop.z };
+        keeper.heading = Math.atan2(s.x - shop.x, s.z - shop.z);
+        keeper.stays = true;
+        keeper.shop = shop.kind;
+      }
+
+      // The named residents next — the ones with something worth
       // hearing — and then everybody else, who each have a name and one
       // remark, because a passer-by says one thing.
       for (const [i, person] of s.people.folk.entries()) {
-        if (i < who.length) {
+        if (person.shop) {
+          person.name = person.shop;
+          person.lines = [];
+        } else if (i < who.length) {
           person.name = who[i].name;
           person.lines = who[i].lines;
         } else {

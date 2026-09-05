@@ -2,6 +2,37 @@
 
 Most recent entries on top.
 
+## 2026-09-02 (later) — Shops in Estronic
+
+- Three counters on the square, each with a striped awning and a keeper
+  standing under it: the apothecary, the gunsmith and the shipwright.
+  Talk to a keeper and their shop opens instead of a conversation.
+- **The money had to come from somewhere first.** Until now the only
+  credits in the game came from the rovers in orbit around Mars, and the
+  player starts on the ground half a world away from them, so a shop
+  would have been a window to look through. Monsters carry a bounty now —
+  14 credits, 40 for a boss, 60 more for clearing a camp — which makes a
+  loop: fighting pays for the gear that makes fighting easier.
+- What is sold does something, and does it at once: a heart bought at the
+  apothecary is a heart you have this minute, not one that turns up next
+  time you land. The stock is in `src/perks.js`, all in one place,
+  because a thing you can buy is three separate facts — its price, what
+  it says on the shelf, and what it changes — and they drift apart when
+  they live in three files.
+- Hearts get dearer each time, by 60%. A shop you can empty in one visit
+  is a shop you visit once.
+- **The shop list read backwards.** The price is in the second column and
+  the name in the first, and I gave the price a row but no column — so
+  auto-placement put it in column one and pushed the name and its note
+  into column two. Every shelf read "120 cr — Vital patch".
+- **And the keepers were standing indoors.** Twice. First inside their
+  own shops, because the footprint is a square as wide as the building is
+  long and "just past the front wall" was still inside it; then inside
+  their NEIGHBOURS', because the shops stand on the first ring of blocks
+  and the pavement outside one shop is often the inside of the building
+  next to it. They walk outwards and around now until they find
+  pavement.
+
 ## 2026-09-02 — Talking on the pad
 
 - Marco: E on the keyboard, A on the pad. It was on Y, which nobody would

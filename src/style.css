@@ -544,6 +544,65 @@ canvas {
   border-radius: 5px;
 }
 
+/* A shop counter. */
+#shop { background: rgba(4, 9, 16, 0.86); }
+.shop__panel {
+  width: min(620px, 94vw);
+  background: rgba(10, 22, 34, 0.96);
+  border: 1px solid rgba(120, 180, 240, 0.3);
+  border-radius: 10px;
+  padding: 1rem 1.1rem 0.8rem;
+}
+.shop__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.7rem;
+}
+.shop__name {
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.22em;
+  color: #cfe4f6;
+}
+.shop__purse { font-size: 0.85rem; color: #ffe9b0; letter-spacing: 0.1em; }
+.shop__list { list-style: none; margin: 0; padding: 0; }
+.shop__item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.1rem 1rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.shop__item-name { font-size: 0.9rem; color: #eaf3fb; }
+.shop__item-price {
+  /* Column TWO, said out loud. With only a row given, auto-placement put
+     the price in the first column and pushed the name and its note into
+     the second, so every shelf read "120 cr — Vital patch" backwards. */
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  text-align: right;
+  font-size: 0.85rem;
+  color: #ffe9b0;
+  letter-spacing: 0.08em;
+}
+.shop__item-note { font-size: 11px; color: #7fb0d8; }
+.shop__item--on {
+  border-color: #5effa6;
+  background: rgba(94, 255, 166, 0.08);
+}
+.shop__item--sold .shop__item-price { color: #6f9dc4; }
+.shop__item--sold, .shop__item--dear { opacity: 0.55; }
+.shop__said {
+  margin: 0.6rem 0 0.3rem;
+  min-height: 1.2em;
+  font-size: 0.85rem;
+  color: #9fd8ff;
+}
+
 /* Somebody talking to you: a name and a line along the bottom. */
 #dialogue {
   position: fixed;
