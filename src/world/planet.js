@@ -37,6 +37,7 @@ import { createTerrain, BIOME, GROUND_COLOR, SEA_LEVEL, fromReal } from './terra
 import { PLACES, TOWNSFOLK, CROWD_NAMES, CROWD_LINES } from './continentAlpha.js';
 import { createSettlement } from './settlement.js';
 import { createTownsfolk } from './townsfolk.js';
+import { createFlora, FLORA_CEILING, BUILD_BUDGET_MS as FLORA_BUDGET_MS } from './flora.js';
 
 // Tiles across each ring, odd so there is a middle one.
 const RING_TILES = 6;
@@ -256,6 +257,31 @@ export function createPlanet({ seed = 20260827 } = {}) {
   // keeps forty-odd footprints out of the walk resolver's way.
   const TOWN_SIGHT = 4200;
 
+  // --- What grows on it ----------------------------------------------------------
+  // Trees, boulders and grass, scattered around whoever is looking. See
+  // world/flora.js — the short version is that nothing is stored except
+  // what is in sight, and what is in sight is worked out from where it
+  // is, so the same wood is there every time you come back to it.
+  const flora = createFlora({
+    terrain,
+    // Not where the town is. Nothing grows through concrete, and a
+    // tree through a roof is nobody's idea of scenery — but the whole
+    // of Estronic's disc is 1.8 km across, and blocking all of it left
+    // a player who lands at its shipport with a mile of bare ground in
+    // every direction. So it is the paving and the buildings that stop
+    // things growing, not the town's name: past the concrete, the
+    // countryside starts at the last wall.
+    blocked: (x, z) => {
+      for (const s of settlements) {
+        if (Math.hypot(s.x - x, s.z - z) > s.radius + 30) continue;
+        if (Math.hypot(s.x - x, s.z - z) < s.paved + 3) return true;
+        if (insideBuilding(x, z, 8)) return true;
+      }
+      return false;
+    },
+  });
+  group.add(flora.group);
+
   // --- The sea -----------------------------------------------------------------
   // One plane, kept under the player. Sea level is zero everywhere, so
   // this needs no shape of its own.
@@ -453,6 +479,8 @@ export function createPlanet({ seed = 20260827 } = {}) {
    * all in the rings outside it, which only shift once every few
    * hundred metres.
    */
+  const lastFocus = { x: 0, z: 0 };
+
   function setFocus(x, z) {
     // The rectangle the ring inside this one covers, so this one can
     // leave a hole exactly there. It has to be the inner ring's REAL
@@ -566,6 +594,8 @@ export function createPlanet({ seed = 20260827 } = {}) {
       }
     }
     queue.sort((a, b) => a.d2 - b.d2);
+    lastFocus.x = x;
+    lastFocus.z = z;
     sea.position.x = x;
     sea.position.z = z;
     for (const s of settlements) {
@@ -615,7 +645,12 @@ export function createPlanet({ seed = 20260827 } = {}) {
   function isClear(x, z, radius = 3) {
     const s = terrain.sampleAt(x, z, Math.max(2, radius));
     if (s.height <= SEA_LEVEL + 1.5 || s.slopeDeg >= 12) return false;
-    return !insideBuilding(x, z, radius);
+    if (insideBuilding(x, z, radius)) return false;
+    // And nothing growing on it. Only what is standing can be asked
+    // about — a wood a kilometre away has not been worked out yet — so
+    // this tightens up as you approach, which is the right way round:
+    // it is the ground under the ship that has to be clear.
+    return !flora.solidNear(x, z, radius);
   }
 
   /** Is this point inside one of the buildings? */
@@ -654,6 +689,26 @@ export function createPlanet({ seed = 20260827 } = {}) {
       const outZ = wall.halfZ + pad - Math.abs(dz);
       if (outX < outZ) out[0] = wall.x + Math.sign(dx || 1) * (wall.halfX + pad);
       else out[1] = wall.z + Math.sign(dz || 1) * (wall.halfZ + pad);
+      return out;
+    }
+
+    // Then trunks and boulders. Walking through a tree is the first
+    // thing anybody tries, and grass and scrub are deliberately not in
+    // the list: being brought to a stop by a tuft of grass is worse
+    // than walking through one.
+    const solid = flora.solidNear(x, z, radius ?? 0.4);
+    if (solid) {
+      const dx = x - solid.x;
+      const dz = z - solid.z;
+      const d = Math.hypot(dx, dz);
+      const want = solid.r + (radius ?? 0.4);
+      // Dead centre there is no direction to be pushed in, and dividing
+      // by a very small number gives zero rather than a big push. Any
+      // way out will do when you are standing in the middle of a tree.
+      const ux = d > 1e-3 ? dx / d : 1;
+      const uz = d > 1e-3 ? dz / d : 0;
+      out[0] = solid.x + ux * want;
+      out[1] = solid.z + uz * want;
       return out;
     }
 
@@ -726,12 +781,25 @@ export function createPlanet({ seed = 20260827 } = {}) {
     terrain,
     setFocus,
     /** Build everything outstanding now — for landing and for tests. */
-    flush() { work(Infinity); },
+    flush() {
+      work(Infinity);
+      // The ground the ship is about to touch, with everything that
+      // grows on it already standing. Landing into an empty field that
+      // sprouts a wood a second later is worse than a slow landing.
+      flora.setFocus(lastFocus.x, lastFocus.z, 0);
+      flora.flush();
+    },
     /**
      * The towns' people walk about while you are near enough to see it.
      * Nothing else in the ground animates.
      */
-    update(dt, atX = 0, atZ = 0) {
+    update(dt, atX = 0, atZ = 0, atY = null) {
+      // What grows follows whoever is looking, like the crowd does —
+      // and stops being drawn at all once there is enough air under
+      // them for it to be scenery rather than ground.
+      const above = atY === null ? 0 : Math.max(0, atY - groundHeightAt(atX, atZ));
+      flora.setFocus(atX, atZ, above);
+      flora.work(FLORA_BUDGET_MS);
       for (const s of settlements) {
         if (!s.people || !s.people.group.visible) continue;
         // Where it is being watched from, so the crowd can draw the
@@ -771,6 +839,10 @@ export function createPlanet({ seed = 20260827 } = {}) {
       settlements,
       /** What building the ground cost last frame, and what is left. */
       get build() { return { ms: +buildMs.toFixed(2), queued: queue.length }; },
+      /** The trees, rocks and grass: what is standing and what it cost. */
+      flora: flora.info,
+      /** How much clear air hides the flora. */
+      floraCeiling: FLORA_CEILING,
       reach: WORLD_REACH,
     },
   };

@@ -417,6 +417,13 @@ export function createSettlement(place, x, z, level) {
     z,
     level,
     radius: place.r,
+    /**
+     * How far the paving reaches. The capital is laid on a disc of
+     * concrete (see the `paving` cylinder above) and nothing grows
+     * through concrete; a village is built on bare ground, so grass
+     * comes right up to its walls.
+     */
+    paved: place.kind === 'capital' ? place.r * 0.86 : 0,
     /** Landing pads, in world metres. Empty for a village. */
     pads: pads.map((p) => ({ x: p.x + x, z: p.z + z, r: p.r })),
     /** Shops, and where each keeper stands, in world metres. */

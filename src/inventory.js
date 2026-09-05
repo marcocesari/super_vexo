@@ -36,7 +36,9 @@ const BUTTONS_A = 0;
 const BUTTONS_L1 = 4;
 const BUTTONS_R1 = 5;
 
-export function createInventory({ renderer, input, saves = null, tablet = null }) {
+export function createInventory({
+  renderer, input, saves = null, tablet = null, onSetUpController = null,
+}) {
   // --- The panel ---------------------------------------------------------------
   const root = document.createElement('div');
   root.id = 'inventory';
@@ -52,6 +54,8 @@ export function createInventory({ renderer, input, saves = null, tablet = null }
         <div class="inventory__system" data-system hidden>
           <button class="inventory__save" data-save>${strings.inventory.save}</button>
           <p class="inventory__saved" data-saved></p>
+          <button class="inventory__controller" data-controller>${strings.inventory.controller}</button>
+          <p class="inventory__saved" data-pad></p>
         </div>
         <p class="screen-card__hint">${strings.inventory.hint}</p>
       </div>
@@ -67,6 +71,8 @@ export function createInventory({ renderer, input, saves = null, tablet = null }
   const tabletEl = root.querySelector('[data-tablet]');
   const saveBtn = root.querySelector('[data-save]');
   const savedEl = root.querySelector('[data-saved]');
+  const controllerBtn = root.querySelector('[data-controller]');
+  const padEl = root.querySelector('[data-pad]');
   const figureEl = root.querySelector('.inventory__figure');
 
   // The row. System is last on purpose — see the note at the top.
@@ -179,6 +185,7 @@ export function createInventory({ renderer, input, saves = null, tablet = null }
     tabletEl.hidden = page !== 'tablet';
     if (page === 'system') {
       savedEl.textContent = savedNote();
+      padEl.textContent = padNote();
       return;
     }
     if (page === 'tablet') return;
@@ -211,6 +218,23 @@ export function createInventory({ renderer, input, saves = null, tablet = null }
       ? strings.inventory.savedSecondsAgo
       : strings.inventory.savedMinutesAgo.replace('{n}', String(mins));
   }
+
+  /**
+   * What controller the game is reading, and whether it thinks it knows
+   * where the sticks are. Worth saying out loud on the same page as the
+   * setup button: a player who is here because a stick does nothing
+   * wants to know the game can see the pad at all.
+   */
+  function padNote() {
+    const pad = input.gamepad;
+    if (!pad.padId) return strings.inventory.controllerNone;
+    const line = pad.isCalibrated
+      ? strings.inventory.controllerCalibrated
+      : (pad.isStandard ? strings.inventory.controllerStandard : strings.inventory.controllerUnknown);
+    return line.replace('{id}', pad.padId);
+  }
+
+  controllerBtn.addEventListener('click', () => { onSetUpController?.(); });
 
   saveBtn.addEventListener('click', () => {
     const ok = saves?.saveManual();
@@ -273,6 +297,14 @@ export function createInventory({ renderer, input, saves = null, tablet = null }
           && input.gamepad.consumeJustPressed(BUTTONS_A)) {
         const ok = saves?.saveManual();
         savedEl.textContent = ok ? strings.inventory.savedJustNow : strings.inventory.saveFailed;
+      }
+
+      // A pad only becomes visible to the browser once a button on it
+      // is pressed, which may well happen while this page is open — so
+      // the line about it is re-read rather than drawn once.
+      if (TABS[tab].id === 'system') {
+        const note = padNote();
+        if (note !== padEl.textContent) padEl.textContent = note;
       }
 
       const turn = stick || keys;

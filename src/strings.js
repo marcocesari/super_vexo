@@ -122,6 +122,42 @@ export const strings = {
     saveFailed: "Couldn't save — this browser won't let the game store anything.",
     starterGun: 'Sidearm',
     starterGunNote: 'Equipped',
+    controller: 'SET UP CONTROLLER',
+    controllerNone: 'No controller connected.',
+    controllerStandard: 'Controller: {id} — standard layout.',
+    controllerCalibrated: 'Controller: {id} — sticks taught to the game.',
+    controllerUnknown: 'Controller: {id} — an unfamiliar layout.',
+  },
+
+  // Teaching the game an unfamiliar controller (see padSetup.js).
+  padSetup: {
+    title: 'CONTROLLER SETUP',
+    intro: 'This controller does not lay its sticks out the way the game expects, so show it where they are. Four pushes.',
+    neutral: 'Hands off both sticks for a moment…',
+    prompts: {
+      throttle: 'Push the stick you FLY with — usually the left — FORWARD, away from you.',
+      yaw: 'Now push that same stick LEFT.',
+      lookX: 'Push the stick you LOOK around with — usually the right — to the RIGHT.',
+      lookY: 'And push that same stick FORWARD.',
+    },
+    labels: {
+      throttle: 'Fly forward',
+      yaw: 'Turn left',
+      lookX: 'Look right',
+      lookY: 'Look up',
+    },
+    hold: 'Push it and hold it for a moment.',
+    release: 'Let it come back to the middle.',
+    waiting: '—',
+    axis: 'axis {n} {dir}',
+    done: 'That is the lot. Push both sticks about — the bars should follow.',
+    saved: 'Remembered for this controller.',
+    saveFailed: "Set up, but this browser won't let the game remember it.",
+    skipStep: 'SKIP THIS ONE',
+    cancel: 'NOT NOW',
+    close: 'DONE',
+    hint: 'Esc / any button — skip a step · click NOT NOW to leave the sticks alone',
+    noPad: 'No controller connected. Plug one in, then press a button on it.',
   },
 
   hud: {

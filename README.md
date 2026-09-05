@@ -100,6 +100,31 @@ Then open http://localhost:5173.
   the face — so you can see it from any angle
 - **D-pad** — pitch (up / down) and roll (left / right)
 
+**If a pad's sticks do nothing**, that is not a mystery and there is a screen
+for it. The Web Gamepad API promises a *standard mapping* — sticks on axes 0
+to 3, buttons in a known order — and plenty of desktop USB and Bluetooth pads
+promise nothing of the sort: they report `mapping: ''` and put their sticks
+wherever the manufacturer felt like. On one of those, pushing the stick moves
+an axis nobody is reading, and if a trigger happens to sit in the throttle's
+slot the ship flies off on its own, because a trigger rests at −1 and −1 is
+full ahead.
+
+So the game asks. Plug in a pad it does not recognise and it offers a
+**controller setup**, unprompted — because a player holding a dead stick has no
+reason to go hunting through menus for the cure. Four pushes: fly forward, turn
+left, look right, look up. It watches which axis actually moved and which way,
+learns where each axis *rests* first so a trigger is never mistaken for a stick
+held down, and finishes with four live bars so you can see the sticks working
+rather than take it on trust. What it learns is stored against that
+controller's id, so it is asked once per controller and never again — and "not
+now" is an answer it also remembers. It is always available afterwards from the
+inventory's **System** tab, next to Save, which also names whichever pad the
+game can currently see.
+
+```bash
+npm run smoke:pad        # an awkward pad, taught and remembered
+```
+
 **Gyroscope** does two different jobs on a phone, and they work differently on
 purpose.
 
@@ -312,6 +337,56 @@ npm run smoke:world      # holes, overlap, and the cost of building ground
 `npm run dev` and open
 [/tools/world-preview.html](http://localhost:5173/tools/world-preview.html)
 — drag to look, W and S to fly, Shift to go faster.
+
+### What grows on it
+
+The world had biomes called forest and savanna and dry grassland long
+before anything grew in any of them, and that is fine from a ship at two
+hundred metres and obviously wrong the moment you climb down a ladder.
+Now trees, boulders and grass stand on it — three hundred metres of
+trees, two hundred of rocks, forty of grass, scattered around whoever is
+looking.
+
+There is no list of trees anywhere: a continent 130 km across would need
+millions of them. The ground is cut into patches, and a patch's contents
+are worked out from its own coordinates the moment it comes into range,
+so **the wood you walk away from is the same wood when you come back** —
+and what is actually stored is only what is in sight, a couple of
+thousand instances packed into the slots of six instanced meshes and
+freed again as the patch behind you drops out of range.
+
+What grows where is the obvious rules, plainly stated: nothing in the
+sea, on a snowfield, on a salt pan or a dune; nothing on rock too steep
+to hold soil; spruce where it is cold or high, round-headed trees where
+it is warm and wet, flat-crowned acacias in the dry grassland, dead
+scrub in the stone deserts, boulders wherever the ground is broken.
+Woods have shapes because the density is multiplied by a smooth noise —
+scatter trees on a flat probability and you get a plantation, an even
+stipple of trees with no edges and no clearings.
+
+The expensive question in this world is not how many triangles but *how
+high is the ground here* — the same lesson the crowd in town taught. So
+the climate is asked once per **patch**, not once per plant: biomes are
+kilometres across and a 70 m patch sits comfortably inside one. Only the
+height is asked per plant, because that is the one thing that changes
+from one metre to the next. A whole forest is about 45,000 triangles,
+against a city's 116,000, and it builds at a millisecond and a half a
+frame.
+
+Trunks and boulders are solid — walking through a tree is the first
+thing anybody tries — and grass and scrub deliberately are not, because
+being brought to a stop by a tuft of grass is worse than walking through
+one. The ship won't set down on a tree either. Nothing grows through
+Estronic's concrete or inside anybody's house, but the countryside now
+starts at the last wall rather than a kilometre past the town's name.
+
+From more than 320 m up none of it is drawn at all: it is a texture from
+there, and building it while you fly over at 280 m/s is work nobody
+sees.
+
+```bash
+npm run smoke:flora      # what grows where, the same wood twice, solid trunks
+```
 
 ## The map
 

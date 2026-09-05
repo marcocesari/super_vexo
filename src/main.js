@@ -44,6 +44,7 @@ import { createInventory } from './inventory.js';
 import { createSaves } from './save.js';
 import { createGameOver } from './gameOver.js';
 import { createMap } from './map.js';
+import { createPadSetup } from './padSetup.js';
 import { createDialogue } from './dialogue.js';
 import { createPerks } from './perks.js';
 import { createShop } from './shop.js';
@@ -353,9 +354,22 @@ const gameOver = createGameOver({
 // anyone presses M.
 const worldMap = createMap({ world: surface.world });
 
+// Teaching the game an unfamiliar controller. Created before the
+// inventory because the System tab holds the button that opens it.
+const padSetup = createPadSetup({ input });
+
 // The inventory: what he is carrying, the Tablet, and Vexo himself to
 // turn round.
-const inventory = createInventory({ renderer, input, saves, tablet: hud.element });
+const inventory = createInventory({
+  renderer,
+  input,
+  saves,
+  tablet: hud.element,
+  onSetUpController: () => {
+    inventory.close();
+    padSetup.open();
+  },
+});
 inventory.setItems([
   { name: strings.inventory.starterGun, note: strings.inventory.starterGunNote, held: true },
 ]);
@@ -477,6 +491,30 @@ function frame(now) {
     // but only applied to the ship further down, when flight input is
     // actually allowed.
     const axes = input.sample();
+
+    // A controller the game cannot read gets the setup screen offered
+    // to it once, unasked. The bug it fixes is a stick that does
+    // nothing at all, and nobody holding a dead stick goes looking
+    // through menus for the cure.
+    if (!padSetup.isOpen && !gameOver.isOpen && input.gamepad.needsSetup) {
+      padSetup.open();
+    }
+    // While it is up it owns every button and every key: it is the
+    // screen you are on BECAUSE the controls are not to be trusted, so
+    // a stray press must not be toggling the map behind it. Draining
+    // both edge sets here — after the screen has had first refusal on
+    // them — leaves the handlers below with nothing to fire on, and
+    // zeroing the axes keeps the ship still while the sticks are being
+    // waved about.
+    if (padSetup.isOpen) {
+      padSetup.update(dt);
+      input.gamepad.consumeAnyJustPressed();
+      input.keyboard.consumeAnyJustPressed();
+      axes.throttle = 0; axes.yaw = 0; axes.pitch = 0; axes.roll = 0;
+      axes.lookX = 0; axes.lookY = 0; axes.lookTurnX = 0; axes.lookTurnY = 0;
+      axes.stickYaw = 0; axes.stickThrottle = 0;
+    }
+
     // The camera gimbal is live whenever flight is: not on warp rails,
     // not behind a menu.
     const canLook = !fastTravel.suppressInput && !missionScreens.isOpen() && !worldMap.isOpen;
@@ -561,8 +599,9 @@ function frame(now) {
     // The town's crowd is drawn around whoever is there to see it: the
     // walker while he is out, and the ship the rest of the time.
     if (surface.active) {
-      if (onFoot.active) surface.watchFrom(onFoot.position.x, onFoot.position.z);
-      else surface.watchFrom(null, null);
+      if (onFoot.active) {
+        surface.watchFrom(onFoot.position.x, onFoot.position.z, onFoot.position.y);
+      } else surface.watchFrom(null, null, null);
     }
 
     // GAME OVER takes everything: no flying, no walking, no menus.
@@ -764,7 +803,7 @@ if (import.meta.env.DEV) {
     renderer, camera,
     rovers: roverApi, mission, upgrades, missionScreens, surface, frameScaler,
     characterViewer, onFoot, monsters, tracers, inventory, saves, gameOver, dialogue,
-    perks, shop,
+    perks, shop, padSetup, input,
     map: worldMap,
     shipConfig, shipConfigDefaults,
     resetGame,

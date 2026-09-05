@@ -25,14 +25,24 @@
 //   8=Select, 9=Start, 10=L3, 11=R3, 12=Up, 13=Down, 14=Left, 15=Right.
 // The bridge fakes this exactly; modern Xbox/DualSense/Switch pads on
 // Chrome also report `standard`.
+//
+// A pad that reports anything else is not guaranteed to have its sticks
+// on those axes at all, and on one of those the bindings below read an
+// axis nothing is connected to. `padCalibration.js` asks the player to
+// push each stick once and replaces them; see the setup screen in
+// `src/padSetup.js`.
+import { loadPad } from './padCalibration.js';
 
 export const DEAD_ZONE = 0.15;
 
+// `rest` is where the axis sits untouched — 0 for a stick. A calibrated
+// pad can say otherwise (a trigger sits at -1), and everything is read
+// as a deviation from it. See `padCalibration.js`.
 export const AXIS_BINDINGS = {
-  throttle: { axisIndex: 1, sign: -1 }, // LY: up    → forward thrust
-  yaw:      { axisIndex: 0, sign: -1 }, // LX: left  → +yaw (turn nose left)
-  lookX:    { axisIndex: 2, sign: 1 },  // RX: right → swing the view right
-  lookY:    { axisIndex: 3, sign: -1 }, // RY: up    → swing the view up
+  throttle: { axisIndex: 1, sign: -1, rest: 0 }, // LY: up    → forward thrust
+  yaw:      { axisIndex: 0, sign: -1, rest: 0 }, // LX: left  → +yaw (turn nose left)
+  lookX:    { axisIndex: 2, sign: 1, rest: 0 },  // RX: right → swing the view right
+  lookY:    { axisIndex: 3, sign: -1, rest: 0 }, // RY: up    → swing the view up
 };
 
 // Named button slots used by main.js — these are stable indices, the
@@ -53,12 +63,49 @@ function applyDeadzone(value, dz = DEAD_ZONE) {
 }
 
 function readBound(pad, binding) {
-  return binding.sign * applyDeadzone(pad.axes[binding.axisIndex] ?? 0);
+  const raw = pad.axes[binding.axisIndex] ?? 0;
+  const rest = binding.rest ?? 0;
+  let dev = raw - rest;
+  // Rescale so a full push still reads 1 however far from the middle
+  // the axis rests: an axis sitting at -1 has twice as far to travel
+  // upwards as a centred one, and half as far down.
+  if (rest !== 0) {
+    const span = dev >= 0 ? 1 - rest : 1 + rest;
+    if (span > 1e-3) dev /= span;
+    if (dev > 1) dev = 1; else if (dev < -1) dev = -1;
+  }
+  return binding.sign * applyDeadzone(dev);
 }
 
 export function createGamepad() {
   let active = false; // any axis or button outside deadzone this frame
   let warnedNonStandard = false;
+
+  // Which pad we are reading, and what we have been told about it. Both
+  // are re-read whenever the id changes, so unplugging one controller
+  // and plugging in another picks up that one's calibration.
+  let padId = null;
+  let padStandard = true;
+  let bindings = AXIS_BINDINGS;
+  let calibrated = false;
+  let known = null;      // the stored entry: bindings, or `skipped`
+  let rawAxes = [];
+
+  function adoptPad(pad) {
+    if (pad.id === padId) return;
+    padId = pad.id;
+    padStandard = pad.mapping === 'standard';
+    known = loadPad(padId);
+    if (known?.bindings) {
+      // Only the axes the player actually answered — a setup they
+      // stepped halfway through leaves the rest on their defaults.
+      bindings = { ...AXIS_BINDINGS, ...known.bindings };
+      calibrated = true;
+    } else {
+      bindings = AXIS_BINDINGS;
+      calibrated = false;
+    }
+  }
 
   // Button edge detection: track previous-frame pressed state so we can
   // synthesise "justPressed" events from the polled Gamepad API (which,
@@ -113,6 +160,62 @@ export function createGamepad() {
     /** True if a gamepad produced any signal (stick or button) this frame. */
     get active() { return active; },
 
+    /** The connected pad's id, or null when there isn't one. */
+    get padId() { return padId; },
+
+    /** True when the pad promises the standard axis and button layout. */
+    get isStandard() { return padStandard; },
+
+    /** True when this pad's sticks were taught to the game. */
+    get isCalibrated() { return calibrated; },
+
+    /** Whatever the sticks are being read through right now. */
+    get bindings() { return bindings; },
+
+    /**
+     * A pad we cannot trust and have never asked about. The setup
+     * screen offers itself once on this, and never again for a pad the
+     * player has calibrated or told to leave alone.
+     */
+    get needsSetup() {
+      return !!padId && !padStandard && !known;
+    },
+
+    /** The pad's axes exactly as reported, for the setup screen. */
+    rawAxes() { return rawAxes; },
+
+    /**
+     * Read the sticks through a set of bindings — used by the setup
+     * screen's "try it" readout, which has to show the NEW mapping
+     * before it is saved.
+     */
+    readThrough(custom) {
+      const pad = findFirstConnected();
+      if (!pad) return { throttle: 0, yaw: 0, lookX: 0, lookY: 0 };
+      const b = { ...AXIS_BINDINGS, ...custom };
+      return {
+        throttle: readBound(pad, b.throttle),
+        yaw: readBound(pad, b.yaw),
+        lookX: readBound(pad, b.lookX),
+        lookY: readBound(pad, b.lookY),
+      };
+    },
+
+    /**
+     * Take a finished calibration into use at once, without waiting for
+     * the pad to be unplugged and back in again.
+     */
+    useCalibration(newBindings) {
+      bindings = { ...AXIS_BINDINGS, ...newBindings };
+      calibrated = true;
+      known = { bindings: newBindings };
+    },
+
+    /** Remember that the player declined the setup for this pad. */
+    noteSetupDeclined() {
+      known = { skipped: true };
+    },
+
     /** Read normalized axes from the gamepad. Returns null if none. */
     sample() {
       const pad = findFirstConnected();
@@ -121,24 +224,31 @@ export function createGamepad() {
         justPressed.clear();
         pressedNow.clear();
         wasPressed.clear();
+        padId = null;
+        rawAxes = [];
         return null;
       }
 
-      if (!warnedNonStandard && pad.mapping !== 'standard') {
+      adoptPad(pad);
+      rawAxes = pad.axes ? Array.from(pad.axes, (v) => v ?? 0) : [];
+
+      if (!warnedNonStandard && !padStandard) {
         warnedNonStandard = true;
         console.info(
           '[input/gamepad] Connected pad reports non-standard mapping',
-          `(id="${pad.id}"). Throttle/look may not be on axes 1/2/3 as expected.`,
-          'See BACKLOG.md for the calibration follow-up.',
+          `(id="${pad.id}"). Its sticks may not be on axes 0-3 as expected;`,
+          calibrated
+            ? 'using this pad\'s saved calibration.'
+            : 'the controller setup screen can teach the game where they are.',
         );
       }
 
       refreshButtons(pad);
 
-      const yaw = readBound(pad, AXIS_BINDINGS.yaw);
-      const throttle = readBound(pad, AXIS_BINDINGS.throttle);
-      const lookX = readBound(pad, AXIS_BINDINGS.lookX);
-      const lookY = readBound(pad, AXIS_BINDINGS.lookY);
+      const yaw = readBound(pad, bindings.yaw);
+      const throttle = readBound(pad, bindings.throttle);
+      const lookX = readBound(pad, bindings.lookX);
+      const lookY = readBound(pad, bindings.lookY);
 
       // Pitch and roll moved off the right stick when it became the
       // camera gimbal, so the D-pad flies them: Up/Down = nose, Left/

@@ -1042,3 +1042,110 @@ canvas {
   color: #6aa3d1;
   opacity: 0.75;
 }
+
+/* --- Controller setup ------------------------------------------------------
+   The screen that asks an unfamiliar pad where its sticks are. Laid out
+   as a card like the other overlays, with the four answers listed under
+   the question so the player can see how far through they are. */
+.pad-setup { text-align: left; }
+.pad-setup__id {
+  margin: 0 0 0.8rem 0;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6aa3d1;
+  opacity: 0.8;
+  word-break: break-word;
+}
+.pad-setup__prompt {
+  margin: 0 0 0.4rem 0;
+  font-size: 1.05rem;
+  line-height: 1.45;
+  color: #eaf4ff;
+}
+.pad-setup__aside {
+  margin: 0 0 1rem 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: #9fc6e7;
+  min-height: 1.2em;
+}
+.pad-setup__steps { list-style: none; margin: 0; padding: 0; }
+.pad-setup__step {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  font-size: 0.9rem;
+  color: #7fb0d8;
+}
+/* The one being asked for right now, so a glance finds it. */
+.pad-setup__step--now {
+  background: rgba(30, 70, 110, 0.45);
+  color: #eaf4ff;
+}
+.pad-setup__step--done { color: #9effd0; }
+.pad-setup__step-value {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+/* The live readout at the end: proof, rather than a promise, that the
+   sticks now do what they say. Each bar grows from the middle, because
+   these axes go both ways. */
+.pad-setup__bars { margin-top: 0.9rem; display: grid; gap: 6px; }
+/* A class that sets `display` beats the browser's own `[hidden]` rule,
+   so hiding it from JS does nothing without this. */
+.pad-setup__bars[hidden] { display: none; }
+.pad-setup__bar { display: flex; align-items: center; gap: 10px; }
+.pad-setup__bar-label {
+  flex: 0 0 92px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #6aa3d1;
+}
+.pad-setup__bar-track {
+  position: relative;
+  flex: 1 1 auto;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(10, 26, 42, 0.9);
+  border: 1px solid rgba(80, 140, 200, 0.25);
+  overflow: hidden;
+}
+/* The centre line, so zero is somewhere you can see rather than infer. */
+.pad-setup__bar-track::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(120, 180, 240, 0.35);
+}
+.pad-setup__bar-track i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  background: linear-gradient(90deg, #2f7fd0, #9effd0);
+}
+.pad-setup__bar-fill--neg { background: linear-gradient(90deg, #9effd0, #2f7fd0); }
+
+.inventory__controller {
+  font: inherit;
+  font-size: 0.85rem;
+  letter-spacing: 0.16em;
+  padding: 0.7rem 1.4rem;
+  color: #eaf4ff;
+  background: rgba(12, 28, 48, 0.85);
+  border: 1px solid rgba(120, 180, 240, 0.4);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.inventory__controller:hover { background: rgba(20, 44, 72, 0.9); }

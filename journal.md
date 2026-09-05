@@ -2,6 +2,103 @@
 
 Most recent entries on top.
 
+## 2026-09-05 — Two things that had been left standing
+
+Marco asked what had been stopped and never finished. Two things had,
+and both are in.
+
+### The controller that does nothing
+
+- This is the other half of the "nothing works" report from the 4th, and
+  it had been sitting in BACKLOG.md since M2. `gamepad.js` reads the
+  sticks off fixed axis numbers because that is what the Web Gamepad
+  API's standard mapping promises and what the iOS wrapper synthesises.
+  **Marco's own USB pad reports `mapping: ''`** with its sticks
+  somewhere else entirely, which is exactly a stick that does nothing.
+  All the game did about it was log one `console.info`.
+- So it asks now. Four pushes — fly forward, turn left, look right, look
+  up — watching which axis actually moved and which way, and the same
+  `{axisIndex, sign}` records the built-in bindings already were.
+- **The resting value is the part I would have got wrong.** A stick sits
+  at 0 untouched; a trigger sits at −1. Read a trigger through the
+  throttle's binding and the ship flies at full ahead for ever — the
+  failure is not just a dead control but a runaway one. Every axis is
+  measured as a deviation from where it was seen to rest, and rescaled
+  so a full push still reads 1 whatever it rests at. The setup starts by
+  watching an untouched pad for half a second to learn those.
+- **It offers itself.** Nobody holding a dead stick goes looking through
+  menus for the cure. Say "not now" and that is remembered too, against
+  that pad's id, so it never asks about that controller again. It stays
+  in the System tab beside Save, which now also names whatever pad the
+  game can see — a player whose stick does nothing wants to know the
+  game can see the pad at all.
+- Nothing in the screen is driven by the sticks, for the obvious reason.
+  Esc, any pad button, or the mouse.
+- `npm run smoke:pad` drives a deliberately awkward pad: `mapping: ''`,
+  sticks on axes 3, 4, 0 and 5, and a trigger resting at −1 on axis 1.
+  It checks the screen offers itself, finds the four axes, leaves the
+  trigger alone, remembers across a reload, asks again for a different
+  controller, and that the map zoom — the thing Marco could not make
+  work — now moves on that pad's stick.
+
+### Nothing grew on the world
+
+- Left as "still to come" the day the new world landed: *trees, rocks
+  and grass are the next piece*. The world has had biomes called forest
+  and savanna since then, each one a differently coloured floor.
+- **There is no list of trees.** A continent 130 km across would want
+  millions. The ground is cut into patches and a patch's contents are
+  worked out from its own coordinates when it comes into range, so the
+  wood you walk away from is the same wood when you come back; only what
+  is in sight is stored, a couple of thousand instances in six meshes,
+  freed as the patch behind you drops out.
+- **The climate is asked once per patch, not once per plant.** The
+  expensive question in this world is not triangles, it is *how high is
+  the ground here* — the same lesson the crowd taught. Biomes are
+  kilometres across and a 70 m patch is well inside one; only the height
+  changes from metre to metre, so only the height is asked per plant.
+- **Clumping is what stops it looking like a plantation.** Density
+  multiplied by a smooth noise gives a wood edges and clearings; a flat
+  probability gives an even stipple of trees, which is what a plantation
+  is.
+- **The grass was wrong twice, in the same direction both times.** At a
+  third of a metre, scattered every three, it read as specks of dirt; so
+  I made it half a metre and it read as knee-high shards standing about
+  in a bare field. Grass is SMALL and there is a LOT of it: the blades
+  came down to a quarter of a metre and the scatter came in to two.
+- **A tree through a roof is nobody's idea of scenery** — but blocking
+  the whole of Estronic's disc was worse. Its radius is 1800 m and the
+  player lands at its shipport, so the first version left him with a
+  mile of bare ground in every direction. It is the *concrete and the
+  buildings* that stop things growing now, not the town's name, so the
+  countryside starts at the last wall.
+- Trunks and boulders are solid; grass and scrub are not, because being
+  stopped dead by a tuft of grass is worse than walking through one.
+  **Two bugs came out of making them solid.** Standing dead-centre in a
+  trunk there is no direction to be pushed in, and dividing by a tiny
+  number gave zero rather than a big push — so the one place you could
+  stand inside a tree was the middle of it. And `smoke:onfoot` started
+  failing its sprint: it picks "open ground" with `isClear`, which knew
+  about buildings and slope and not about trees, so it was timing a
+  sprint into a trunk. `isClear` asks about what is growing now, which
+  also stops the ship setting down on a tree.
+- Above 320 m none of it is drawn: it is a texture from up there, and
+  building it while you fly over at 280 m/s is work nobody sees.
+- A whole forest is about 45,000 triangles against a city's 116,000, and
+  it builds at a millisecond and a half a frame.
+- All twenty suites green, plus `smoke:flora` and `smoke:pad`.
+
+### Still not done, and it wants a decision rather than code
+
+- The rest of that old sentence — *and then the rovers and the missions
+  want spreading across the world the way the camps now are* — is still
+  true. Everything the player does on the ground grew up here while the
+  one mission in the game stayed in orbit around Mars. What the ground
+  missions should BE is a design question, and the thing that made me
+  write that sentence (the only money in the game being in space) was
+  already fixed another way when monsters started paying a bounty. So it
+  is parked in BACKLOG.md for Marco rather than guessed at.
+
 ## 2026-09-04 — "Nothing works"
 
 - Marco, on the map zoom: "Nothing works, when I pull the joystick up or

@@ -23,6 +23,8 @@
     "smoke:gameover": "node tools/smoke-gameover.mjs",
     "smoke:world": "node tools/smoke-world.mjs",
     "smoke:map": "node tools/smoke-map.mjs",
+    "smoke:pad": "node tools/smoke-pad.mjs",
+    "smoke:flora": "node tools/smoke-flora.mjs",
     "smoke:towns": "node tools/smoke-towns.mjs",
     "smoke:shops": "node tools/smoke-shops.mjs",
     "smoke:cinematic": "node tools/smoke-cinematic.mjs",

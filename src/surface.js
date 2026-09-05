@@ -135,6 +135,7 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
   // is drawn around whoever is there to see it.
   let watchX = null;
   let watchZ = null;
+  let watchY = null;
   let bannerTimer = 0;
   const spaceReturn = new THREE.Vector3();
   const savedBackground = scene.background;
@@ -261,9 +262,12 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
 
   return {
     /** Watch from here instead of from the ship. Null goes back to it. */
-    watchFrom(x, z) {
+    watchFrom(x, z, y = null) {
       watchX = x;
       watchZ = z;
+      // How high the watcher is matters as well as where: what grows on
+      // the ground is not drawn from up in the air (see world/flora.js).
+      watchY = y;
     },
 
     get active() { return active; },
@@ -339,7 +343,8 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
       // a long way from where the ship is parked.
       world.update(dt,
         watchX ?? ship.mesh.position.x - SURFACE_ORIGIN.x,
-        watchZ ?? ship.mesh.position.z - SURFACE_ORIGIN.z);
+        watchZ ?? ship.mesh.position.z - SURFACE_ORIGIN.z,
+        watchY ?? ship.mesh.position.y - SURFACE_ORIGIN.y);
       // The ground travels with the ship. Only the tiles that changed
       // place are rebuilt, so this is nearly free while hovering and
       // costs a few tiles a second at full speed.
