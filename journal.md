@@ -2,6 +2,36 @@
 
 Most recent entries on top.
 
+## 2026-09-12 — Bokoblins die the way TotK's do
+
+- Marco: *"When the player kills a monster, the monster should do a
+  small death animation, turn black and explode into purple smoke and
+  leave an eyeball and its horn, look up in totk and see how it works."*
+- Before this, the last shot tipped the body onto its face and left it
+  there. Now (`monsters.js`, "Dying"): three beats on the monster's own
+  clock — crumple to 0.5 s with the arms flung up, the colour drained
+  out of every material from 0.15 s to 0.6 s (`bokoblin.shade(k)`, each
+  material remembering the colour it was born with), the black cut-out
+  HELD to 0.82 s because TotK holds it, then the body hidden and
+  eighteen spheres of two purples thrown out from its centre, growing
+  and thinning for a second. The horn and an eyeball are tossed up out
+  of the smoke, fall under gravity, land, and lie there turning.
+- Walking within 1.15 m takes them: a new pouch (`materials.js`, a
+  ledger and nothing else, kept apart from `perks.js` because a perk is
+  bought once and changes him and a material is picked up in dozens
+  and changes nothing), a line at the top-right (`onFoot.notice`), a
+  chime, a count on the Items tab, and a field in the save file.
+- `kill(m)` — the restore path — hides the body outright with no
+  smoke and no parts: a monster killed in a session that is over has
+  already dropped what it was going to.
+- Checked by freezing `requestAnimationFrame` at set times after the
+  shot and photographing the frozen canvas, since a screenshot takes
+  longer than the whole death. The first pass read violet rather than
+  black (emissive glimmer at 0.8 → 0.35) and had no held beat; the
+  horn also flew two metres (lateral 1.4 → 0.9 m/s).
+- `smoke:monsters` 23/23 with seven new checks; inventory, game-over
+  and on-foot suites still green.
+
 ## 2026-09-12 — The inventory, driven the way TotK's is
 
 - Marco: *"Add the section 'items' in the inventory, where the player can

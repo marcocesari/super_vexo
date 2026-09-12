@@ -209,6 +209,25 @@ export function createBokoblin({ tier = 'red' } = {}) {
     club.add(new THREE.Mesh(mergeGeometries(parts), clubMat));
   }
 
+  // --- Dying --------------------------------------------------------------------
+  // TotK's monsters go to SHADOW before they go to smoke: the colour
+  // drains out of the body until it is a black cut-out with a violet
+  // glimmer, and only then does it burst. Each material remembers the
+  // colour it was born with so it can be drained and put back — the
+  // camps are re-pitched around the player and a monster dies many
+  // times over a session.
+  const materials = [skinMat, darkMat, hornMat, bellyMat, clubMat];
+  for (const mat of materials) mat.userData.base = mat.color.clone();
+  const SHADOW = new THREE.Color(0x07040a);
+  const GLIMMER = new THREE.Color(0x3a1060);
+  /** @param {number} k  0 is himself, 1 is a black silhouette. */
+  function shade(k) {
+    for (const mat of materials) {
+      mat.color.copy(mat.userData.base).lerp(SHADOW, k);
+      mat.emissive.copy(GLIMMER).multiplyScalar(k * 0.35);
+    }
+  }
+
   return {
     group,
     body,
@@ -218,5 +237,6 @@ export function createBokoblin({ tier = 'red' } = {}) {
     tier,
     height: BOKO_HEIGHT,
     maxHp: spec.hp,
+    shade,
   };
 }

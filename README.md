@@ -748,6 +748,18 @@ four seconds, and that isn't a fight, it's a mob.
 
 Lose all five hearts and he goes down properly — see *Game over*, below.
 
+**Dying, their side.** The last shot doesn't leave a body. A bokoblin dies the
+way *Tears of the Kingdom*'s do, in three beats on one clock: it flails and
+crumples onto its face (half a second), the colour drains out of it until it's a
+black cut-out with a faint violet glimmer, which is held for a beat, and then
+the cut-out bursts into a puff of purple smoke that thins over the next second —
+leaving its **horn and an eyeball** lying where it stood, turning slowly so the
+eye finds them. Walk over them and they're yours: a line pops up at the
+top-right (*Bokoblin horn ×3*), a chime plays, and they're counted on the
+inventory's **Items** tab and kept in the save file. What they're *for* is a
+later session's question — for now, like TotK's monster parts on a first
+playthrough, you collect them because they're there.
+
 The pistol itself is `src/world/pistol.js`, built to a real compact pistol's
 proportions — 181 mm long, 130 mm tall, 32 mm wide, with a 99 mm barrel — and
 its parts carry their real names: slide, serrations, ejection port, barrel,
@@ -764,7 +776,7 @@ circling behind you needs turning to — but lining up a moving target with a
 thumbstick on a phone is more dexterity than this game should ask for.
 
 ```bash
-npm run smoke:monsters   # camps, being spotted, being hit, shooting back, losing
+npm run smoke:monsters   # camps, being spotted, being hit, shooting back, dying, losing
 ```
 
 ## Game over, and saving

@@ -53,6 +53,7 @@ function write(slots) {
  */
 export function createSaves({
   ship, surface, onFoot, monsters, mission, upgrades, rovers, perks = null,
+  materials = null,
 }) {
   /** Everything worth remembering, as JSON. */
   function snapshot(kind) {
@@ -79,6 +80,8 @@ export function createSaves({
       credits: mission.credits,
       // What has been bought in Estronic.
       perks: perks ? perks.snapshot() : null,
+      // And what the monsters have left him.
+      materials: materials ? materials.snapshot() : null,
       upgrades: upgrades.upgrades.filter((u) => u.bought).map((u) => u.id),
       rovers: rovers.rovers.map((r) => r.fixed),
     };
@@ -147,6 +150,7 @@ export function createSaves({
       mission.reset();
       mission.grantCredits(data.credits ?? 0);
       if (perks) perks.restore(data.perks);
+      if (materials) materials.restore(data.materials);
       upgrades.reset();
       for (const id of data.upgrades ?? []) upgrades.buyFree(id);
       return true;

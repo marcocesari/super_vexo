@@ -244,6 +244,16 @@ export function createOnFoot({
   prompt.hidden = true;
   document.body.appendChild(prompt);
 
+  // "Bokoblin horn ×3": what he just walked over, TotK's little line
+  // at the side of the screen. Its own element rather than the prompt
+  // above, which is busy saying what the button does.
+  const got = document.createElement('div');
+  got.id = 'foot-got';
+  got.hidden = true;
+  document.body.appendChild(got);
+  let gotT = 0;
+  const GOT_TIME = 1.8;
+
   const staminaWheel = createStaminaWheel();
   const hearts = createHearts();
   const _screen = new THREE.Vector3();
@@ -1096,6 +1106,13 @@ export function createOnFoot({
     get down() { return dying > 0 || down; },
     /** Where the monsters should hunt, or null if he is not out here. */
     get quarry() { return state === 'walk' && dying <= 0 ? foot : null; },
+
+    /** Say what he just picked up. */
+    notice(text) {
+      got.textContent = text;
+      got.hidden = false;
+      gotT = GOT_TIME;
+    },
     /** A club landed on him. */
     takeHit,
 
@@ -1106,6 +1123,10 @@ export function createOnFoot({
      * @param {{throttle: number, yaw: number}} axes  ignored during the cutscene
      */
     update(dt, axes) {
+      if (gotT > 0) {
+        gotT -= dt;
+        if (gotT <= 0) got.hidden = true;
+      }
       if (state === 'off') {
         // Anywhere over the town: offer the way out, and take it if
         // asked. `axes === null` means the stick belongs to something

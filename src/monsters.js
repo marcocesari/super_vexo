@@ -14,7 +14,7 @@
 //   chase  → runs him down at 4.5 m/s, between Vexo's jog and his sprint
 //   attack → in reach: winds up, swings, and hurts him if he is still there
 //   stagger→ took a bullet, reeling for a moment
-//   dead   → falls over and stays there
+//   dead   → dies the way TotK's do (see "Dying", below), and is gone
 //
 // The speed is the design. They are faster than a jog and slower than a
 // sprint, so outrunning them costs stamina and standing still does not
@@ -50,6 +50,21 @@ const SWING_S = 0.22;
 const RECOVER_S = 0.9;
 const STAGGER_S = 0.45;
 
+// Dying, the way Tears of the Kingdom does it. The last shot does not
+// leave a body on the ground: the monster crumples, the colour drains
+// out of it until it is a black cut-out with a violet glimmer, and the
+// cut-out bursts into a puff of purple smoke — which clears to show
+// what it left behind, its horn and an eyeball, lying where it stood
+// until somebody walks over them. Three beats, timed off one clock.
+const CRUMPLE_S = 0.5;              // shot → face down
+const SHADOW_FROM_S = 0.15;         // when the colour starts to go
+const SHADOW_BY_S = 0.6;            // black by here, and HELD a beat —
+const BURST_AT_S = 0.82;            // — before the smoke takes it
+const PUFF_S = 1.0;                 // and how long the smoke hangs
+const PUFF_N = 18;                  // spheres in a puff
+const DROP_GRAVITY = 9.8;
+const PICKUP_RANGE = 1.15;          // walk this close and it is his
+
 /**
  * @param {object} deps
  * @param {THREE.Scene} deps.scene
@@ -66,6 +81,173 @@ export function createMonsters({ scene, world, origin }) {
   });
   const woodMat = new THREE.MeshStandardMaterial({ color: 0x53381f, roughness: 0.95 });
   const crateMat = new THREE.MeshStandardMaterial({ color: 0x6d5433, roughness: 0.9 });
+
+  // --- Smoke and drops ----------------------------------------------------------
+  // Both share the monsters' group, so they come and go with the town.
+  // One sphere serves every puff; the two colours are cloned per puff
+  // so each can fade on its own clock.
+  const puffGeo = new THREE.SphereGeometry(1, 7, 5);
+  const puffBase = [
+    new THREE.MeshBasicMaterial({ color: 0x8a3ff0, transparent: true, depthWrite: false }),
+    new THREE.MeshBasicMaterial({ color: 0x2a1240, transparent: true, depthWrite: false }),
+  ];
+  // The parts. Bigger than the horn on his head and the eyes in it, or
+  // they would be lost in the grass — TotK's drops are the same, sized to
+  // be seen rather than to scale.
+  const dropMats = {
+    horn: new THREE.MeshStandardMaterial({ color: 0xe6dcc4, roughness: 0.5, metalness: 0.1 }),
+    eye: new THREE.MeshStandardMaterial({ color: 0xf3e9dc, roughness: 0.45 }),
+    pupil: new THREE.MeshStandardMaterial({ color: 0x14100e, roughness: 0.3 }),
+  };
+  const hornGeo = new THREE.ConeGeometry(0.06, 0.34, 7);
+  const eyeGeo = new THREE.SphereGeometry(0.085, 12, 10);
+  const pupilGeo = new THREE.SphereGeometry(0.038, 8, 6);
+  pupilGeo.scale(0.7, 1.25, 0.7);
+  pupilGeo.translate(0, 0, 0.072);
+
+  /** @type {{kind: string, camp: object, group: THREE.Group, vel: THREE.Vector3, ground: number, rest: number, landed: boolean, t: number}[]} */
+  const drops = [];
+  /** @type {{t: number, parts: {mesh: THREE.Mesh, vel: THREE.Vector3, grow: number}[], mats: THREE.Material[]}[]} */
+  const puffs = [];
+  let onPickup = () => {};
+
+  function makeDrop(kind) {
+    const g = new THREE.Group();
+    if (kind === 'horn') {
+      const mesh = new THREE.Mesh(hornGeo, dropMats.horn);
+      // Lying on its side, point up a little, the way a horn falls.
+      mesh.rotation.z = 1.15;
+      mesh.position.y = 0.06;
+      g.add(mesh);
+    } else {
+      g.add(new THREE.Mesh(eyeGeo, dropMats.eye));
+      g.add(new THREE.Mesh(pupilGeo, dropMats.pupil));
+    }
+    return g;
+  }
+
+  /** The smoke: a burst of spheres from the body's centre, rising and thinning. */
+  function puffAt(x, y, z, size) {
+    const mats = puffBase.map((m) => m.clone());
+    const parts = [];
+    for (let i = 0; i < PUFF_N; i++) {
+      const mesh = new THREE.Mesh(puffGeo, mats[i % 2]);
+      mesh.position.set(x, y, z);
+      const a = Math.random() * Math.PI * 2;
+      const up = Math.random() * 0.8 - 0.2;
+      const speed = (1.2 + Math.random() * 1.6) * size;
+      parts.push({
+        mesh,
+        vel: new THREE.Vector3(Math.sin(a) * speed, up * speed + 0.7, Math.cos(a) * speed),
+        grow: (0.2 + Math.random() * 0.32) * size,
+      });
+      mesh.scale.setScalar(0.08);
+      group.add(mesh);
+    }
+    puffs.push({ t: 0, parts, mats });
+  }
+
+  /** The parts, thrown up and out of the smoke, to land nearby. */
+  function dropParts(m) {
+    const size = m.boss ? 1.35 : 1;
+    const cx = m.pos.x + origin.x;
+    const cz = m.pos.y + origin.z;
+    const cy = groundAt(m.pos.x, m.pos.y) + BOKO_HEIGHT * 0.5 * size;
+    for (const kind of ['horn', 'eyeball']) {
+      const g = makeDrop(kind);
+      g.position.set(cx, cy, cz);
+      const a = Math.random() * Math.PI * 2;
+      drops.push({
+        kind, camp: m.camp, group: g,
+        vel: new THREE.Vector3(Math.sin(a) * 0.9, 2.4 + Math.random() * 0.7, Math.cos(a) * 0.9),
+        ground: 0, rest: kind === 'horn' ? 0.08 : 0.085, landed: false, t: 0,
+      });
+      group.add(g);
+    }
+  }
+
+  function clearDrops(camp = null) {
+    for (let i = drops.length - 1; i >= 0; i--) {
+      if (camp && drops[i].camp !== camp) continue;
+      group.remove(drops[i].group);
+      drops.splice(i, 1);
+    }
+  }
+
+  /** The three beats of a death, on the monster's own clock. */
+  function die(m, dt) {
+    const d = m.death;
+    d.t += dt;
+    if (d.burst) return;
+    const g = m.boko.group;
+    const k = Math.min(1, d.t / CRUMPLE_S);
+    const ease = k * k;
+    // A hop back off the shot, then over onto its face.
+    g.rotation.x = (-Math.PI / 2.2) * ease;
+    g.position.y = d.ground + 0.25 * ease + Math.sin(k * Math.PI) * 0.16;
+    // Arms flung up and out: a thing that is falling, not lying down.
+    for (const arm of m.boko.arms) arm.group.rotation.x = -1.7 * Math.sin(k * Math.PI) - 0.4 * ease;
+    // The colour goes out of it.
+    const shade = Math.max(0, Math.min(1, (d.t - SHADOW_FROM_S) / (SHADOW_BY_S - SHADOW_FROM_S)));
+    m.boko.shade(shade * shade);
+    if (d.t >= BURST_AT_S) {
+      d.burst = true;
+      g.visible = false;
+      const size = m.boss ? 1.35 : 1;
+      puffAt(m.pos.x + origin.x, d.ground + BOKO_HEIGHT * 0.45 * size, m.pos.y + origin.z, size);
+      dropParts(m);
+    }
+  }
+
+  /** Smoke thinning, parts falling and landing, and him picking them up. */
+  function updateLoose(dt, target) {
+    for (let i = puffs.length - 1; i >= 0; i--) {
+      const p = puffs[i];
+      p.t += dt;
+      const life = p.t / PUFF_S;
+      if (life >= 1) {
+        for (const part of p.parts) group.remove(part.mesh);
+        for (const mat of p.mats) mat.dispose();
+        puffs.splice(i, 1);
+        continue;
+      }
+      const fade = (1 - life) ** 1.6;
+      for (const mat of p.mats) mat.opacity = 0.75 * fade;
+      const slow = Math.exp(-3.2 * dt);
+      for (const part of p.parts) {
+        part.vel.multiplyScalar(slow);
+        part.vel.y += 0.5 * dt;
+        part.mesh.position.addScaledVector(part.vel, dt);
+        part.mesh.scale.setScalar(0.08 + part.grow * Math.sqrt(life));
+      }
+    }
+    for (let i = drops.length - 1; i >= 0; i--) {
+      const d = drops[i];
+      d.t += dt;
+      const g = d.group;
+      if (!d.landed) {
+        d.vel.y -= DROP_GRAVITY * dt;
+        g.position.addScaledVector(d.vel, dt);
+        g.rotation.y += dt * 6;
+        g.rotation.x += dt * 4;
+        d.ground = groundAt(g.position.x - origin.x, g.position.z - origin.z);
+        if (d.vel.y < 0 && g.position.y <= d.ground + d.rest) {
+          g.position.y = d.ground + d.rest;
+          g.rotation.x = 0;
+          d.landed = true;
+        }
+        continue;
+      }
+      // Lying there, turning slowly and bobbing, so the eye finds it.
+      g.rotation.y += dt * 1.4;
+      g.position.y = d.ground + d.rest + 0.03 + Math.sin(d.t * 3) * 0.03;
+      if (target && Math.hypot(target.x - g.position.x, target.z - g.position.z) < PICKUP_RANGE) {
+        group.remove(g);
+        drops.splice(i, 1);
+        onPickup(d.kind);
+      }
+    }
+  }
 
   const monsters = [];
   const camps = [];
@@ -215,10 +397,13 @@ export function createMonsters({ scene, world, origin }) {
       m.state = 'idle';
       m.timer = 0;
       m.hp = m.boko.maxHp * (m.boss ? 2 : 1);
+      m.death = null;
+      m.boko.shade(0);
       m.boko.group.rotation.set(0, m.heading, 0);
       m.boko.group.visible = true;
       place(m);
     }
+    clearDrops(camp);
   }
 
   /**
@@ -292,6 +477,7 @@ export function createMonsters({ scene, world, origin }) {
       phase: Math.random() * 10,
       lastSeen: 0,
       hitCooldown: 0,
+      death: null,           // set by the shot that kills it; see `die`
     };
     group.add(boko.group);
     monsters.push(m);
@@ -529,13 +715,24 @@ export function createMonsters({ scene, world, origin }) {
             if (hunting && senses(m, _target2)) alertCamp(m.camp, 0);
             break;
           }
-          default: break;   // dead
+          default:            // dead
+            if (m.death) die(m, dt);
+            break;
         }
 
         animate(m, moving, dt);
         if (m.state !== 'dead') place(m);
       }
+      updateLoose(dt, target);
     },
+
+    /** Somebody to tell when he walks over a part: `(kind) => void`. */
+    setOnPickup(fn) { onPickup = fn; },
+
+    /** What is lying about waiting to be picked up, for tests. */
+    get drops() { return drops.map((d) => ({ kind: d.kind, landed: d.landed, position: d.group.position })); },
+    /** How many puffs of smoke are in the air, for tests. */
+    get smoking() { return puffs.length; },
 
     /**
      * The nearest monster within a cone in front of `from`, or null.
@@ -601,9 +798,7 @@ export function createMonsters({ scene, world, origin }) {
       if (best.hp <= 0) {
         best.state = 'dead';
         best.timer = 0;
-        // Falls flat on its face and stays there.
-        best.boko.group.rotation.x = -Math.PI / 2.2;
-        best.boko.group.position.y = groundAt(best.pos.x, best.pos.y) + 0.25;
+        best.death = { t: 0, burst: false, ground: groundAt(best.pos.x, best.pos.y) };
       } else {
         best.state = 'stagger';
         best.timer = 0;
@@ -619,8 +814,10 @@ export function createMonsters({ scene, world, origin }) {
       m.state = 'dead';
       m.timer = 0;
       m.hp = 0;
-      m.boko.group.rotation.x = -Math.PI / 2.2;
-      m.boko.group.position.y = groundAt(m.pos.x, m.pos.y) + 0.25;
+      // Already gone to smoke, in a session that is over: nothing to
+      // see and nothing to pick up.
+      m.death = null;
+      m.boko.group.visible = false;
     },
 
     /**
@@ -670,9 +867,13 @@ export function createMonsters({ scene, world, origin }) {
         m.state = 'idle';
         m.timer = 0;
         m.hp = m.boko.maxHp * (m.boss ? 2 : 1);
+        m.death = null;
+        m.boko.shade(0);
+        m.boko.group.visible = true;
         m.boko.group.rotation.set(0, m.heading, 0);
         place(m);
       }
+      clearDrops();
     },
   };
 }

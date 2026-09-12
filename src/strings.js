@@ -90,6 +90,13 @@ export const strings = {
   dialogue: {
     more: 'E / A — go on · walk away to leave',
   },
+  // What the monsters drop, and the line about it on the Items page.
+  materials: {
+    horn: { name: 'Bokoblin horn', note: 'Snapped off a bokoblin. Hard as stone.' },
+    eyeball: { name: 'Bokoblin eyeball', note: 'Still looking at you. Nobody knows what for.' },
+  },
+  // The line that pops up when he walks over one: "Bokoblin horn ×3".
+  pickedUp: '{name} ×{n}',
   map: {
     title: 'THE WORLD',
     // What the marks in a town are called. Short, because they are

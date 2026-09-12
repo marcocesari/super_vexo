@@ -47,6 +47,7 @@ import { createMap } from './map.js';
 import { createPadSetup } from './padSetup.js';
 import { createDialogue } from './dialogue.js';
 import { createPerks, GOODS } from './perks.js';
+import { createMaterials, KINDS } from './materials.js';
 import { createShop } from './shop.js';
 import { strings } from './strings.js';
 import { createTracers } from './world/tracers.js';
@@ -192,6 +193,7 @@ function resetGame() {
   roverApi.reset();
   upgrades.reset();
   perks.reset();
+  materials.reset();
   // The camps back on their feet: a new run should not start in a town
   // that has already been half-cleared.
   monsters.reset();
@@ -284,6 +286,8 @@ const dialogue = createDialogue();
 
 // What the shops in Estronic sell, and what owning it does.
 const perks = createPerks();
+// What the monsters leave behind, and how many of each he has picked up.
+const materials = createMaterials();
 const shop = createShop({
   perks,
   mission,
@@ -329,7 +333,15 @@ const onFoot = createOnFoot({
 // Saving: a manual slot for the button in the inventory's System tab,
 // and an auto slot the game writes at moments worth returning from.
 const saves = createSaves({
-  ship, surface, onFoot, monsters, mission, upgrades, rovers: roverApi, perks,
+  ship, surface, onFoot, monsters, mission, upgrades, rovers: roverApi, perks, materials,
+});
+
+// Walking over what a monster dropped: into the pouch, a note on
+// screen, and a small sound — TotK's pickup chime, more or less.
+monsters.setOnPickup((kind) => {
+  const n = materials.take(kind);
+  onFoot.notice(strings.pickedUp.replace('{name}', materials.label(kind)).replace('{n}', String(n)));
+  audio.chirp({ fromHz: 880, toHz: 1320, durationS: 0.12, peakGain: 0.1 });
 });
 
 // GAME OVER, once he has finished falling over.
@@ -386,6 +398,9 @@ const inventory = createInventory({
       })),
       ...upgrades.upgrades.filter((u) => u.bought).map((u) => ({
         name: u.label, note: u.description,
+      })),
+      ...KINDS.filter((k) => materials.owned[k] > 0).map((k) => ({
+        name: materials.label(k), note: materials.note(k), count: materials.owned[k],
       })),
     ];
   },
@@ -896,7 +911,7 @@ if (import.meta.env.DEV) {
     renderer, camera,
     rovers: roverApi, mission, upgrades, missionScreens, surface, frameScaler,
     characterViewer, onFoot, monsters, tracers, inventory, saves, gameOver, dialogue,
-    perks, shop, padSetup, input,
+    perks, shop, padSetup, input, materials,
     map: worldMap,
     shipConfig, shipConfigDefaults,
     resetGame,

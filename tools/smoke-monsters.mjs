@@ -197,6 +197,74 @@ check('the pistol kills them', shot.dead > 0,
 // how much of a camp a five-second burst gets through depends on which
 // way everyone happened to be facing, and a check that depends on that
 // is a check that fails one run in three.
+// --- Dying, TotK's way ---------------------------------------------------------------
+// Five seconds of shooting is long past the first death's smoke, so this
+// stages one on purpose: put a monster one shot from dead, shoot it, and
+// watch the three beats — the colour draining out of it, the body gone
+// to smoke, the horn and the eyeball left where it stood.
+const dying = await page.evaluate(async () => {
+  const g = window.__superVexo;
+  const camp = g.monsters.camps[1];
+  const m = camp.members.find((x) => x.state !== 'dead') ?? camp.members[0];
+  g.monsters.reset();
+  const f = g.onFoot;
+  // Straight in front of him, close, and one shot from dead.
+  const h = f.vexo.group.rotation.y;
+  m.pos.set(f.position.x + Math.sin(h) * 5, f.position.z + Math.cos(h) * 5);
+  m.hp = 1;
+  const skin = m.boko.group.children[0].children[0].material;
+  const before = skin.color.getHex();
+  const shotAt = performance.now();
+  // The same shot the trigger fires, aimed straight at it.
+  // Plain {x, y, z}: `shoot` only reads the components, and THREE is
+  // not on the window.
+  g.monsters.shoot(
+    { x: f.position.x, y: f.position.y + 1.2, z: f.position.z },
+    { x: Math.sin(h), y: 0, z: Math.cos(h) }, 60);
+  await new Promise((r) => setTimeout(r, 450));
+  const midway = { shade: skin.color.getHex(), visible: m.boko.group.visible, tipped: m.boko.group.rotation.x };
+  await new Promise((r) => setTimeout(r, 500));
+  const after = {
+    visible: m.boko.group.visible, smoking: g.monsters.smoking,
+    drops: g.monsters.drops.map((d) => d.kind), state: m.state,
+  };
+  return { before, midway, after, ms: Math.round(performance.now() - shotAt) };
+});
+check('the last shot puts it in the dead state at once', dying.after.state === 'dead');
+check('it crumples and the colour drains out of it',
+  dying.midway.visible && dying.midway.tipped < -0.3 && dying.midway.shade < dying.before,
+  `tipped ${dying.midway.tipped.toFixed(2)} rad, skin #${dying.before.toString(16)} → #${dying.midway.shade.toString(16)}`);
+check('then the body is gone in a puff of smoke',
+  !dying.after.visible && dying.after.smoking > 0, `${dying.after.smoking} puff(s) in the air`);
+check('leaving its horn and an eyeball', dying.after.drops.sort().join('+') === 'eyeball+horn',
+  dying.after.drops.join(', '));
+
+// Walk over to them. The parts take a moment to land, then they are
+// his the moment he is on top of them.
+const picked = await page.evaluate(async () => {
+  const g = window.__superVexo;
+  await new Promise((r) => setTimeout(r, 900));
+  const wasOwned = g.materials.owned;
+  const landed = g.monsters.drops.every((d) => d.landed);
+  for (const d of g.monsters.drops) {
+    g.onFoot.position.x = d.position.x;
+    g.onFoot.position.z = d.position.z;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  await new Promise((r) => setTimeout(r, 150));
+  return {
+    landed, wasOwned, owned: g.materials.owned, left: g.monsters.drops.length,
+    said: document.querySelector('#foot-got')?.textContent ?? '',
+    shown: !(document.querySelector('#foot-got')?.hidden ?? true),
+  };
+});
+check('the parts land', picked.landed);
+check('and walking over them picks them up',
+  picked.left === 0 && picked.owned.horn === picked.wasOwned.horn + 1
+    && picked.owned.eyeball === picked.wasOwned.eyeball + 1,
+  `horn ${picked.wasOwned.horn} → ${picked.owned.horn}, eyeball ${picked.wasOwned.eyeball} → ${picked.owned.eyeball}, ${picked.left} left`);
+check('and says so on screen', picked.shown && /bokoblin/i.test(picked.said), picked.said);
+
 check('the boss takes more killing', shooting.bossHp >= shooting.mookHp * 2,
   `boss ${shooting.bossHp} against ${shooting.mookHp} for the rest`);
 
