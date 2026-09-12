@@ -510,7 +510,17 @@ function frame(now) {
   // Refresh the diagnostic overlay every frame (no-op when ?debugPad=1
   // isn't set). Runs before the state branch so cinematic/title also
   // get live readings.
-  debugPad.update();
+  debugPad.update(() => ({
+    padId: input.gamepad.padId,
+    isStandard: input.gamepad.isStandard,
+    isCalibrated: input.gamepad.isCalibrated,
+    stick: input.gamepad.stick,
+    held: Array.from({ length: 17 }, (_, i) => i).filter((i) => input.gamepad.isButtonDown(i)),
+    inventory: {
+      open: inventory.isOpen, tab: inventory.tab, focus: inventory.focus,
+      cursor: inventory.cursor, spinning: inventory.spinning,
+    },
+  }));
 
   if (state === STATE.CINEMATIC) {
     if (input.consumeAnyJustPressed()) {
