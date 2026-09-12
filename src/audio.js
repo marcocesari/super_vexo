@@ -1,15 +1,18 @@
-// Procedural audio with the Web Audio API, plus one piece of music.
+// Procedural audio with the Web Audio API, plus two pieces of music.
 //
-// Three voices:
-//   - **Ambient hum**: two detuned sine/triangle oscillators through a
-//     low-pass filter. The detuning makes a slow beat ("wow-wow-wow"),
-//     which sounds way more "ship-like" than a pure tone.
+// Four voices:
+//   - **The score**: a synthesised soundtrack that follows what the
+//     player is doing — see `src/music.js`, which is where the tune is.
+//   - **Engine**: two detuned oscillators through a low-pass filter, so
+//     the ship has a bottom end. It used to run flat out from the first
+//     frame to the last, which is most of why Marco called the audio
+//     annoying: now it belongs to the ship, it rises and falls with the
+//     throttle, and it is not there at all when he is on his feet.
 //   - **Thrust**: looped white-noise buffer through a band-pass filter,
 //     gain modulated by how much throttle the player is asking for.
 //     Pitch rises slightly with throttle so it feels "engine spooling".
 //   - **Sprint theme**: an actual mp3, played while Vexo is sprinting on
-//     foot and faded out when he stops. The one thing here that is not
-//     synthesised.
+//     foot and faded out when he stops. The score gets out of its way.
 //
 // The theme file is the first SIX SECONDS of the track, cut on frame
 // boundaries by `tools/trim-mp3.mjs`. A sprint lasts about five seconds,
@@ -36,10 +39,27 @@ import sprintThemeUrl from './assets/invincibility_theme.mp3';
 // is kept beside this as `game_over.source.wav`; what ships is 80 KB of
 // AAC, which every browser and the iOS wrapper play.
 import gameOverThemeUrl from './assets/game_over.m4a';
+import { createMusic } from './music.js';
 
 const HUM_BASE_HZ = 80;
 const HUM_DETUNE_CENTS = 18;
-const HUM_GAIN = 0.06;
+// What the engine is worth at full throttle. It was a flat 0.06 with
+// nothing to change it — a note held for the length of the game.
+const HUM_GAIN = 0.05;
+// …and what it idles at while the ship is switched on but going nowhere.
+const HUM_IDLE = 0.012;
+const HUM_HALFLIFE = 0.35;
+
+// How loud the score is by default, and where the player's choice is
+// kept. Three settings rather than a slider: a slider is a fiddly thing
+// to build twice (mouse and pad) for a choice nobody makes more than
+// once.
+const MUSIC_KEY = 'super-vexo/music';
+export const MUSIC_LEVELS = [
+  { id: 'on', level: 0.95 },
+  { id: 'low', level: 0.38 },
+  { id: 'off', level: 0 },
+];
 
 const THRUST_NOISE_SECONDS = 2.5;
 const THRUST_FILTER_BASE_HZ = 280;
@@ -66,6 +86,21 @@ export function createAudio() {
   let hum = null;
   let thrust = null;
   let lastThrottle = 0;
+  // The engine belongs to the ship: no ship under you, no engine.
+  let engineOn = true;
+  let humLevel = 0;
+  let music = null;
+  let mood = 'title';
+  // Which of on / low / off the player last chose, remembered between
+  // sessions. localStorage can throw; a game that cannot remember the
+  // volume is a shame, one that white-screens over it is a bug.
+  let musicChoice = (() => {
+    try {
+      const saved = localStorage.getItem(MUSIC_KEY);
+      return MUSIC_LEVELS.some((m) => m.id === saved) ? saved : 'on';
+    } catch { return 'on'; }
+  })();
+  const musicLevel = () => MUSIC_LEVELS.find((m) => m.id === musicChoice).level;
 
   /** Begin audio. Safe to call multiple times. Call from a user gesture. */
   function start() {
@@ -80,6 +115,10 @@ export function createAudio() {
 
     hum = createHum(ctx, masterGain);
     thrust = createThrust(ctx, masterGain);
+    music = createMusic(ctx, masterGain);
+    music.setLevel(musicLevel());
+    music.setMood(mood);
+    music.play();
     started = true;
     return true;
   }
@@ -88,6 +127,30 @@ export function createAudio() {
     // value in [-1, 1]; use magnitude for thrust intensity.
     if (!started) return;
     lastThrottle = Math.min(1, Math.abs(value));
+  }
+
+  /** True while the player is in the ship with it switched on. */
+  function setEngine(on) {
+    engineOn = !!on;
+  }
+
+  /**
+   * Which music to play — 'title', 'space', 'ground', 'town', 'danger'
+   * or 'silent'. The game works this out from what is happening; see
+   * `musicMood()` in main.js.
+   */
+  function setMood(name) {
+    mood = name;
+    if (music) music.setMood(name);
+  }
+
+  /** Step through on → low → off, and remember it. */
+  function cycleMusic() {
+    const i = MUSIC_LEVELS.findIndex((m) => m.id === musicChoice);
+    musicChoice = MUSIC_LEVELS[(i + 1) % MUSIC_LEVELS.length].id;
+    try { localStorage.setItem(MUSIC_KEY, musicChoice); } catch {}
+    if (music) music.setLevel(musicLevel());
+    return musicChoice;
   }
 
   /**
@@ -135,10 +198,13 @@ export function createAudio() {
     // cannot happen by the time somebody has died, but it is not worth
     // a console error if it ever does.
     gameOverEl.play().catch(() => {});
+    // Marco wrote that tune. Nothing of mine plays over it.
+    if (music) music.duck(true);
   }
 
   /** Stop it: the player has chosen, and the run is over either way. */
   function stopGameOver() {
+    if (music) music.duck(false);
     if (!gameOverEl) return;
     gameOverEl.pause();
     gameOverEl.currentTime = 0;
@@ -159,6 +225,16 @@ export function createAudio() {
   function update(dt) {
     updateTheme(dt);
     if (!started) return;
+    music.update();
+    // The sprint theme is a tune of its own; the score steps back for
+    // it rather than playing along in a different key.
+    music.duck(themeLevel > 0.01 || (gameOverEl && !gameOverEl.paused));
+
+    // The engine, which now has something to say: a floor while the
+    // ship is under you and nothing at all while it is not.
+    const humTarget = engineOn ? HUM_IDLE + lastThrottle * HUM_GAIN : 0;
+    humLevel += (humTarget - humLevel) * (1 - Math.pow(2, -dt / HUM_HALFLIFE));
+    hum.gain.gain.setValueAtTime(humLevel, ctx.currentTime);
     // Frame-rate-independent smoothing of thrust gain toward |throttle|.
     const alpha = 1 - Math.pow(2, -dt / THRUST_GAIN_HALFLIFE);
     const currentGain = thrust.gainNode.gain.value;
@@ -216,6 +292,21 @@ export function createAudio() {
 
   return {
     start,
+    setEngine,
+    setMood,
+    cycleMusic,
+    /** Which of on / low / off the score is set to. */
+    get musicChoice() { return musicChoice; },
+    /** What the band is doing, for the tests. */
+    get music() { return music ? music.info : null; },
+    /**
+     * The audio context, for tests that want to listen to the output
+     * rather than take the mixer's word for it — an AnalyserNode on the
+     * master bus is the only way to find out whether what comes out is
+     * silence, music, or a wall of clipping.
+     */
+    get context() { return ctx; },
+    get master() { return masterGain; },
     setSprinting,
     playGameOver,
     stopGameOver,
@@ -245,7 +336,8 @@ function createHum(ctx, dest) {
   filter.Q.value = 0.7;
 
   const gain = ctx.createGain();
-  gain.gain.value = HUM_GAIN;
+  // Silent until somebody starts an engine.
+  gain.gain.value = 0;
 
   osc1.connect(filter);
   osc2.connect(filter);

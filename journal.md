@@ -2,6 +2,144 @@
 
 Most recent entries on top.
 
+## 2026-09-12 — The inventory, driven the way TotK's is
+
+- Marco: *"Add the section 'items' in the inventory, where the player can
+  see all of the items he collected"* — then, on trying it with a pad,
+  that the stick should walk the menu and not the man: *"look at totk
+  inventory and look how it works"*.
+- **Items tab.** Nothing in this game is picked up off the ground; what
+  he collects, he buys. So the page is read live off the two ledgers
+  that already exist — `perks.owned` from the shops and
+  `upgrades[].bought` from the Tablet — with a ×n on anything that
+  stacks. Nothing new to save: both ledgers are in the save file.
+- **The cursor.** Left stick, D-pad or arrows, with two rows to be in:
+  the tabs (← → change category, ↓ drops into the list) and the list
+  (↑ ↓ pick, ↑ off the top climbs back, ← → do nothing, as in TotK's
+  grid). A takes the entry, so Save is now "↓, A". L / R still change
+  category from anywhere. The stick is read as a D-pad — over 0.55 is
+  a press, back under 0.3 to re-arm, repeat after 0.4 s — through a new
+  `gamepad.stick` getter, because the mixed axes fold the keyboard in
+  and A / D would have scrolled the list.
+- **Turning him.** The idle drift is gone; the stick never turns him.
+  L3 sets him spinning, B holds him (and only the next B closes the
+  screen). L3 is read before the reset handler, which is what it does
+  everywhere else — before this, clicking the stick on the gear screen
+  reset the game.
+- **The bug that wasn't.** Marco reported the old behaviour twice
+  after it was gone. The online game was `index-BHsW1QJb.js`, built on
+  the 5th: nothing had been pushed since, and the phone was playing
+  the old build — exactly the trap `CONSIGLI-CLAUDE-CODE.md` §5 warns
+  about. Hence this commit carries a week of uncommitted work (music,
+  flora, map, controller setup) along with it.
+- `smoke:inventory` 31/31; `smoke:pad`, `smoke:gameover`, `smoke:map`,
+  `smoke:build` green.
+
+## 2026-09-06 — Music, instead of a drone
+
+- Marco: *"the audio that there is in the game is a bit annoying, make
+  it more videogame-sci-fi-like music"*.
+- **Half of this was already in the working tree when I arrived, and
+  half of it was missing.** A session that is no longer running had
+  rewritten `audio.js` to import `./music.js`, given `monsters.js` a
+  `hunting` getter, added a `smoke:music` script and written both the
+  README section and a journal entry describing the result — but
+  `src/music.js` and `tools/smoke-music.mjs` were not on disk, and
+  neither was any of the wiring in `main.js` or the inventory. The game
+  did not load. What follows is that plan, finished: the shape of it is
+  the earlier session's, the score and the tests are new, and the
+  numbers below are ones I measured rather than ones I inherited.
+- **The diagnosis was easy and it was right.** What was there was one
+  80 Hz drone, on from the first frame to the last, with a second
+  oscillator detuned against it. It never went anywhere, and a sound
+  that never changes is the definition of the kind that grates.
+- `src/music.js` is a score, written rather than recorded. Five moods —
+  title, space, open world, town, being hunted — one band, one key
+  (A minor, or its relative major in a town), and a mood change is seven
+  faders travelling over a second and a half plus a tempo change at the
+  top of the **next bar**, so it lands on a beat.
+- Scheduled ahead against the audio clock, 200 ms at a time, rather than
+  on a timer. A dropped frame cannot make it stumble, because by the
+  time the frame is dropped the notes are already sold.
+- The old drone became the engine, which is what it always sounded like:
+  it belongs to the ship, moves with the throttle, and is silent when he
+  is on his feet.
+- **The mood is the GAME's question, not the mixer's**, so `musicMood()`
+  lives in `main.js`: chased beats where you are standing, where you are
+  standing beats what you are flying over. The chase holds for five
+  seconds past the last frame anybody was hunting — a bokoblin losing
+  sight of you behind a rock is not the end of a chase.
+- **Three things I could only find by measuring, because I cannot hear
+  it.** `smoke:music` hangs an AnalyserNode on the master bus and asks
+  questions that have numbers for answers:
+  - **The chase was half again as loud as everywhere else** (rms 0.050
+    against 0.033). That is a volume jump wearing urgency as a hat. The
+    faders came down; it measures 0.041 now, and what makes it a chase
+    is the tempo and the missing pad.
+  - **The ear was wrong before it was useful.** A spectral centroid
+    taken off `getByteFrequencyData` reads 3.8–6.1 kHz for this music,
+    which would have had me tearing the top end out of a mix that was
+    fine: the byte data is in DECIBELS, and a decibel scale flatters a
+    hiss 40 dB down into looking like half the bass. Converted back to
+    amplitude the same takes read 1.2–2.0 kHz, which is where music
+    lives.
+  - **"It moves rather than drones" is the original complaint with a
+    number on it**: the loudest tenth of a take against the quietest.
+    A drone scores 1. This scores between 5.8 and 8.5.
+- **And one real bug the test caught.** `duck()` is called every frame
+  whether anything changed or not, and re-ramping a gain on every one of
+  those restarts the ramp from wherever it has reached — so the value
+  creeps towards the target and never arrives. It sounds like "the music
+  is a bit quiet". `setMood` had the identical trap, since the game
+  calls it every frame too; both now do nothing when nothing changed.
+- The test drives the game into each mood rather than calling `setMood`
+  behind its back, because the game re-decides the mood every frame and
+  would overrule it sixty times a second. Town is where you land, the
+  open world is a teleport, space is a climb — and for being hunted the
+  test redefines `monsters.hunting` on the object, because staging an
+  actual bokoblin chase takes all afternoon.
+- Recorded four fourteen-second takes through a `MediaStreamDestination`
+  so Marco can hear it rather than read about it. Decoded them back and
+  measured them to be sure they were not four files of silence.
+- Every suite green. `smoke:world`'s "keeps up with a ship at full
+  speed" measures a QUEUE LENGTH, which depends on how fast the machine
+  is filling tiles: it failed at 92 with five suites' worth of browsers
+  shutting down around it and passes at 43 on an idle machine. Nothing
+  to do with the music, and the next lying test to fix.
+
+## 2026-09-05 (later) — The shops, marked on the map
+
+- Marco: mark where the shops are on the map in Estronic.
+- **They cannot be drawn where they are, and that is the whole of the
+  problem.** All three stand within 130 m of the square — measured:
+  apothecary 95 m, shipwright 119, gunsmith 130 — and the map is a
+  continent 130 km across. At ×1 that is 165 m to the screen pixel and
+  at ×8, the closest the map goes, 21: the three of them fit inside the
+  five-pixel dot that IS Estronic. Drawn honestly they would be one
+  mark, underneath the town's own.
+- So they are fanned: pushed out to fifteen pixels from the dot, each
+  along its own TRUE BEARING from the middle of the city, with a spoke
+  back to the dot. Which side of the square to walk to is the honest
+  half of the answer and at this scale it is the only half there is.
+  The code takes `max(trueDistance, fan)`, so if the map ever zooms far
+  enough in they walk back to their real places on their own.
+- Their red is the awnings' red. The thing you look for in the street is
+  the thing you look for on the map.
+- Names from ×2.2 — below that three labels argue over one town — and
+  **Estronic's own name now lifts clear of whatever the marks reach
+  above it**, because one of the three shops is always due north of the
+  square and the town name has always been drawn straight up.
+- **The names had to change colour to be testable, and that turned out
+  to be the right call anyway.** The first pale peach was within a few
+  values of the salt-pan and beach colours the ground is painted in, so
+  a pixel count could not tell writing from a desert — which is exactly
+  the same reason a PLAYER could not. They are the pin's red lightened
+  instead, a colour no ground in this world is.
+- `smoke:map` checks three marks, that they ring the town rather than
+  piling onto it, that **each mark is within 12° of its shop's true
+  bearing** (worst is 6.2°), and that the names stay away until the map
+  is close enough for them.
+
 ## 2026-09-05 — Two things that had been left standing
 
 Marco asked what had been stopped and never finished. Two things had,

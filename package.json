@@ -25,6 +25,7 @@
     "smoke:map": "node tools/smoke-map.mjs",
     "smoke:pad": "node tools/smoke-pad.mjs",
     "smoke:flora": "node tools/smoke-flora.mjs",
+    "smoke:music": "node tools/smoke-music.mjs",
     "smoke:towns": "node tools/smoke-towns.mjs",
     "smoke:shops": "node tools/smoke-shops.mjs",
     "smoke:cinematic": "node tools/smoke-cinematic.mjs",

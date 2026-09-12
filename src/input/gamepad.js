@@ -90,6 +90,7 @@ export function createGamepad() {
   let calibrated = false;
   let known = null;      // the stored entry: bindings, or `skipped`
   let rawAxes = [];
+  let lastStick = null;   // the left stick as of the last sample, see `stick`
 
   function adoptPad(pad) {
     if (pad.id === padId) return;
@@ -221,6 +222,7 @@ export function createGamepad() {
       const pad = findFirstConnected();
       if (!pad) {
         active = false;
+        lastStick = null;
         justPressed.clear();
         pressedNow.clear();
         wasPressed.clear();
@@ -256,12 +258,22 @@ export function createGamepad() {
       const pitch = (pressedNow.has(BUTTONS.Up) ? 1 : 0) - (pressedNow.has(BUTTONS.Down) ? 1 : 0);
       const roll = (pressedNow.has(BUTTONS.Left) ? 1 : 0) - (pressedNow.has(BUTTONS.Right) ? 1 : 0);
 
+      lastStick = { x: yaw, y: throttle };
+
       const anyStick = (yaw || pitch || roll || throttle || lookX || lookY) !== 0;
       const anyButton = pressedNow.size > 0;
       active = anyStick || anyButton;
 
       return { throttle, yaw, pitch, roll, lookX, lookY };
     },
+
+    /**
+     * The left stick as it stood at the last `sample()`, for a menu that
+     * wants it as a D-pad: `x` is +1 pushed left, `y` +1 pushed up. Null
+     * without a pad. Separate from the mixed axes `input.sample()` hands
+     * out, which fold the keyboard in and would make A / D scroll a list.
+     */
+    get stick() { return lastStick; },
 
     /** True if the named/numbered button is currently held. */
     isButtonDown(index) {

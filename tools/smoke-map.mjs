@@ -294,6 +294,122 @@ check('and zooming all the way out puts the whole world back, centred',
   Math.abs(zeroed.zoom - 1) < 0.001 && zeroed.panX === 0 && zeroed.panZ === 0,
   `×${zeroed.zoom.toFixed(2)}, pan ${zeroed.panX},${zeroed.panZ}`);
 
+// --- The shops in Estronic ------------------------------------------------------------
+// They stand within 130 m of the square, which at every zoom this map
+// has is narrower than the town's own dot — so the marks are fanned out
+// around it, each along its true bearing from the middle of the city.
+// What is checked is that there are three of them, that they ring the
+// town, and that each one points the way you would actually walk.
+const shopMarks = async () => page.evaluate(() => {
+  const canvas = document.querySelector('.map-canvas');
+  const d = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+  // The awning red. Nothing else on the map is anywhere near it.
+  const pts = [];
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i] > 230 && d[i + 1] > 80 && d[i + 1] < 140 && d[i + 2] > 40 && d[i + 2] < 110) {
+      const p = i / 4;
+      pts.push({ x: p % canvas.width, y: Math.floor(p / canvas.width) });
+    }
+  }
+  // Cluster them: the marks are a few pixels across and well apart.
+  const clusters = [];
+  for (const p of pts) {
+    const near = clusters.find((c) => Math.hypot(c.x / c.n - p.x, c.y / c.n - p.y) < 9);
+    if (near) { near.x += p.x; near.y += p.y; near.n++; } else clusters.push({ x: p.x, y: p.y, n: 1 });
+  }
+  const marks = clusters.filter((c) => c.n > 3).map((c) => ({ x: c.x / c.n, y: c.y / c.n, n: c.n }));
+  const cx = marks.reduce((a, m) => a + m.x, 0) / (marks.length || 1);
+  const cy = marks.reduce((a, m) => a + m.y, 0) / (marks.length || 1);
+  const w = window.__superVexo.surface.world;
+  const capital = w.info.settlements.find((s) => s.kind === 'capital');
+  return {
+    marks: marks.map((m) => ({
+      ...m,
+      from: Math.hypot(m.x - cx, m.y - cy),
+      bearing: Math.atan2(m.y - cy, m.x - cx),
+    })),
+    // Which way each shop really lies from the middle of the city. The
+    // map's y runs the same way the world's z does, so this is directly
+    // comparable with the bearings above.
+    truth: capital.shops.map((sh) => ({
+      kind: sh.kind, bearing: Math.atan2(sh.z - capital.z, sh.x - capital.x),
+    })),
+    labels: null,
+  };
+});
+
+// The map is still open from the zooming above, and back at ×1.
+const shops = await shopMarks();
+check('all three shops are marked in Estronic', shops.marks.length === 3,
+  `${shops.marks.length} marks`);
+const ring = shops.marks.every((m) => m.from > 8 && m.from < 40);
+check('and they ring the town rather than piling onto it', ring,
+  shops.marks.map((m) => Math.round(m.from)).join(', ') + ' px out');
+// Every real shop has a mark pointing its way.
+const worstBearing = Math.max(...shops.truth.map((t) => Math.min(...shops.marks.map((m) => {
+  let diff = Math.abs(m.bearing - t.bearing) % (Math.PI * 2);
+  if (diff > Math.PI) diff = Math.PI * 2 - diff;
+  return (diff * 180) / Math.PI;
+}))));
+check('and each one points the way you would actually walk', worstBearing < 12,
+  `worst mark is ${worstBearing.toFixed(1)}° off its shop's true bearing`);
+
+// The names come in once the map is close enough to hold them.
+//
+// Counted well clear of the marks themselves: the edge of a red pin
+// against pale ground blends through very nearly the colour the names
+// are written in, and that blur is what a naive count would be
+// counting.
+const named = async (pins) => page.evaluate((marks) => {
+  const canvas = document.querySelector('.map-canvas');
+  const d = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+  const cx = marks.reduce((a, m) => a + m.x, 0) / marks.length;
+  const cy = marks.reduce((a, m) => a + m.y, 0) / marks.length;
+  let n = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (!(d[i] > 240 && d[i + 1] > 130 && d[i + 1] < 190 && d[i + 2] > 105 && d[i + 2] < 170)) continue;
+    const p = i / 4;
+    const x = p % canvas.width;
+    const y = Math.floor(p / canvas.width);
+    // Only in the ring where a shop's name could possibly be written:
+    // outside the marks themselves, inside the town's own patch of map.
+    // Both bounds are there because two different things kept being
+    // counted as writing — sunlit dune fields on the far side of the
+    // continent, and the few blended pixels where a red mark meets the
+    // cream town dot, which pass through very nearly this colour.
+    const fromMiddle = Math.hypot(x - cx, y - cy);
+    if (fromMiddle < 22 || fromMiddle > 140) continue;
+    if (marks.some((m) => Math.hypot(m.x - x, m.y - y) < 8)) continue;
+    n++;
+  }
+  return n;
+}, pins);
+const quiet = await named(shops.marks.map((m) => ({ x: m.x, y: m.y })));
+await page.evaluate(async () => {
+  const m = window.__superVexo.map;
+  for (let i = 0; i < 400 && m.zoom < 3; i++) {
+    m.zoomBy(1, 0.016);
+    m.update();
+    await new Promise((r) => requestAnimationFrame(r));
+  }
+});
+await page.waitForTimeout(300);
+
+
+const zoomed = await shopMarks();
+check('and all three are still there close up', zoomed.marks.length === 3,
+  `${zoomed.marks.length} marks`);
+const loud = await named(zoomed.marks.map((m) => ({ x: m.x, y: m.y })));
+check('their names stay out of the way until the map is close enough for them',
+  quiet < 6 && loud > 25, `${quiet} px of writing at ×1, ${loud} at ×3`);
+
+await page.evaluate(() => {
+  const m = window.__superVexo.map;
+  for (let i = 0; i < 60; i++) m.zoomBy(-1, 0.1);
+  m.update();
+});
+await page.waitForTimeout(200);
+
 // --- Closing, and the other button --------------------------------------------------
 await page.keyboard.press('KeyM');
 await page.waitForTimeout(300);

@@ -92,6 +92,13 @@ export const strings = {
   },
   map: {
     title: 'THE WORLD',
+    // What the marks in a town are called. Short, because they are
+    // written next to a dot on a map of a continent.
+    shops: {
+      apothecary: 'Apothecary',
+      gunsmith: 'Gunsmith',
+      shipwright: 'Shipwright',
+    },
     hint: 'M / − — close · W S / left stick — zoom · right stick — scroll · C — back to you',
     scale: '{km} × {kmZ} km · {m} m per pixel',
     building: 'drawing the world… {pct}%',
@@ -109,9 +116,13 @@ export const strings = {
   inventory: {
     title: 'GEAR',
     weapons: 'Weapons',
+    items: 'Items',
     empty: 'Nothing yet.',
-    hint: 'T / + — close · ← → or L / R — tabs · B / Esc — back',
-    turnHint: 'Drag, or A / D, to turn him',
+    nothingCollected: 'Nothing collected yet. The shops in Estronic and the Tablet sell things.',
+    // Written after the name of a thing he has more than one of.
+    count: '×{n}',
+    hint: 'T / + — close · stick / arrows — move · A / Enter — take · L / R — tabs · B / Esc — back',
+    turnHint: 'Drag, or A / D, to turn him · L3 — spin · B — stop',
     tablet: 'Tablet',
     system: 'System',
     save: 'SAVE GAME',
@@ -122,6 +133,13 @@ export const strings = {
     saveFailed: "Couldn't save — this browser won't let the game store anything.",
     starterGun: 'Sidearm',
     starterGunNote: 'Equipped',
+    // The score's three settings, cycled by one button. `{state}` is
+    // one of the three below it.
+    music: 'MUSIC: {state}',
+    musicOn: 'ON',
+    musicLow: 'LOW',
+    musicOff: 'OFF',
+    musicNote: 'X on a pad, or click it.',
     controller: 'SET UP CONTROLLER',
     controllerNone: 'No controller connected.',
     controllerStandard: 'Controller: {id} — standard layout.',

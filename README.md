@@ -77,10 +77,20 @@ Then open http://localhost:5173.
 - **Space / X** — shoot. He draws the pistol off his thigh and holsters it again
   a few seconds after the last shot
 - **T, or + on a pad** — the inventory. A row of tabs, weapons down the left,
-  and Vexo on the right: drag him, or hold A / D, to turn him round and look at
-  his kit from any side. He's a real model in a real scene, drawn into that
-  corner of the game's own canvas, so he can never go stale the way a picture of
-  him would. **← → , or L / R on a pad**, walks along the tabs: **Weapons**,
+  and Vexo on the right. It's driven the way Tears of the Kingdom's pause menu
+  is: the **left stick, D-pad or arrow keys** are a cursor with two rows to be
+  in. Up on the tabs, **← →** change the category; **↓** drops into the list,
+  where **↑ ↓** pick a thing and **A / Enter** takes it — Save, say, on the
+  System page. **↑** off the top of the list climbs back to the tabs, and
+  **L / R** change the category from anywhere. The stick never turns Vexo:
+  he stays put until you **click the left stick (L3)**, which sets him
+  spinning, and **B** holds him where he is (a second B closes the screen as
+  usual). Drag him, or hold A / D on a keyboard, to turn him by hand. He's a
+  real model in a real scene, drawn into that corner of the game's own canvas,
+  so he can never go stale the way a picture of him would. The tabs: **Weapons**,
+  **Items** — everything he has collected, which is to say everything he has
+  bought, perks from the shops and upgrades from the Tablet, with a ×2 on
+  anything that stacks —
   the **Tablet** — which used to be an overlay with a button of its own and is a
   page of this screen now — and **System** at the far right, where the save
   button is. Escape or B closes it
@@ -243,12 +253,86 @@ nothing imports, so it stays out of the build:
 ```bash
 node tools/trim-mp3.mjs src/assets/invincibility_theme.source.mp3 \
                         src/assets/invincibility_theme.mp3 6
-``` It's the
-only sound in the game that isn't synthesised on the fly — everything else in
-`src/audio.js` is oscillators and filtered noise. It's a plain `<audio>` element
-rather than a node in the Web Audio graph, because routing it through the graph
-needs `createMediaElementSource`, and a media element loaded from a `file://`
-URL counts as cross-origin, which would silence it inside the iOS wrapper.
+``` It's one of only
+two sounds in the game that aren't synthesised on the fly — everything else in
+`src/audio.js` and `src/music.js` is oscillators and filtered noise. It's a
+plain `<audio>` element rather than a node in the Web Audio graph, because
+routing it through the graph needs `createMediaElementSource`, and a media
+element loaded from a `file://` URL counts as cross-origin, which would silence
+it inside the iOS wrapper.
+
+## The music
+
+Marco said the audio was annoying, and he was right. What was there was one
+80 Hz drone, on from the first frame of the game to the last, with a second
+oscillator detuned against it so it beat slowly. That's a fine way to make a
+room feel like a spaceship for ten seconds and a poor way to spend an hour: it
+never goes anywhere, and a sound that never changes is the definition of the
+kind that grates.
+
+There's a score now, in `src/music.js`, and it's written rather than recorded —
+no files, so it costs nothing to download and it can follow what you're doing in
+a way a recording can't. **Five moods, and the game picks:**
+
+| when | what it sounds like |
+| --- | --- |
+| the title card | 74 bpm, pad and a melody, no drums |
+| out in space | 82 bpm, wide, long delays on the arpeggio |
+| the open world | 96 bpm, sparse — this is the one that plays for an hour |
+| in a town | 92 bpm, the relative major, warmer |
+| being hunted | 138 bpm, bass in eighths, the pad drops away |
+
+It's one band playing different music, not five tunes: same key throughout
+(A minor), same instruments, and a mood change is four faders moving over a
+second and a half plus a tempo change at the top of the **next bar**, so it
+lands on the beat. That last bit was a bar rather than a phrase on the second
+attempt — a phrase here is eight bars, twenty-one seconds, and a bokoblin can
+chase you a long way in twenty-one seconds.
+
+**How it keeps time.** Not with `setInterval` — a timer in JavaScript is
+accurate to a frame if you're lucky, and a drum machine a frame late is a drum
+machine that limps. Notes are scheduled *ahead*, against the audio clock: each
+frame works out which sixteenths fall inside the next 200 ms and books them, and
+the hardware plays them exactly when it was told to. A dropped frame can't make
+the music stumble.
+
+The things that keep it from being annoying in its turn: it's quiet and sits
+under the effects; every note ends, so nothing drones; the chase music holds for
+five seconds past the last frame anybody was actually chasing, so a bokoblin
+losing sight of you behind a rock doesn't flip the score back and forth; and the
+melodies are **written down**, because random notes are how procedural music
+earned its reputation.
+
+The old drone is now the ship's engine and behaves like one: it belongs to the
+ship, rises and falls with the throttle, and isn't there at all when you're on
+your feet.
+
+**And you can turn it down.** The System tab, under Save: `MUSIC: ON / LOW /
+OFF` — click it, or press **X** while that tab is open, the way **A** saves
+there. Remembered between sessions, because it's a choice nobody wants to make
+twice.
+
+Testing music is the odd one out in this repo, because it's the one thing that
+can't be checked by looking at it. `smoke:music` *listens*: an AnalyserNode on
+the master bus, and questions with numbers for answers — is anything coming out,
+does it clip, does it **move** rather than drone (a tune's loud and quiet tenths
+differ by more than 1.8×; measured, they differ by six to eight times, and the
+old drone would have scored 1, which is the whole complaint), and does it sit
+where music sits in the spectrum.
+
+Two faults came out of listening rather than looking. The chase mix came out
+half again as loud as everywhere else — a volume jump wearing urgency as a hat —
+and it's level with the others now; the tempo and the missing pad are what make
+it a chase. And the ear-check itself was wrong before it was useful: a spectral
+centroid taken off the analyser's *decibel* data reads about 6 kHz for music
+that plainly isn't there, because a decibel scale flatters a quiet hiss into
+looking like half the bass. Converted back to amplitude, the four moods measure
+1.2, 1.4, 1.2 and 2.0 kHz — the chase is the bright one, which is the point of
+it.
+
+```bash
+npm run smoke:music      # every mood, listened to
+```
 
 ### Three gaits
 
@@ -431,6 +515,25 @@ The world has edges because of this. It ran on for ever before, which is
 a fine thing for ground to do and a useless thing to draw a map of —
 "every single inch" only means something if there's a last inch. Fly
 past the coast and there's open sea, not a wall.
+
+### Where the shops are
+
+The three shops in Estronic are marked on it: **Apothecary**,
+**Gunsmith** and **Shipwright**, each a red dot in the same colour as
+the striped awning you look for in the street.
+
+They can't be drawn where they really are, and it's worth saying why.
+All three stand within 130 metres of the square, and this is a map of a
+continent 130 **kilo**metres across — even at ×8, the closest the map
+goes, those hundred metres are narrower than the town's own dot, so
+three marks drawn honestly would be one mark. Instead they're fanned out
+around Estronic, each along its own **true bearing** from the middle of
+the city, with a spoke back to the dot to say that's where they belong.
+Which side of the square to walk to is the honest half of the answer,
+and at this scale it's the only half there is. Their names come in at
+×2.2, once the map is close enough to hold them without three labels
+arguing over one town, and Estronic's own name lifts clear of whatever
+the marks reach above it.
 
 ### It is Marco's map
 

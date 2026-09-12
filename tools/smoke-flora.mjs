@@ -42,7 +42,7 @@ async function standAt(x, z, height = 12, settle = 2600) {
     const f = w.info.flora;
     return {
       live: f.live, counts: { ...f.counts }, patches: f.patches, visible: f.visible,
-      build: f.build, triangles: Math.round(f.triangles()),
+      fade: f.fade, build: f.build, triangles: Math.round(f.triangles()),
     };
   });
 }
@@ -142,16 +142,55 @@ check('and walking into one pushes you out of it',
   solid.found && solid.pushed > 0.3 && solid.clear,
   solid.found ? `pushed ${solid.pushed} m, and out in the open` : '');
 
-// --- From the air it is not drawn at all ---------------------------------------------
-const high = await standAt(spots.forest.x, spots.forest.z, 900, 1400);
-check('none of it is drawn from up in the ship', !high.visible && high.live === 0,
-  `${high.live} standing at 900 m`);
+// --- The same wood from a kilometre up and from the doorstep --------------------------
+//
+// This is the one that matters about the tiers. Far away only every
+// twenty-fifth candidate is planted; up close every one of them is. If
+// the far ones were a DIFFERENT twenty-fifth, a wood would rearrange
+// itself as you flew towards it, which is exactly the complaint —
+// "trees that appear" — wearing a better disguise.
+const subset = await page.evaluate(async ([x, z]) => {
+  const g = window.__superVexo;
+  const w = g.surface.world;
+  const y = w.groundHeightAt(x, z);
+  const sample = async (fromX, fromZ, height, waitMs) => {
+    const gy = w.groundHeightAt(fromX, fromZ);
+    g.ship.mesh.position.set(fromX, -20000 + gy + height, fromZ);
+    g.ship.velocity.set(0, 0, 0);
+    const until = performance.now() + waitMs;
+    while (performance.now() < until) await new Promise((r) => requestAnimationFrame(r));
+    // Always the same patch of ground, whoever is looking at it.
+    return w.info.flora.trunksIn(x, z, 200);
+  };
+  // From a kilometre away, then from right on top of it.
+  const far = await sample(x + 1150, z, 120, 3500);
+  const near = await sample(x, z, 14, 3000);
+  const key = (t) => `${t.x},${t.z}`;
+  const nearSet = new Set(near.map(key));
+  const kept = far.filter((t) => nearSet.has(key(t))).length;
+  return { far: far.length, near: near.length, kept };
+}, [spots.forest.x, spots.forest.z]);
+check('a wood seen from a kilometre away is thinner, not different',
+  subset.far > 0 && subset.near > subset.far && subset.kept === subset.far,
+  `${subset.far} trees at 1150 m, all ${subset.kept} of them still there`
+  + ` among the ${subset.near} you can see from inside it`);
+
+// --- Climbing away from it ------------------------------------------------------------
+const high = await standAt(spots.forest.x, spots.forest.z, 1200, 1600);
+check('none of it is drawn from right up in the sky', !high.visible && high.live === 0,
+  `${high.live} standing at 1200 m`);
+const fading = await standAt(spots.forest.x, spots.forest.z, 830, 1600);
+check('and on the way up it fades rather than switching off',
+  fading.fade > 0.05 && fading.fade < 0.95, `drawn at ${fading.fade} of full size at 830 m`);
 const low = await standAt(spots.forest.x, spots.forest.z, 12);
 check('and it is all back when you come down again', low.live > 120, `${low.live} standing`);
 
 // --- And it is cheap ------------------------------------------------------------------
-check('a whole forest costs less than a tenth of what a city does',
-  low.triangles < 60000, `${low.triangles} triangles`);
+// Estronic is 116,000 triangles. A forest that reaches a kilometre and
+// a half in every direction has to come in under the city, or the
+// cheapest thing in the world is the most expensive thing to draw.
+check('a whole forest costs less than the city it stands outside',
+  low.triangles < 110000, `${low.triangles} triangles`);
 check('and it never spends more than its budget on a frame',
   low.build.ms <= 2.5, `${low.build.ms} ms`);
 

@@ -46,7 +46,7 @@ import { createGameOver } from './gameOver.js';
 import { createMap } from './map.js';
 import { createPadSetup } from './padSetup.js';
 import { createDialogue } from './dialogue.js';
-import { createPerks } from './perks.js';
+import { createPerks, GOODS } from './perks.js';
 import { createShop } from './shop.js';
 import { strings } from './strings.js';
 import { createTracers } from './world/tracers.js';
@@ -369,6 +369,26 @@ const inventory = createInventory({
     inventory.close();
     padSetup.open();
   },
+  // The score's on / low / off, which lives on the same page as Save
+  // because that is where a player goes looking for the settings.
+  music: {
+    choice: () => audio.musicChoice,
+    cycle: () => audio.cycleMusic(),
+  },
+  // The Items tab: everything he has collected, which in this game means
+  // everything he has bought — perks from the shops, upgrades from the
+  // Tablet. Read each time the tab is drawn, so it is never behind.
+  collected: () => {
+    const owned = perks.owned;
+    return [
+      ...GOODS.filter((g) => owned[g.id] > 0).map((g) => ({
+        name: perks.label(g.id), note: perks.note(g.id), count: owned[g.id],
+      })),
+      ...upgrades.upgrades.filter((u) => u.bought).map((u) => ({
+        name: u.label, note: u.description,
+      })),
+    ];
+  },
 });
 inventory.setItems([
   { name: strings.inventory.starterGun, note: strings.inventory.starterGunNote, held: true },
@@ -380,6 +400,49 @@ inventory.setItems([
 // worst possible moment to compile a new material.
 surface.prewarm(renderer, camera);
 onFoot.prewarm(renderer, camera);
+
+// How long the chase music holds after the last monster gave up. A
+// bokoblin losing sight of you behind a rock is not the end of the
+// chase, and a score that flips back to birdsong for two seconds and
+// then panics again is worse than one that never panicked.
+const DANGER_HOLD_S = 5;
+let dangerFor = 0;
+// How far outside a town's own edge still counts as being in it, so the
+// music does not change on the doorstep.
+const TOWN_MUSIC_MARGIN = 220;
+
+/**
+ * Which of the five moods the moment calls for.
+ *
+ * Order matters: it is a list of things that TRUMP one another, most
+ * urgent first. Something chasing you beats where you are standing,
+ * and where you are standing beats what you are flying over.
+ */
+function musicMood(dt) {
+  if (state === STATE.CINEMATIC || state === STATE.TITLE) return 'title';
+  // Marco wrote the game-over music. Nothing of mine plays under it.
+  if (gameOver.isOpen) return 'silent';
+
+  dangerFor = monsters.hunting ? DANGER_HOLD_S : Math.max(0, dangerFor - dt);
+  if (dangerFor > 0) return 'danger';
+
+  if (!surface.active) return 'space';
+
+  // In a town: measured from wherever the player actually is, which out
+  // on foot is the walker and not the ship he parked.
+  const at = onFoot.active
+    ? { x: onFoot.position.x, z: onFoot.position.z }
+    : {
+      x: ship.mesh.position.x - SURFACE_ORIGIN.x,
+      z: ship.mesh.position.z - SURFACE_ORIGIN.z,
+    };
+  for (const town of surface.world.info.settlements ?? []) {
+    if (Math.hypot(town.x - at.x, town.z - at.z) < town.radius + TOWN_MUSIC_MARGIN) {
+      return 'town';
+    }
+  }
+  return 'ground';
+}
 
 function onCinematicDone() {
   state = STATE.TITLE;
@@ -577,13 +640,25 @@ function frame(now) {
             || input.gamepad.consumeJustPressed(BUTTONS.Start))) {
       inventory.toggle();
     }
-    // Closing them with the same button everything else closes with.
+    // Clicking the left stick sets Vexo turning on the gear screen. Read
+    // here, before the reset further down, because L3 is Reset
+    // everywhere else and a man looking at his kit did not ask for that.
+    if (inventory.isOpen && input.gamepad.consumeJustPressed(BUTTONS.L3)) {
+      inventory.startSpin();
+    }
+    // Closing them with the same button everything else closes with —
+    // except that while he is spinning, B stops him first, and closes
+    // the screen on the next press.
     if ((inventory.isOpen || worldMap.isOpen || shop.isOpen)
         && (input.gamepad.consumeJustPressed(BUTTONS.B)
             || input.keyboard.consumeJustPressed(['Escape']))) {
-      inventory.close();
-      worldMap.close();
-      shop.close();
+      if (inventory.spinning) {
+        inventory.stopSpin();
+      } else {
+        inventory.close();
+        worldMap.close();
+        shop.close();
+      }
     }
     // Reset: R key, or clicking the left stick.
     if (input.keyboard.consumeJustPressed(['KeyR']) || input.gamepad.consumeJustPressed(BUTTONS.L3)) {
@@ -644,7 +719,7 @@ function frame(now) {
       audio.setSprinting(false);
       if (surface.active) surface.update(ship, dt);
     } else if (inventory.isOpen) {
-      inventory.update(dt, axes);
+      inventory.update(dt);
       audio.setThrottle(0);
       audio.setSprinting(false);
       if (surface.active) surface.update(ship, dt);
@@ -743,6 +818,14 @@ function frame(now) {
     worldMap.update();
   }
 
+  // What the band should be playing. Worked out here rather than in
+  // `audio.js` because it is a question about the GAME — where he is,
+  // whether anything is chasing him — and the mixer has no business
+  // knowing any of that.
+  audio.setMood(musicMood(dt));
+  // The engine belongs to the ship: on his feet, there is no engine
+  // under him to hum.
+  audio.setEngine(state === STATE.FLY && !onFoot.active && !gameOver.isOpen);
   fastTravel.update(dt);
   audio.update(dt);
   asteroids.update(dt);

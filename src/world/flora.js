@@ -34,10 +34,14 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BIOME } from './terrain.js';
 
-/** Above this much clear air under you, nothing on the ground is worth
- *  drawing: it is a texture from up there, and building it while you
- *  fly over at 280 m/s is work nobody sees. */
-export const FLORA_CEILING = 320;
+// How much clear air under you before what grows on the ground stops
+// being worth drawing. It is a FADE and not a line: a single altitude
+// at which every tree in the world switches off is the same fault as
+// the scatter's edge, met on the way up instead of on the way out.
+// A tree at 900 m is two pixels tall and the ground colour has taken
+// over the job by then.
+export const FLORA_FADE_FROM = 700;
+export const FLORA_CEILING = 950;
 
 // How long a frame may spend growing things. Half what the ground gets:
 // ground you can fall through, and a tree that arrives a frame late is
@@ -203,13 +207,34 @@ function buildGrass() {
 // survive are jittered within their cell. `patch` is a multiple of it,
 // so a patch is always a whole number of cells.
 
-// Trees reach furthest, and that is not a luxury: the edge of the
-// scatter is a visible line of trees with bare ground behind it, and the
-// further out it is the less it looks like the world ending. Beyond
-// three hundred metres a tree is four pixels tall and the ground colour
-// is doing the work anyway.
+// Trees reach a kilometre and a half, and that is not a luxury.
+//
+// Marco, flying: *"there are trees that appear... I want trees that are
+// there all the time."* He was watching the scatter's own edge go past.
+// Three hundred metres of trees is plenty on foot and nothing at all
+// from an airship at two hundred metres up, where three hundred metres
+// is a circle a third of the way down the screen: what you see is a
+// bubble of trees travelling with the ship over ground that is
+// otherwise bare, and every tree in the world arriving as you reach it.
+//
+// Going out to 1400 m at full density would be twenty times the trees.
+// So the far ones THIN OUT, and the trick that makes that invisible is
+// that each tier's trees are a SUBSET of the tier inside it: the grid
+// is the same 14 m everywhere, and a coarse tier takes only every
+// third or every fifth cell of it. A tree that is drawn at a kilometre
+// is therefore the same tree, in the same place, when you land beside
+// it — the wood does not rearrange itself as you approach. What changes
+// with distance is only how many of its neighbours are there too, and
+// each tree fades in over the last third of its OWN reach, so the
+// thinning is a dissolve rather than a line.
+const TREE_TIERS = [
+  { to: 320, stride: 1 },     // every candidate: what you walk through
+  { to: 760, stride: 3 },     // one in nine
+  { to: 1400, stride: 5 },    // one in twenty-five, for the horizon
+];
 const TREE = {
-  key: 'tree', patch: 70, cell: 14, radius: 300, slots: 900, tint: 0.14,
+  key: 'tree', patch: 140, cell: 14, radius: TREE_TIERS[TREE_TIERS.length - 1].to,
+  slots: 2400, tint: 0.14, tiers: TREE_TIERS,
 };
 const ROCK = {
   key: 'rock', patch: 60, cell: 12, radius: 200, slots: 420, tint: 0.18,
@@ -217,6 +242,23 @@ const ROCK = {
 const GRASS = {
   key: 'grass', patch: 12, cell: 2, radius: 42, slots: 1700, tint: 0,
 };
+
+/** Does this cell survive a tier that takes only every `stride`th one? */
+const survives = (gi, gj, stride) => stride === 1
+  || (gi % stride === 0 && gj % stride === 0);
+
+/** How far out a tree at this cell is still drawn. */
+function reachOf(gi, gj) {
+  let reach = TREE_TIERS[0].to;
+  for (const t of TREE_TIERS) if (survives(gi, gj, t.stride)) reach = t.to;
+  return reach;
+}
+
+/** Which tier a patch this far from the player belongs to. */
+function strideAt(distance) {
+  for (const t of TREE_TIERS) if (distance < t.to) return t.stride;
+  return 0;
+}
 
 /**
  * How likely a tree is here, and which tree it would be.
@@ -296,15 +338,63 @@ export function createFlora({ terrain, blocked = null, seed = 20260905 }) {
   const group = new THREE.Group();
   group.name = 'flora';
 
-  const foliageMat = new THREE.MeshStandardMaterial({
+  // How much of the flora is drawn at all: 1 down on the ground, 0 once
+  // there is enough air under the ship. One uniform, shared by all three
+  // materials, so the whole lot fades together.
+  const uFade = { value: 1 };
+
+  /**
+   * Make a material grow its instances out of the ground rather than
+   * switch them on.
+   *
+   * Each instance carries its own `aReach` — how far out it is drawn —
+   * and shrinks to nothing over the last third of it. Done in the
+   * vertex shader because the alternative is rewriting a matrix per
+   * instance per frame for two thousand trees, and because scaling
+   * `transformed` before the instance matrix is applied scales the tree
+   * about its own base: it grows up out of the ground, which is what a
+   * tree at the edge of sight ought to do.
+   *
+   * The alternative everyone tries first is transparency, and it costs
+   * a sorted draw and an alpha test per pixel for a result that is no
+   * better at this distance.
+   */
+  function fading(mat) {
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uFade = uFade;
+      shader.vertexShader = `attribute float aReach;
+uniform float uFade;
+${shader.vertexShader}`.replace('#include <begin_vertex>', `#include <begin_vertex>
+#ifdef USE_INSTANCING
+  vec3 floraOrigin = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+  float floraReach = max(aReach, 1.0);
+  // Measured flat, along the ground, and NOT as the crow flies. The
+  // tiers are rings drawn around where the player is standing, so the
+  // fade has to be the same shape: with the height in it, climbing to
+  // four hundred metres puts every near tree past its own reach and the
+  // ground below you empties out — which is the bug this was written to
+  // fix, met from above.
+  float floraFlat = length(floraOrigin.xz - cameraPosition.xz);
+  float floraGrow = 1.0 - smoothstep(floraReach * 0.62, floraReach, floraFlat);
+  transformed *= floraGrow * uFade;
+#endif`);
+    };
+    // Three.js caches compiled programs by material type plus this key;
+    // without it every material patched the same way would share one
+    // program and the second one would be compiled without the patch.
+    mat.customProgramCacheKey = () => 'flora-fade';
+    return mat;
+  }
+
+  const foliageMat = fading(new THREE.MeshStandardMaterial({
     vertexColors: true, roughness: 0.94, metalness: 0,
-  });
-  const rockMat = new THREE.MeshStandardMaterial({
+  }));
+  const rockMat = fading(new THREE.MeshStandardMaterial({
     vertexColors: true, roughness: 0.98, metalness: 0, flatShading: true,
-  });
-  const grassMat = new THREE.MeshStandardMaterial({
+  }));
+  const grassMat = fading(new THREE.MeshStandardMaterial({
     vertexColors: true, roughness: 1, metalness: 0, side: THREE.DoubleSide,
-  });
+  }));
 
   // One instanced mesh per species. `count` is moved as slots fill, so
   // the draw call only ever covers the slots in use.
@@ -336,6 +426,14 @@ export function createFlora({ terrain, blocked = null, seed = 20260905 }) {
     // is and what it must not look like.
     m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(s.layer.slots * 3), 3);
     m.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    // …and carries how far out it is drawn, which the shader turns into
+    // a tree that grows as you come near it. Attached to the geometry
+    // rather than the mesh because that is where three.js looks for an
+    // instanced attribute of its own.
+    const reach = new THREE.InstancedBufferAttribute(new Float32Array(s.layer.slots), 1);
+    reach.setUsage(THREE.DynamicDrawUsage);
+    s.geom.setAttribute('aReach', reach);
+    m.userData.reach = reach;
     meshes[name] = m;
     group.add(m);
   }
@@ -351,6 +449,12 @@ export function createFlora({ terrain, blocked = null, seed = 20260905 }) {
    *   used: {species: string, slot: number}[], solids: {x: number, z: number, r: number}[]}>} */
   const patches = new Map();
   const queue = [];
+  // What is already on the queue, and how thickly it is to be planted.
+  // A Map rather than a scan of the queue: at a kilometre and a half
+  // there are a few hundred patches, and looking through the queue for
+  // every one of them every frame is the sort of arithmetic that ends
+  // up in a profile.
+  const queued = new Map();
   let focusX = NaN;
   let focusZ = NaN;
   let visible = true;
@@ -367,10 +471,12 @@ export function createFlora({ terrain, blocked = null, seed = 20260905 }) {
   const _c = new THREE.Color();
   const _hidden = new THREE.Matrix4().makeScale(0, 0, 0);
 
-  function place(species, x, y, z, yaw, lean, tint) {
+  function place(species, x, y, z, yaw, lean, tint, reach) {
     const slot = free[species].pop();
     if (slot === undefined) return -1;
     const mesh = meshes[species];
+    mesh.userData.reach.array[slot] = reach;
+    mesh.userData.reach.needsUpdate = true;
     _e.set(lean * 0.55, yaw, lean);
     _q.setFromEuler(_e);
     _v.set(x, y, z);
@@ -394,7 +500,7 @@ export function createFlora({ terrain, blocked = null, seed = 20260905 }) {
    * an answer that does not change inside seventy metres.
    */
   function fillPatch(patch) {
-    const { layer, i, j } = patch;
+    const { layer, i, j, stride } = patch;
     const cx = (i + 0.5) * layer.patch;
     const cz = (j + 0.5) * layer.patch;
     const centre = terrain.sampleAt(cx, cz, 8);
@@ -405,6 +511,10 @@ export function createFlora({ terrain, blocked = null, seed = 20260905 }) {
       for (let ci = 0; ci < per; ci++) {
         const gi = i * per + ci;
         const gj = j * per + cj;
+        // Out past the near tier only every third or fifth cell of the
+        // same grid is taken, so the trees that are left are exactly
+        // the trees that were already there.
+        if (stride > 1 && !survives(gi, gj, stride)) continue;
         const rnd = cellRandom(gi, gj, seed + layer.cell);
         // Jittered inside its cell, so nothing lines up in rows.
         const x = (gi + 0.15 + rnd() * 0.7) * layer.cell;
@@ -436,10 +546,14 @@ export function createFlora({ terrain, blocked = null, seed = 20260905 }) {
         if (y <= 0.4) continue;   // the sea, and the last metre of beach
 
         const scale = 0.7 + rnd() * 0.7;
+        // How far out this one is drawn: its own tier's reach for a
+        // tree, and simply the layer's for everything else.
+        const reach = layer === TREE ? reachOf(gi, gj) : layer.radius;
         let slot = -1;
         if (species === 'grass') {
           _scale.set(scale, 0.65 + rnd() * 0.6, scale);
-          slot = place('grass', x, y, z, rnd() * Math.PI * 2, 0, shade(tint, rnd(), 0.12));
+          slot = place('grass', x, y, z, rnd() * Math.PI * 2, 0,
+            shade(tint, rnd(), 0.12), reach);
         } else if (species === 'rock') {
           _scale.set(
             scale * (0.7 + rnd() * 0.8), scale * (0.5 + rnd() * 0.6), scale * (0.8 + rnd() * 0.6),
@@ -447,14 +561,14 @@ export function createFlora({ terrain, blocked = null, seed = 20260905 }) {
           // Rocks sit IN the ground, not on it: a boulder resting
           // exactly on the surface looks dropped there.
           slot = place('rock', x, y - _scale.y * 0.28, z, rnd() * Math.PI * 2,
-            (rnd() - 0.5) * 0.5, shade(0x77736a, rnd()));
+            (rnd() - 0.5) * 0.5, shade(0x77736a, rnd()), reach);
         } else {
           // Every tree is its own height and leans its own way — a wood
           // of identical trees is a wallpaper.
           const s = species === 'scrub' ? 0.8 + rnd() * 0.9 : 0.75 + rnd() * 0.75;
           _scale.set(s * (0.9 + rnd() * 0.2), s, s * (0.9 + rnd() * 0.2));
           slot = place(species, x, y - 0.15, z, rnd() * Math.PI * 2,
-            (rnd() - 0.5) * 0.12, shade(0xffffff, rnd(), layer.tint));
+            (rnd() - 0.5) * 0.12, shade(0xffffff, rnd(), layer.tint), reach);
         }
         if (slot < 0) continue;   // out of slots: the rest of this patch waits
         patch.used.push({ species, slot });
@@ -492,6 +606,9 @@ export function createFlora({ terrain, blocked = null, seed = 20260905 }) {
    */
   function setFocus(x, z, aboveGround = 0) {
     const wasVisible = visible;
+    // The fade is the shader's job; this only decides how much of it.
+    uFade.value = aboveGround <= FLORA_FADE_FROM ? 1
+      : Math.max(0, 1 - (aboveGround - FLORA_FADE_FROM) / (FLORA_CEILING - FLORA_FADE_FROM));
     visible = aboveGround < FLORA_CEILING;
     group.visible = visible;
     if (!visible) {
@@ -501,6 +618,7 @@ export function createFlora({ terrain, blocked = null, seed = 20260905 }) {
       if (wasVisible) {
         for (const patch of [...patches.values()]) dropPatch(patch);
         queue.length = 0;
+        queued.clear();
       }
       return;
     }
@@ -509,22 +627,37 @@ export function createFlora({ terrain, blocked = null, seed = 20260905 }) {
 
     const wanted = new Set();
     for (const layer of [TREE, ROCK, GRASS]) {
-      const reach = Math.ceil((layer.radius + layer.patch) / layer.patch);
+      const span = Math.ceil((layer.radius + layer.patch) / layer.patch);
       const ci = Math.floor(x / layer.patch);
       const cj = Math.floor(z / layer.patch);
-      for (let dj = -reach; dj <= reach; dj++) {
-        for (let di = -reach; di <= reach; di++) {
+      for (let dj = -span; dj <= span; dj++) {
+        for (let di = -span; di <= span; di++) {
           const i = ci + di;
           const j = cj + dj;
           // Round, not square: the corners of a square are half again
           // as far away as its sides, and that is where the cost is.
           const px = (i + 0.5) * layer.patch - x;
           const pz = (j + 0.5) * layer.patch - z;
-          if (Math.hypot(px, pz) > layer.radius + layer.patch) continue;
+          const d = Math.hypot(px, pz);
+          if (d > layer.radius + layer.patch) continue;
+          // How thickly this patch is planted, from how far away it is.
+          // A whole patch at a time, so that walking towards a wood does
+          // not rebuild it every frame — it rebuilds once, when the
+          // patch crosses a tier boundary, and the trees that were
+          // already standing stay exactly where they were.
+          const stride = layer.tiers ? strideAt(d) : 1;
+          if (!stride) continue;
           const key = `${layer.key}:${i},${j}`;
           wanted.add(key);
-          if (patches.has(key)) continue;
-          queue.push({ key, layer, i, j, d2: px * px + pz * pz });
+          // Already standing, planted the right way: nothing to do.
+          if (patches.get(key)?.stride === stride) continue;
+          // Queued for exactly this already: also nothing to do. The
+          // old patch stays up meanwhile — replacing it is `work`'s
+          // job, and it takes the old one down in the same breath as
+          // it puts the new one up, so there is never a hole.
+          if (queued.get(key) === stride) continue;
+          queued.set(key, stride);
+          queue.push({ key, layer, i, j, stride, d2: px * px + pz * pz });
         }
       }
     }
@@ -534,7 +667,11 @@ export function createFlora({ terrain, blocked = null, seed = 20260905 }) {
     // Anything queued that is no longer wanted (the player turned round
     // before it was built) goes now, or the queue grows for ever.
     for (let n = queue.length - 1; n >= 0; n--) {
-      if (!wanted.has(queue[n].key) || patches.has(queue[n].key)) queue.splice(n, 1);
+      const job = queue[n];
+      if (!wanted.has(job.key) || queued.get(job.key) !== job.stride) {
+        if (queued.get(job.key) === job.stride) queued.delete(job.key);
+        queue.splice(n, 1);
+      }
     }
     queue.sort((a, b) => a.d2 - b.d2);
   }
@@ -544,8 +681,17 @@ export function createFlora({ terrain, blocked = null, seed = 20260905 }) {
     const started = performance.now();
     while (queue.length && performance.now() - started < budgetMs) {
       const job = queue.shift();
-      if (patches.has(job.key)) continue;
-      const patch = { key: job.key, layer: job.layer, i: job.i, j: job.j, used: [], solids: [] };
+      queued.delete(job.key);
+      const standing = patches.get(job.key);
+      if (standing) {
+        // Same ground, planted differently: down and up in one go.
+        if (standing.stride === job.stride) continue;
+        dropPatch(standing);
+      }
+      const patch = {
+        key: job.key, layer: job.layer, i: job.i, j: job.j, stride: job.stride,
+        used: [], solids: [],
+      };
       patches.set(job.key, patch);
       fillPatch(patch);
     }
@@ -606,8 +752,27 @@ export function createFlora({ terrain, blocked = null, seed = 20260905 }) {
       get patches() { return patches.size; },
       get build() { return { ms: +buildMs.toFixed(2), queued: queue.length }; },
       get visible() { return visible; },
+      /** How much of it is being drawn: 1 on the ground, 0 up in the air. */
+      get fade() { return +uFade.value.toFixed(3); },
       /** For tests: the trunk or boulder at a point, if there is one. */
       solidNear: (x, z, r = 0.4) => solidNear(x, z, r),
+      /**
+       * Every trunk standing inside a circle, for the test that matters
+       * most about the tiers: a tree drawn at a kilometre has to be the
+       * same tree, in the same place, when you land beside it.
+       */
+      trunksIn: (x, z, radius) => {
+        const found = [];
+        for (const patch of patches.values()) {
+          if (patch.layer !== TREE) continue;
+          for (const t of patch.solids) {
+            if (Math.hypot(t.x - x, t.z - z) <= radius) {
+              found.push({ x: +t.x.toFixed(2), z: +t.z.toFixed(2) });
+            }
+          }
+        }
+        return found;
+      },
       get focus() { return { x: focusX, z: focusZ }; },
       triangles() {
         let n = 0;

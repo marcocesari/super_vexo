@@ -18,9 +18,25 @@
 // the row and the cog is waiting — so that is where the save button
 // belongs here too.
 //
-// Only weapons and system for now; the row is built from a list so the
-// tabs TotK has and this game doesn't yet (armour, materials, key items)
-// can be dropped in beside them.
+// And driven the way TotK drives it. The left stick (or the D-pad, or
+// the arrow keys) is a cursor with two rows to be in: the tabs, where
+// left and right change the category, and the list below them, where
+// up and down pick a thing. Down off the tabs drops into the list; up
+// off the top of the list climbs back to the tabs. L and R change the
+// category from anywhere. A takes the thing under the cursor. The stick
+// is NOT for turning Vexo — that is its click, L3, which sets him
+// spinning until B holds him.
+//
+// Weapons, Items, the Tablet and System; the row is built from a list so
+// the tabs TotK has and this game doesn't yet (armour, key items) can be
+// dropped in beside them.
+//
+// Items is everything he has collected. Nothing in this game is picked
+// up off the ground — what he collects, he buys: perks from the shops
+// in Estronic and upgrades from the Tablet — so the page is read from
+// those two ledgers, live, each time it is drawn. That way a thing
+// bought a moment ago is on the list without anybody having to remember
+// to put it there.
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { createVexo, VEXO_HEIGHT } from './world/vexo.js';
@@ -28,16 +44,33 @@ import { strings } from './strings.js';
 
 const TURN_RATE = 2.2;          // radians per second on the stick or keys
 const DRAG_SCALE = 0.011;       // radians per pixel dragged
-const SPIN_IDLE = 0.25;         // he turns slowly on his own until touched
+// How fast he goes round once set spinning. Slower than the stick:
+// this is for looking, not for getting to the other side.
+const SPIN_RATE = 0.9;
 
-// Only the three buttons this screen uses, rather than importing the
-// whole pad map for them.
+// Only the buttons this screen uses, rather than importing the whole
+// pad map for them.
 const BUTTONS_A = 0;
+const BUTTONS_X = 2;
 const BUTTONS_L1 = 4;
 const BUTTONS_R1 = 5;
+const BUTTONS_UP = 12;
+const BUTTONS_DOWN = 13;
+const BUTTONS_LEFT = 14;
+const BUTTONS_RIGHT = 15;
+
+// The left stick read as a D-pad. A push past the first counts as one
+// press; it has to come back inside the second before it can count
+// again, so a stick wobbling around the line does not stutter through
+// the list. Held over, it repeats, as TotK's does.
+const STICK_PRESS = 0.55;
+const STICK_RELEASE = 0.3;
+const REPEAT_AFTER_S = 0.4;
+const REPEAT_EVERY_S = 0.13;
 
 export function createInventory({
   renderer, input, saves = null, tablet = null, onSetUpController = null,
+  music = null, collected = null,
 }) {
   // --- The panel ---------------------------------------------------------------
   const root = document.createElement('div');
@@ -54,6 +87,8 @@ export function createInventory({
         <div class="inventory__system" data-system hidden>
           <button class="inventory__save" data-save>${strings.inventory.save}</button>
           <p class="inventory__saved" data-saved></p>
+          <button class="inventory__controller" data-music></button>
+          <p class="inventory__saved">${strings.inventory.musicNote}</p>
           <button class="inventory__controller" data-controller>${strings.inventory.controller}</button>
           <p class="inventory__saved" data-pad></p>
         </div>
@@ -71,6 +106,7 @@ export function createInventory({
   const tabletEl = root.querySelector('[data-tablet]');
   const saveBtn = root.querySelector('[data-save]');
   const savedEl = root.querySelector('[data-saved]');
+  const musicBtn = root.querySelector('[data-music]');
   const controllerBtn = root.querySelector('[data-controller]');
   const padEl = root.querySelector('[data-pad]');
   const figureEl = root.querySelector('.inventory__figure');
@@ -81,6 +117,7 @@ export function createInventory({
   // belong to hud.js; this only decides where they are shown.
   const TABS = [
     { id: 'weapons', label: strings.inventory.weapons },
+    ...(collected ? [{ id: 'items', label: strings.inventory.items }] : []),
     ...(tablet ? [{ id: 'tablet', label: strings.inventory.tablet }] : []),
     { id: 'system', label: strings.inventory.system },
   ];
@@ -135,7 +172,10 @@ export function createInventory({
 
   let open = false;
   let spin = 0;
-  let idleSpin = true;
+  // Set going by clicking the left stick, stopped by B. He does NOT
+  // turn on his own: a figure that drifts round unasked is a figure you
+  // are forever waiting to come back to the side you were looking at.
+  let spinning = false;
   let dragging = false;
   let lastX = 0;
 
@@ -143,7 +183,7 @@ export function createInventory({
   function onDown(e) {
     if (!open) return;
     dragging = true;
-    idleSpin = false;
+    spinning = false;
     lastX = e.clientX;
   }
   function onMove(e) {
@@ -166,7 +206,7 @@ export function createInventory({
       const el = document.createElement('span');
       el.className = i === tab ? 'inventory__tab inventory__tab--on' : 'inventory__tab';
       el.textContent = t.label;
-      el.addEventListener('click', () => { tab = i; drawTabs(); draw(); });
+      el.addEventListener('click', () => { tab = i; focus = 'tabs'; cursor = 0; drawTabs(); draw(); });
       tabsEl.appendChild(el);
     }
   }
@@ -174,35 +214,150 @@ export function createInventory({
   /** Move along the row, TotK's L and R. */
   function step(by) {
     tab = (tab + by + TABS.length) % TABS.length;
+    cursor = 0;
     drawTabs();
     draw();
+    // A page with nothing to pick from (the Tablet, an empty list) has
+    // nowhere below the tabs to be.
+    if (!rows().length) focus = 'tabs';
+    drawFocus();
+  }
+
+  // --- The cursor ---------------------------------------------------------------
+  /** Which row of the screen the cursor is in. */
+  let focus = 'tabs';
+  /** Which entry of the list, when it is in the list. */
+  let cursor = 0;
+  let stickHeld = null;     // the direction the stick is being held in
+  let stickHeldFor = 0;
+  let stickRepeatAt = 0;
+
+  /** What there is to pick from on this page, top to bottom. */
+  function rows() {
+    const page = TABS[tab].id;
+    if (page === 'system') return [saveBtn, musicBtn, controllerBtn];
+    if (page === 'tablet') return [];
+    return [...itemsEl.querySelectorAll('.inventory__item:not(.inventory__item--empty)')];
+  }
+
+  function drawFocus() {
+    tabsEl.classList.toggle('inventory__tabs--focus', focus === 'tabs');
+    const list = rows();
+    for (const [i, el] of list.entries()) {
+      const on = focus === 'list' && i === cursor;
+      el.classList.toggle('is-picked', on);
+      if (on) el.scrollIntoView?.({ block: 'nearest' });
+    }
+  }
+
+  /** One press of the cursor: 'up', 'down', 'left' or 'right'. */
+  function move(dir) {
+    const list = rows();
+    if (focus === 'tabs') {
+      if (dir === 'left') return step(-1);
+      if (dir === 'right') return step(1);
+      if (dir === 'down' && list.length) { focus = 'list'; cursor = 0; }
+    } else {
+      if (dir === 'up') {
+        if (cursor > 0) cursor -= 1;
+        else focus = 'tabs';
+      }
+      if (dir === 'down') cursor = Math.min(cursor + 1, list.length - 1);
+      // Left and right do nothing down here, as in TotK's grid: the
+      // categories are reached by going up to them, or with L and R.
+    }
+    drawFocus();
+  }
+
+  /** A: take what is under the cursor. On the tabs it drops into the list. */
+  function activate() {
+    if (focus === 'tabs') return move('down');
+    rows()[cursor]?.click();
+  }
+
+  /**
+   * The stick as presses. Returns a direction on the frame it crosses
+   * the line, then again every so often for as long as it is held.
+   */
+  function stickPress(dt) {
+    const s = input.gamepad.stick;
+    if (!s) { stickHeld = null; return null; }
+    const mag = Math.max(Math.abs(s.x), Math.abs(s.y));
+    if (stickHeld) {
+      if (mag < STICK_RELEASE) { stickHeld = null; return null; }
+      stickHeldFor += dt;
+      if (stickHeldFor >= stickRepeatAt) {
+        stickRepeatAt += REPEAT_EVERY_S;
+        return stickHeld;
+      }
+      return null;
+    }
+    if (mag < STICK_PRESS) return null;
+    // +x is LEFT and +y is UP, the way the flight axes are signed.
+    stickHeld = Math.abs(s.x) > Math.abs(s.y)
+      ? (s.x > 0 ? 'left' : 'right')
+      : (s.y > 0 ? 'up' : 'down');
+    stickHeldFor = 0;
+    stickRepeatAt = REPEAT_AFTER_S;
+    return stickHeld;
+  }
+
+  /** Every way of pressing a direction this frame, or null. */
+  function readDirection(dt) {
+    const kb = input.keyboard;
+    const pad = input.gamepad;
+    let dir = null;
+    if (kb.consumeJustPressed(['ArrowUp']) || pad.consumeJustPressed(BUTTONS_UP)) dir = 'up';
+    if (kb.consumeJustPressed(['ArrowDown']) || pad.consumeJustPressed(BUTTONS_DOWN)) dir = 'down';
+    if (kb.consumeJustPressed(['ArrowLeft']) || pad.consumeJustPressed(BUTTONS_LEFT)) dir = 'left';
+    if (kb.consumeJustPressed(['ArrowRight']) || pad.consumeJustPressed(BUTTONS_RIGHT)) dir = 'right';
+    return dir ?? stickPress(dt);
   }
 
   function draw() {
     const page = TABS[tab].id;
-    itemsEl.hidden = page !== 'weapons';
+    itemsEl.hidden = page !== 'weapons' && page !== 'items';
     systemEl.hidden = page !== 'system';
     tabletEl.hidden = page !== 'tablet';
     if (page === 'system') {
       savedEl.textContent = savedNote();
       padEl.textContent = padNote();
+      musicBtn.textContent = musicLabel();
+      drawFocus();
       return;
     }
     if (page === 'tablet') return;
+    if (page === 'items') drawList(collected(), strings.inventory.nothingCollected, true);
+    else drawList(items, strings.inventory.empty, false);
+    drawFocus();
+  }
+
+  /**
+   * Fill the list. Weapons and Items are the same kind of page — a name
+   * and a line about it — so they share one, with `loot` marking the
+   * things he has collected: those may stack ("×2"), and their notes are
+   * sentences rather than the one-word tag a weapon carries.
+   */
+  function drawList(list, emptyText, loot) {
     itemsEl.innerHTML = '';
-    for (const item of items) {
+    for (const item of list) {
       const li = document.createElement('li');
-      li.className = item.held ? 'inventory__item inventory__item--held' : 'inventory__item';
+      li.className = 'inventory__item'
+        + (item.held ? ' inventory__item--held' : '')
+        + (loot ? ' inventory__item--loot' : '');
+      const count = (item.count ?? 1) > 1
+        ? `<span class="inventory__item-count">${strings.inventory.count.replace('{n}', String(item.count))}</span>`
+        : '';
       li.innerHTML = `
-        <span class="inventory__item-name">${item.name}</span>
+        <span class="inventory__item-name">${item.name}${count}</span>
         <span class="inventory__item-note">${item.note}</span>
       `;
       itemsEl.appendChild(li);
     }
-    if (!items.length) {
+    if (!list.length) {
       const li = document.createElement('li');
       li.className = 'inventory__item inventory__item--empty';
-      li.textContent = strings.inventory.empty;
+      li.textContent = emptyText;
       itemsEl.appendChild(li);
     }
   }
@@ -234,6 +389,24 @@ export function createInventory({
     return line.replace('{id}', pad.padId);
   }
 
+  /** MUSIC: ON / LOW / OFF, as the score is currently set. */
+  function musicLabel() {
+    const choice = music?.choice() ?? 'on';
+    const named = {
+      on: strings.inventory.musicOn,
+      low: strings.inventory.musicLow,
+      off: strings.inventory.musicOff,
+    }[choice] ?? choice.toUpperCase();
+    return strings.inventory.music.replace('{state}', named);
+  }
+
+  /** Step the score on to its next setting and say so on the button. */
+  function stepMusic() {
+    music?.cycle();
+    musicBtn.textContent = musicLabel();
+  }
+
+  musicBtn.addEventListener('click', stepMusic);
   controllerBtn.addEventListener('click', () => { onSetUpController?.(); });
 
   saveBtn.addEventListener('click', () => {
@@ -252,15 +425,20 @@ export function createInventory({
 
     /** Which tab is showing, for tests. */
     get tab() { return TABS[tab].id; },
+    /** Where the cursor is — 'tabs' or 'list' — and which entry, for tests. */
+    get focus() { return focus; },
+    get cursor() { return cursor; },
 
     toggle() { return open ? this.close() : this.show(); },
 
     show() {
       open = true;
       root.hidden = false;
-      idleSpin = true;
-      // Facing the player, then drifting round on his own until somebody
-      // takes hold of him.
+      spinning = false;
+      focus = 'tabs';
+      cursor = 0;
+      stickHeld = null;
+      // Facing the player, and staying there until told otherwise.
       spin = 0;
       // Holding the gun, but NOT aiming it: the point of the screen is
       // to see what he has, and a man with his arm out straight in a
@@ -276,27 +454,37 @@ export function createInventory({
       open = false;
       root.hidden = true;
       dragging = false;
+      spinning = false;
       vexo.setArmed(false);
       return false;
     },
 
-    /** Turned by the stick and the keys as well as by dragging. */
-    update(dt, axes) {
+    /** Whether he is going round on his own just now. */
+    get spinning() { return spinning; },
+    /** Set him turning — the left stick's click. */
+    startSpin() { if (open) spinning = true; },
+    /** And hold him where he is — B. */
+    stopSpin() { spinning = false; },
+
+    /** The cursor, the shoulder buttons, and turning him. */
+    update(dt) {
       if (!open) return;
-      const stick = (axes?.stickYaw ?? axes?.yaw ?? 0);
-      const keys = (input.keyboard.isDown('KeyA') ? 1 : 0)
-        - (input.keyboard.isDown('KeyD') ? 1 : 0);
-      // Along the tabs: the shoulder buttons, as in TotK, and the
-      // arrow keys for anyone without a pad.
-      if (input.gamepad.consumeJustPressed(BUTTONS_R1)
-          || input.keyboard.consumeJustPressed(['ArrowRight'])) step(1);
-      if (input.gamepad.consumeJustPressed(BUTTONS_L1)
-          || input.keyboard.consumeJustPressed(['ArrowLeft'])) step(-1);
-      // Saving from the pad, when the System tab is up.
+      // Along the tabs from anywhere: the shoulder buttons, as in TotK.
+      if (input.gamepad.consumeJustPressed(BUTTONS_R1)) step(1);
+      if (input.gamepad.consumeJustPressed(BUTTONS_L1)) step(-1);
+      // The cursor: stick, D-pad or arrows.
+      const dir = readDirection(dt);
+      if (dir) move(dir);
+      // A, or Enter / E, takes what the cursor is on — Save, if that is
+      // where it stands. X is still the music from anywhere on the
+      // System page, being the other thing on it anybody reaches for.
+      if (input.gamepad.consumeJustPressed(BUTTONS_A)
+          || input.keyboard.consumeJustPressed(['Enter', 'KeyE'])) {
+        activate();
+      }
       if (TABS[tab].id === 'system'
-          && input.gamepad.consumeJustPressed(BUTTONS_A)) {
-        const ok = saves?.saveManual();
-        savedEl.textContent = ok ? strings.inventory.savedJustNow : strings.inventory.saveFailed;
+          && input.gamepad.consumeJustPressed(BUTTONS_X)) {
+        stepMusic();
       }
 
       // A pad only becomes visible to the browser once a button on it
@@ -307,12 +495,16 @@ export function createInventory({
         if (note !== padEl.textContent) padEl.textContent = note;
       }
 
-      const turn = stick || keys;
+      // Turning him by hand — A / D, for anyone without a pad — takes
+      // over from the spin, so a nudge to look at one side does not
+      // have to be fought for.
+      const turn = (input.keyboard.isDown('KeyA') ? 1 : 0)
+        - (input.keyboard.isDown('KeyD') ? 1 : 0);
       if (turn) {
-        idleSpin = false;
+        spinning = false;
         spin += turn * TURN_RATE * dt;
-      } else if (idleSpin && !dragging) {
-        spin += SPIN_IDLE * dt;
+      } else if (spinning) {
+        spin += SPIN_RATE * dt;
       }
       turntable.rotation.y = spin;
       vexo.update(dt);

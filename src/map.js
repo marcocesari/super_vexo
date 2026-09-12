@@ -23,6 +23,27 @@ const BUDGET_MS = 2.5;
 
 const YOU = '#7dff9f';
 const SHIP = '#8fd0ff';
+// The shops, in the red of their own awnings — the thing you look for in
+// the street is the thing you look for on the map — lifted a couple of
+// shades so it reads against a mesa.
+const SHOP = '#ff6a45';
+
+// How far a shop's mark sits from its town's dot when its true place is
+// nearer than that, in screen pixels.
+//
+// The three shops in Estronic stand within 130 metres of the square, and
+// this is a map of a continent 130 KILOMETRES across: even at the
+// closest the map will go, those hundred metres are narrower than the
+// town's own dot, and three marks drawn where the shops really are would
+// be one mark. So they are pushed out to where they can be told apart,
+// each along its own true BEARING from the middle of the city, with a
+// spoke back to the dot to say that is where they belong. Which side of
+// the square to walk to is the honest half of the answer, and at this
+// scale it is the only half there is.
+const SHOP_FAN = 15;
+// Below this the map is showing whole provinces and the names would be
+// three labels arguing over one town.
+const SHOP_LABEL_ZOOM = 2.2;
 
 // How far in the map will go. At ×8 a pixel of the drawing is eighteen
 // metres of ground, which is about as far as it is worth stretching a
@@ -212,21 +233,94 @@ export function createMap({ world }) {
     // village, which is how anybody would draw it.
     for (const town of world.info.settlements ?? []) {
       const p = toScreen(town.x, town.z);
+      const cx = p.x;
+      const cy = p.y;
       const big = town.kind === 'capital';
+      const dotR = (big ? 5 : 3.2) * dpr;
+
+      // Where the shops' marks go, worked out before anything is drawn:
+      // the town's name has to know how far above the dot they reach so
+      // it can sit clear of them.
+      const fan = SHOP_FAN * dpr;
+      const pins = (town.shops ?? []).map((shop) => {
+        const sp = toScreen(shop.x, shop.z);
+        const dx = sp.x - cx;
+        const dy = sp.y - cy;
+        const d = Math.hypot(dx, dy) || 1e-3;
+        // Its own distance once the map is close enough to draw it
+        // honestly; the fan while it is not.
+        const out = Math.max(d, fan);
+        return {
+          kind: shop.kind,
+          x: cx + (dx / d) * out,
+          y: cy + (dy / d) * out,
+          ux: dx / d,
+          uy: dy / d,
+          pushed: out - d,
+        };
+      });
+
       ctx.beginPath();
-      ctx.arc(p.x, p.y, (big ? 5 : 3.2) * dpr, 0, Math.PI * 2);
+      ctx.arc(cx, cy, dotR, 0, Math.PI * 2);
       ctx.fillStyle = big ? '#ffe9b0' : '#efe0c4';
       ctx.strokeStyle = 'rgba(20, 14, 8, 0.85)';
       ctx.lineWidth = 1.6 * dpr;
       ctx.fill();
       ctx.stroke();
+
+      for (const pin of pins) {
+        // The spoke, drawn only when the mark has been moved off its
+        // real place: at that point the line is what says "in there".
+        if (pin.pushed > 2 * dpr) {
+          ctx.beginPath();
+          ctx.moveTo(cx + pin.ux * dotR, cy + pin.uy * dotR);
+          ctx.lineTo(pin.x, pin.y);
+          ctx.strokeStyle = 'rgba(255, 106, 69, 0.55)';
+          ctx.lineWidth = 1.4 * dpr;
+          ctx.stroke();
+        }
+        ctx.beginPath();
+        ctx.arc(pin.x, pin.y, 3.4 * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = SHOP;
+        ctx.strokeStyle = 'rgba(20, 14, 8, 0.85)';
+        ctx.lineWidth = 1.4 * dpr;
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      // Names last, so nothing is drawn over them. The shops' go beside
+      // their marks rather than above: above is where the town's own
+      // name lives, and one of the three shops is always due north of
+      // the square.
+      if (zoom >= SHOP_LABEL_ZOOM) {
+        ctx.font = `${9 * dpr}px ui-monospace, monospace`;
+        ctx.lineWidth = 3 * dpr;
+        for (const pin of pins) {
+          const right = pin.ux >= 0;
+          ctx.textAlign = right ? 'left' : 'right';
+          const tx = pin.x + (right ? 7 : -7) * dpr;
+          const ty = pin.y + 3.2 * dpr;
+          const label = strings.map.shops[pin.kind] ?? pin.kind;
+          ctx.strokeStyle = 'rgba(10, 16, 24, 0.9)';
+          ctx.strokeText(label, tx, ty);
+          // The pin's own red, lightened until it reads as writing on a
+          // dark map — and deliberately a colour no ground in this
+          // world is, so a name can never be mistaken for a salt pan.
+          ctx.fillStyle = '#ff9d86';
+          ctx.fillText(label, tx, ty);
+        }
+      }
+
+      // Lifted clear of whatever the shops reach above the dot.
+      const top = pins.length ? Math.min(...pins.map((q) => q.y)) : cy;
+      const nameY = Math.min(cy - (big ? 9 : 7) * dpr, top - 12 * dpr);
       ctx.font = `${(big ? 12 : 10) * dpr}px ui-monospace, monospace`;
       ctx.textAlign = 'center';
       ctx.lineWidth = 3 * dpr;
       ctx.strokeStyle = 'rgba(10, 16, 24, 0.9)';
-      ctx.strokeText(town.name, p.x, p.y - (big ? 9 : 7) * dpr);
+      ctx.strokeText(town.name, cx, nameY);
       ctx.fillStyle = '#fff6e2';
-      ctx.fillText(town.name, p.x, p.y - (big ? 9 : 7) * dpr);
+      ctx.fillText(town.name, cx, nameY);
     }
 
     // The ship first, so that when they are in the same place the arrow

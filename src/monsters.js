@@ -410,6 +410,19 @@ export function createMonsters({ scene, world, origin }) {
     monsters,
     camps,
 
+    /**
+     * True while anything alive is coming for the player. The music
+     * asks: being hunted is the one thing happening in this game that
+     * the player cannot always SEE happening.
+     */
+    get hunting() {
+      if (!group.visible) return false;
+      for (const m of monsters) {
+        if (m.state === 'chase' || m.state === 'attack') return true;
+      }
+      return false;
+    },
+
     /** Show them only while the player is down in the town. */
     setActive(on) { group.visible = on; },
 
