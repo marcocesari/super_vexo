@@ -78,21 +78,61 @@ export function createAsteroids() {
   mesh.instanceMatrix.needsUpdate = true;
 
   function update(dt) {
+    updateBroken(dt);
     const dq = new THREE.Quaternion();
     for (let i = 0; i < ASTEROID_COUNT; i++) {
       const inst = instances[i];
       dq.setFromAxisAngle(inst.spinAxis, inst.spinRate * dt);
       inst.rotation.premultiply(dq);
-      _scaleV.setScalar(inst.radius / 1.05);
+      _scaleV.setScalar(drawScale(inst));
       _matrix.compose(inst.position, inst.rotation, _scaleV);
       mesh.setMatrixAt(i, _matrix);
     }
     mesh.instanceMatrix.needsUpdate = true;
   }
 
+  // Shot rocks. A rock that is hit shatters — it swells for a moment and
+  // is gone — and stays gone for a while before a fresh one drifts back
+  // in somewhere else in the belt, so the field never runs out.
+  const BREAK_TIME = 0.22;
+  const RESPAWN_AFTER = 25;
+  function destroy(i) {
+    const inst = instances[i];
+    if (!inst || inst.dead) return;
+    inst.dead = true;
+    inst.breakT = 0;
+    inst.baseRadius = inst.radius;
+    // Out of the collision test at once: a ship flying through the dust
+    // of a rock it just shot should not bounce off it.
+    inst.radius = 0;
+  }
+  function updateBroken(dt) {
+    for (let i = 0; i < instances.length; i++) {
+      const inst = instances[i];
+      if (!inst.dead) continue;
+      inst.breakT += dt;
+      if (inst.breakT >= RESPAWN_AFTER) {
+        inst.dead = false;
+        inst.position.set(
+          rand(-VOLUME.xHalf, VOLUME.xHalf),
+          rand(-VOLUME.yHalf, VOLUME.yHalf),
+          rand(VOLUME.zNear, VOLUME.zFar),
+        );
+        inst.radius = inst.baseRadius;
+      }
+    }
+  }
+  /** How big to draw a rock this frame: swelling, then nothing. */
+  function drawScale(inst) {
+    if (!inst.dead) return inst.radius / 1.05;
+    const t = inst.breakT / BREAK_TIME;
+    return t >= 1 ? 0 : (inst.baseRadius / 1.05) * (1 + t * 0.6) * (1 - t * t);
+  }
+
   return {
     mesh,
-    instances,            // {position, radius, ...} — read-only for collision
+    instances,            // {position, radius, dead?, ...} — read-only for collision
+    destroy,
     update,
     volume: { ...VOLUME },
   };

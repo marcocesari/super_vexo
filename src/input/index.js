@@ -22,6 +22,7 @@
 import { createKeyboard } from './keyboard.js';
 import { createGamepad } from './gamepad.js';
 import { createGyro } from './gyro.js';
+import { createPadGyro } from './padGyro.js';
 import { createTouch, isTouchDevice } from './touch.js';
 import { isBridgeAvailable } from '../bridge.js';
 
@@ -31,6 +32,8 @@ export function createInput() {
   const keyboard = createKeyboard();
   const gamepad = createGamepad();
   const gyro = createGyro();
+  // The controller's own gyro, through WebHID (Chrome). See padGyro.js.
+  const padGyro = createPadGyro();
   const touch = createTouch();
 
   let lastSources = ['KB'];
@@ -39,6 +42,7 @@ export function createInput() {
     keyboard,
     gamepad,
     gyro,
+    padGyro,
     touch,
 
     /** True when running on a touchscreen (phone/tablet). */
@@ -131,6 +135,17 @@ export function createInput() {
       const lookTurnY = turn.pitch;
       if ((lookTurnX || lookTurnY) && !sources.includes('GYRO')) sources.push('GYRO');
 
+      // The controller's gyro, the same shape — radians turned since the
+      // last frame — but kept apart from the phone's, because the game
+      // uses it for one thing only: aiming the pistol (see onFoot.js).
+      // Consumed every frame whether anyone uses it or not, so turning
+      // the pad while walking does not bank a jump for the next aim.
+      const padTurn = padGyro.active ? padGyro.consumeTurn() : { yaw: 0, pitch: 0 };
+      if (!padGyro.active) padGyro.consumeTurn();
+      const padTurnX = padTurn.yaw;
+      const padTurnY = padTurn.pitch;
+      if ((padTurnX || padTurnY) && !sources.includes('PADGYRO')) sources.push('PADGYRO');
+
       // Always at least show 'KB' so the HUD has something — matches M1.
       if (sources.length === 0) sources.push('KB');
       lastSources = sources;
@@ -138,6 +153,7 @@ export function createInput() {
       return {
         throttle, yaw, pitch, roll,
         lookX, lookY, lookTurnX, lookTurnY,
+        padTurnX, padTurnY,
         stickYaw, stickThrottle,
       };
     },

@@ -738,6 +738,12 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
   let moveAngle = null;
   let legYaw = 0;           // eased: where the hips point, against the chest
   let walkBackward = false;
+  // In the air: `airborne` while a jump is on, `airVel` how fast he is
+  // rising (+) or falling (-), and `air` the eased 0..1 blend into the
+  // jump pose so take-off and landing are not a single-frame pop.
+  let airborne = false;
+  let airVel = 0;
+  let air = 0;
 
   const legs = [];
   for (const side of [-1, 1]) {
@@ -1537,6 +1543,41 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     support.group.rotation.set(0.5, support.side * 0.9, -support.side * 0.25);
   }
 
+  /**
+   * The jump, laid over whatever the gait did. Going up the knees tuck —
+   * one leg higher than the other, which is how people actually jump
+   * from a run — and coming down they straighten to reach for the
+   * ground. The arms come up and out for balance, unless they are busy
+   * holding the gun, in which case the stance below keeps them.
+   */
+  function poseAir(dt) {
+    const k = 1 - Math.pow(2, -dt / 0.06);
+    air += ((airborne && gait !== 'dying' && gait !== 'climb' ? 1 : 0) - air) * k;
+    if (air < 0.01) {
+      air = 0;
+      return;
+    }
+    // 1 rising, 0 falling: tucked on the way up, reaching on the way down.
+    const rise = Math.max(0, Math.min(1, 0.5 + airVel / 8));
+    for (const [i, leg] of legs.entries()) {
+      const lead = i === 0;
+      const hip = -(lead ? 0.75 : 0.25) * (0.5 + rise * 0.5);
+      const knee = (lead ? 1.25 : 0.7) * (0.35 + rise * 0.65);
+      leg.hip.rotation.x += (hip - leg.hip.rotation.x) * air;
+      leg.shin.rotation.x += (knee - leg.shin.rotation.x) * air;
+      leg.ankle.rotation.x += (0.35 - leg.ankle.rotation.x) * air;
+    }
+    // Feet off the ground: the walk's foot-planting no longer applies.
+    body.position.y *= 1 - air;
+    if (!armed) {
+      for (const arm of arms) {
+        arm.shoulder.rotation.x += (-0.55 - arm.shoulder.rotation.x) * air;
+        arm.shoulder.rotation.z += (arm.side * 0.45 - arm.shoulder.rotation.z) * air;
+        arm.forearm.rotation.x += (-0.5 - arm.forearm.rotation.x) * air;
+      }
+    }
+  }
+
   function leaveStance() {
     stanceShown = false;
     legYaw = 0;
@@ -1566,6 +1607,8 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     // Aiming overrides whatever the gait did with that arm: pistol up,
     // pointed where he is facing, and held still while everything else
     // carries on underneath it.
+    poseAir(dt);
+
     const inStance = stance && armed && gait !== 'dying' && gait !== 'climb';
     if (inStance) {
       poseStance(dt);
@@ -1608,6 +1651,15 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
      *        his chest faces (0 ahead, +PI/2 to his left), or null if
      *        he is standing still
      */
+    /**
+     * In the air or not, and how fast he is going up (+) or down (-).
+     * @param {boolean} on
+     * @param {number} [vy] m/s
+     */
+    setAirborne(on, vy = 0) {
+      airborne = on;
+      airVel = vy;
+    },
     setStance(on, pitch = 0, move = null) {
       stance = on;
       stancePitch = pitch;

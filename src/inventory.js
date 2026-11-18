@@ -91,6 +91,8 @@ export function createInventory({
           <p class="inventory__saved">${strings.inventory.musicNote}</p>
           <button class="inventory__controller" data-controller>${strings.inventory.controller}</button>
           <p class="inventory__saved" data-pad></p>
+          <button class="inventory__controller" data-gyro>${strings.inventory.gyro}</button>
+          <p class="inventory__saved" data-gyro-note></p>
         </div>
         <p class="screen-card__hint">${strings.inventory.hint}</p>
       </div>
@@ -109,6 +111,10 @@ export function createInventory({
   const musicBtn = root.querySelector('[data-music]');
   const controllerBtn = root.querySelector('[data-controller]');
   const padEl = root.querySelector('[data-pad]');
+  const gyroBtn = root.querySelector('[data-gyro]');
+  const gyroNoteEl = root.querySelector('[data-gyro-note]');
+  // A one-off message from the last attempt, shown instead of the status.
+  let gyroMessage = null;
   const figureEl = root.querySelector('.inventory__figure');
 
   // The row. System is last on purpose — see the note at the top.
@@ -235,7 +241,7 @@ export function createInventory({
   /** What there is to pick from on this page, top to bottom. */
   function rows() {
     const page = TABS[tab].id;
-    if (page === 'system') return [saveBtn, musicBtn, controllerBtn];
+    if (page === 'system') return [saveBtn, musicBtn, controllerBtn, gyroBtn];
     if (page === 'tablet') return [];
     return [...itemsEl.querySelectorAll('.inventory__item:not(.inventory__item--empty)')];
   }
@@ -322,6 +328,7 @@ export function createInventory({
     if (page === 'system') {
       savedEl.textContent = savedNote();
       padEl.textContent = padNote();
+      gyroNoteEl.textContent = gyroNote();
       musicBtn.textContent = musicLabel();
       drawFocus();
       return;
@@ -408,6 +415,40 @@ export function createInventory({
 
   musicBtn.addEventListener('click', stepMusic);
   controllerBtn.addEventListener('click', () => { onSetUpController?.(); });
+
+  // The controller's gyro (input/padGyro.js). Chrome opens the device
+  // picker only for a real click or key press: pressing A on the pad
+  // arrives here as a synthetic click, which it refuses, so say so.
+  function gyroNote() {
+    const g = input.padGyro;
+    if (gyroMessage) return gyroMessage;
+    if (!g?.supported) return strings.inventory.gyroUnsupported;
+    if (g.active) return strings.inventory.gyroConnected.replace('{name}', g.status.replace(/^connected: /, ''));
+    return strings.inventory.gyroNone;
+  }
+  gyroBtn.addEventListener('click', async (e) => {
+    const g = input.padGyro;
+    gyroMessage = null;
+    if (!g?.supported) {
+      gyroNoteEl.textContent = gyroNote();
+      return;
+    }
+    if (!e.isTrusted) {
+      gyroMessage = strings.inventory.gyroNeedsClick;
+      gyroNoteEl.textContent = gyroNote();
+      return;
+    }
+    try {
+      const ok = await g.connect();
+      if (!ok) gyroMessage = strings.inventory.gyroFailed.replace('{why}', g.status);
+    } catch (err) {
+      gyroMessage = strings.inventory.gyroFailed.replace('{why}', err.message);
+    }
+    // It takes a moment to measure the resting bias before it counts as
+    // active; refresh the note once it has.
+    gyroNoteEl.textContent = gyroNote();
+    setTimeout(() => { gyroMessage = null; gyroNoteEl.textContent = gyroNote(); }, 1500);
+  });
 
   saveBtn.addEventListener('click', () => {
     const ok = saves?.saveManual();

@@ -51,6 +51,7 @@ import { createMaterials, KINDS } from './materials.js';
 import { createShop } from './shop.js';
 import { strings } from './strings.js';
 import { createTracers } from './world/tracers.js';
+import { createShipGuns } from './shipGuns.js';
 
 // --- URL switches -----------------------------------------------------------
 // Read before anything is built, because half the setup below branches
@@ -201,6 +202,7 @@ function resetGame() {
 
   missionScreens.hideAll();
   chaseCamera.reset();
+  shipGuns.reset();
 }
 
 function tryBeginWarp() {
@@ -315,19 +317,37 @@ const onFoot = createOnFoot({
     audio.chirp(hit
       ? { fromHz: 900, toHz: 260, durationS: 0.16, peakGain: 0.16 }
       : { fromHz: 1400, toHz: 700, durationS: 0.08, peakGain: 0.09 });
-    // A bounty, so that fighting pays for the shops in Estronic. Without
-    // it the only money in the game comes from rovers in orbit around
-    // Mars, and the player starts on the ground half a world away.
-    if (hit && hit.state === 'dead') {
-      mission.earn(hit.boss ? BOSS_BOUNTY : MONSTER_BOUNTY);
-    }
-    // Clearing a camp is an achievement worth not having to repeat.
-    if (hit && hit.camp.members.every((m) => m.state === 'dead')) {
-      mission.earn(CAMP_BOUNTY);
-      audio.fanfare();
-      saves.saveAuto('camp cleared');
-    }
+    creditMonsterHit(hit);
   },
+});
+
+/**
+ * What a hit on a monster is worth, from the pistol or from the ship.
+ * @param {object|null} hit  the monster `monsters.shoot` hit, if any
+ */
+function creditMonsterHit(hit) {
+  // A bounty, so that fighting pays for the shops in Estronic. Without
+  // it the only money in the game comes from rovers in orbit around
+  // Mars, and the player starts on the ground half a world away.
+  if (hit && hit.state === 'dead') {
+    mission.earn(hit.boss ? BOSS_BOUNTY : MONSTER_BOUNTY);
+  }
+  // Clearing a camp is an achievement worth not having to repeat.
+  if (hit && hit.camp.members.every((m) => m.state === 'dead')) {
+    mission.earn(CAMP_BOUNTY);
+    audio.fanfare();
+    saves.saveAuto('camp cleared');
+  }
+}
+
+// The ship's own guns: R2 or Space in the air puts the camera in the
+// cockpit and fires the two wingtip cannons. See shipGuns.js.
+const shipGuns = createShipGuns({
+  scene, camera, ship, asteroids, monsters, surface,
+  onMonsterHit: (hit) => creditMonsterHit(hit),
+  onFire: (hit) => audio.chirp(hit
+    ? { fromHz: 760, toHz: 180, durationS: 0.18, peakGain: 0.14 }
+    : { fromHz: 1800, toHz: 520, durationS: 0.09, peakGain: 0.08 }),
 });
 
 // Saving: a manual slot for the button in the inventory's System tab,
@@ -531,6 +551,7 @@ function frame(now) {
     isCalibrated: input.gamepad.isCalibrated,
     stick: input.gamepad.stick,
     held: Array.from({ length: 17 }, (_, i) => i).filter((i) => input.gamepad.isButtonDown(i)),
+    padGyro: input.padGyro.debug,
     inventory: {
       open: inventory.isOpen, tab: inventory.tab, focus: inventory.focus,
       cursor: inventory.cursor, spinning: inventory.spinning,
@@ -618,8 +639,9 @@ function frame(now) {
         || input.gamepad.consumeJustPressed(BUTTONS.Select)) {
       worldMap.toggle();
     }
-    // Toggle arcade damping: X key or pad X-button.
-    if (input.keyboard.consumeJustPressed(['KeyX']) || input.gamepad.consumeJustPressed(BUTTONS.X)) {
+    // Toggle arcade damping: the X key. (Not the pad's X any more — Marco
+    // gave that to jumping on foot, and it does nothing in the air.)
+    if (input.keyboard.consumeJustPressed(['KeyX'])) {
       ship.arcadeDamping = !ship.arcadeDamping;
     }
     // Warp: F key or pad R1.
@@ -776,6 +798,13 @@ function frame(now) {
           * perks.shipSpeed
         : 0;
       updateShip(ship, axes, dt);
+      // The guns. R2 on a pad and Space on the keyboard — the same
+      // trigger as the pistol on foot. (X, which also fires the pistol
+      // on foot, is jump down there and does nothing up here.)
+      shipGuns.update(dt,
+        input.keyboard.consumeJustPressed(['Space'])
+        || input.keyboard.isDown('Space')
+        || input.gamepad.isButtonDown(BUTTONS.R2));
       audio.setThrottle(axes.throttle);
       // Landing / take-off, and the ground itself while we're down.
       surface.update(ship, dt);
@@ -862,7 +891,20 @@ function frame(now) {
   updateStarfield(starfield, camera);
   // On foot the camera belongs to `onFoot` — it is following a man, not
   // a ship, and the chase camera would drag it back to the cockpit.
-  if (!onFoot.active) chaseCamera.update(ship, look, dt);
+  shipGuns.tick(dt);
+  if (!onFoot.active) {
+    chaseCamera.update(ship, look, dt);
+    // Bends the chase camera's answer toward the cockpit while the guns
+    // are in use. Anything that is not flying (a menu, a warp, the
+    // climb-out) sends the view back behind the tail.
+    if (state !== STATE.FLY || fastTravel.suppressInput || missionScreens.isOpen()
+        || gameOver.isOpen || shop.isOpen || worldMap.isOpen || inventory.isOpen) {
+      shipGuns.stand();
+    }
+    shipGuns.updateCamera(dt);
+  } else {
+    shipGuns.reset();
+  }
 
   renderer.render(scene, camera);
   // …and the inventory's own figure over the top of it, into its corner
@@ -910,7 +952,7 @@ if (import.meta.env.DEV) {
     ship, asteroids, audio, fastTravel, physics,
     renderer, camera,
     rovers: roverApi, mission, upgrades, missionScreens, surface, frameScaler,
-    characterViewer, onFoot, monsters, tracers, inventory, saves, gameOver, dialogue,
+    characterViewer, onFoot, monsters, tracers, shipGuns, inventory, saves, gameOver, dialogue,
     perks, shop, padSetup, input, materials,
     map: worldMap,
     shipConfig, shipConfigDefaults,

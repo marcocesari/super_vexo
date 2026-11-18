@@ -173,6 +173,14 @@ const DYING_TIME = 2.4;         // collapse, then wake up in the ship
 // along his nose instead would put every shot half a metre left of
 // where the player was pointing.
 const AIM_KEYS = ['KeyQ'];
+
+// Jumping: X on a pad (Marco's choice — it used to be a second trigger
+// for the pistol), J on the keyboard, because Space is the trigger. A
+// hop rather than a leap: about seventy centimetres, half a second in
+// the air, enough to clear a rock or a fence rail and to feel springy.
+const JUMP_KEYS = ['KeyJ'];
+const JUMP_SPEED = 5.2;         // m/s straight up
+const GRAVITY = 19;             // a touch over real, so it doesn't float
 const SHOULDER_UP = 1.6;  // pivot height: eye level
 const SHOULDER_RIGHT = 0.85; // and this far to his right
 const SHOULDER_BOOM = 1.75; // gun out
@@ -180,6 +188,13 @@ const ADS_BOOM = 1.3;     // aiming
 const ADS_FOV = 0.85;    // aiming narrows the view to this much of it
 const AIM_PITCH = Math.PI * 0.3;            // ~54 degrees up or down
 const AIM_LOOK_SCALE = 0.55;    // finer stick while aiming
+// The controller's gyro (padGyro.js) aims while the gun is out, and only
+// then — Marco's choice, the "gyro while aiming" setting other shooters
+// have: walking around, the pad can wave about as it likes and the
+// camera ignores it. 1 would turn the view exactly as far as the pad
+// turned; 1.6 is a little quicker, so a quarter turn of the wrists covers
+// a good arc without the crosshair feeling twitchy. Marco will tune it.
+const PAD_GYRO_SENSITIVITY = 1.6;
 const AIM_ASSIST = 0.22;        // radians of forgiveness round the crosshair (~13°)
 const STANCE_TURN_HALFLIFE = 0.035;
 const BLOOM_PER_SHOT = 0.45;    // crosshair kick, decays at BLOOM_DECAY/s
@@ -336,6 +351,10 @@ export function createOnFoot({
   // button is held. `zoom` eases 0 → 1 into the aimed view.
   let shoulder = false;
   let aiming = false;
+  // Height of a jump above the ground under him, and how fast it is
+  // changing. Zero and zero on the ground.
+  let jumpHeight = 0;
+  let jumpVel = 0;
   let zoom = 0;
   let bloom = 0;
   let baseFov = null;
@@ -975,6 +994,9 @@ export function createOnFoot({
     // death animation would never play at all.
     if (dying > 0 || down) {
       vel.set(0, 0, 0);
+      jumpHeight = 0;
+      jumpVel = 0;
+      vexo.setAirborne(false, 0);
       shoulder = false;
       aiming = false;
       vexo.setStance(false);
@@ -990,8 +1012,7 @@ export function createOnFoot({
     // A tap that starts and ends between two frames still counts.
     const firing = input.keyboard.consumeJustPressed(['Space'])
       || input.keyboard.isDown('Space')
-      || input.gamepad.isButtonDown(BUTTONS.R2)
-      || input.gamepad.isButtonDown(BUTTONS.X);
+      || input.gamepad.isButtonDown(BUTTONS.R2);
     if (shotCooldown > 0) shotCooldown -= dt;
     if (drawnFor > 0) drawnFor -= dt;
     // Holding either the trigger or aim draws the gun whether or not a
@@ -1009,9 +1030,13 @@ export function createOnFoot({
     // Aiming slows the stick down so small corrections are possible.
     const fine = aiming ? AIM_LOOK_SCALE : 1;
     const pitchLimit = drawnFor > 0 ? AIM_PITCH : FOOT_LOOK_PITCH;
-    camYaw += lookX * FOOT_LOOK_RATE * fine * dt + turnX;
+    // The pad's gyro, only with the gun out (see PAD_GYRO_SENSITIVITY).
+    const gunOut = drawnFor > 0;
+    const padX = gunOut ? (axes?.padTurnX ?? 0) * PAD_GYRO_SENSITIVITY : 0;
+    const padY = gunOut ? (axes?.padTurnY ?? 0) * PAD_GYRO_SENSITIVITY : 0;
+    camYaw += lookX * FOOT_LOOK_RATE * fine * dt + turnX + padX;
     camPitch = clamp(
-      camPitch - lookY * FOOT_PITCH_RATE * fine * dt - turnY,
+      camPitch - lookY * FOOT_PITCH_RATE * fine * dt - turnY - padY,
       -pitchLimit, pitchLimit,
     );
     const looking = Math.abs(lookX) > 0.05 || Math.abs(turnX) > 0.0015;
@@ -1157,8 +1182,26 @@ export function createOnFoot({
       camPitch += (0 - camPitch) * alphaFor(dt, CAM_RECENTRE_HALFLIFE * 2);
     }
 
-    // Follow the ground, hills included.
-    foot.y = groundAt(foot.x, foot.z);
+    // --- Jumping -------------------------------------------------------------
+    const ground = groundAt(foot.x, foot.z);
+    if (jumpHeight <= 0
+        && (input.gamepad.consumeJustPressed(BUTTONS.X)
+          || input.keyboard.consumeJustPressed(JUMP_KEYS))) {
+      jumpVel = JUMP_SPEED;
+      jumpHeight = 0.001;
+    }
+    if (jumpHeight > 0) {
+      jumpVel -= GRAVITY * dt;
+      jumpHeight += jumpVel * dt;
+      if (jumpHeight <= 0) {
+        jumpHeight = 0;
+        jumpVel = 0;
+      }
+    }
+    vexo.setAirborne(jumpHeight > 0, jumpVel);
+
+    // Follow the ground, hills included — plus however high he jumped.
+    foot.y = ground + jumpHeight;
     applyVexoTransform();
 
     // The wheel rides beside him: project his shoulder into the frame

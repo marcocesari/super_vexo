@@ -65,6 +65,15 @@ Then open http://localhost:5173.
 - **A / D** — yaw left / right
 - **↑ / ↓** — pitch up / down
 - **Q / E** — roll left / right
+- **Space (hold)** — fire the ship's two wingtip laser cannons. The camera
+  cuts to the cockpit: a crosshair in the middle of the screen, which is
+  straight down the nose, and both cannons at the lower corners. You aim by
+  flying the ship. Both bolts meet wherever the crosshair is pointing. In
+  space they break asteroids (a fresh rock drifts back into the belt later);
+  over a planet they hit the monster camps, for the same bounty as the
+  pistol. The view stays in the cockpit while you fire and for 4 seconds
+  after, then goes back behind the tail
+- **X** — the brake damping toggle (keyboard only; the pad's X is jump now)
 
 **On foot** (see below):
 - **L** — climb out, from anywhere over the town; and climb back in when
@@ -76,7 +85,8 @@ Then open http://localhost:5173.
   the pace — a gentle push walks (1.5 m/s), hard over jogs (3.3). A keyboard
   has no half-press, so W alone is the jog
 - **Shift / B (hold)** — sprint (6.2 m/s), for as long as your stamina lasts
-- **Space / X / R2** — shoot. He draws the pistol off his right thigh (he's
+- **J, or X on a pad** — jump: about 70 cm, half a second in the air
+- **Space / R2** — shoot. He draws the pistol off his right thigh (he's
   right-handed with the pistol) and holsters it
   again a few seconds after the last shot. While it's out the camera sits over
   his right shoulder with a crosshair in the middle of the screen, the way a
@@ -86,6 +96,14 @@ Then open http://localhost:5173.
   sideways, backing off — instead of turning to face the stick. Shots go to the
   crosshair, with a little aim assist (~13°) for pads and phones. Sprinting puts
   the gun away
+- **Tilting the controller** — aims while the gun is out, if it's a PS4 or
+  PS5 controller and you're in Chrome. Connect it once from the inventory's
+  **System** page (*CONNECT CONTROLLER GYRO*). It has to be clicked with the
+  mouse, because Chrome only lets a real click open a device. After that the
+  game reconnects to it on its own. Walking around with the gun away, the gyro
+  does nothing, so the camera never drifts. Hold the controller still for a
+  moment after connecting while it measures its resting drift. `?debugPad=1`
+  shows the live readings
 - **Q / L2 (hold)** — aim. Draws the gun, pushes the camera in closer and zooms
   a little, slows the look stick for fine corrections, and slows him to a walk
 - **T, or + on a pad** — the inventory. A row of tabs, weapons down the left,
@@ -121,6 +139,8 @@ Then open http://localhost:5173.
   round — hard over to either side puts you on the nose, looking the ship in
   the face — so you can see it from any angle
 - **D-pad** — pitch (up / down) and roll (left / right)
+- **R2 (hold)** — fire the ship's cannons from the cockpit view (see Space,
+  above). X does nothing in the air
 
 **If a pad's sticks do nothing**, that is not a mystery and there is a screen
 for it. The Web Gamepad API promises a *standard mapping* — sticks on axes 0

@@ -171,6 +171,8 @@ export function createShip() {
   // --- Wings: one per side, each its own group so the panel, wingtip
   // fin, laser cannon and G-diffuser all share the wing's gentle
   // dihedral. The left wing is an X-mirror of the right.
+  // The two cannon tips, for the guns to fire from (see shipGuns.js).
+  const cannonTips = [];
   for (const side of [+1, -1]) {
     const wing = new THREE.Group();
 
@@ -202,6 +204,11 @@ export function createShip() {
     barrelTip.rotation.x = Math.PI / 2;
     barrelTip.position.set(0.69, 0.0, 0.62);
     wing.add(barrelTip);
+    // The muzzle itself: the front face of the gold tip.
+    const muzzle = new THREE.Object3D();
+    muzzle.position.set(0.69, 0.0, 0.7);
+    wing.add(muzzle);
+    cannonTips.push(muzzle);
 
     // Glowing blue G-diffuser pod at the wing root.
     const gdiff = new THREE.Mesh(
@@ -255,6 +262,12 @@ export function createShip() {
     // them, and `flame` — the eased 0..1 intensity (0 = no flame).
     glows,
     glowMat: engineGlowMat,
+    cannonTips,
+    // Parts that stand in front of the cockpit camera and are hidden
+    // while it is up: the dorsal fin is right in the middle of the view,
+    // and the canopy is the glass he is looking out through, not a blue
+    // dome across the bottom of the screen.
+    cockpitHide: [tailFin, tailFinTip, canopy],
     flame: 0,
     // True while the stick isn't pushed forward — main.js uses it to
     // keep velocity zeroed after collision resolution.

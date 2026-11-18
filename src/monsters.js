@@ -794,6 +794,9 @@ export function createMonsters({ scene, world, origin }) {
         bestT = along;
       }
       if (!best) return null;
+      // How far along the ray it was, for a shooter that wants to draw
+      // its shot reaching the target rather than passing through it.
+      best.hitDistance = bestT;
       best.hp -= 1;
       if (best.hp <= 0) {
         best.state = 'dead';

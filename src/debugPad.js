@@ -80,6 +80,7 @@ export function createDebugPad() {
         `pad: ${g.padId ? JSON.stringify(g.padId) : '(none)'} standard=${g.isStandard} calibrated=${g.isCalibrated}`,
         `stick as D-pad: x=${g.stick ? g.stick.x.toFixed(2) : '-'} (+left)  y=${g.stick ? g.stick.y.toFixed(2) : '-'} (+up)`,
         `held buttons: [${g.held.join(', ') || '(none)'}]`,
+        `controller gyro: ${g.padGyro ? `${g.padGyro.status} · reports=${g.padGyro.reports} · yaw ${g.padGyro.yawDps.toFixed(1)}°/s (+right) · pitch ${g.padGyro.pitchDps.toFixed(1)}°/s (+up)` : '(n/a)'}`,
         `inventory: ${g.inventory.open ? `open · tab=${g.inventory.tab} · cursor on ${g.inventory.focus}#${g.inventory.cursor} · spinning=${g.inventory.spinning}` : 'closed'}`,
       ];
     }

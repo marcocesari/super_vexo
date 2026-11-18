@@ -56,7 +56,7 @@ export const strings = {
     board: 'L / A — climb back in',
     down: 'Down! Hauling him back to the ship…',
     shoot: 'Space / X — shoot · they hit back',
-    controls: 'W A S D / stick — walk · Shift / B — sprint · Q / L2 — aim · Space / R2 — shoot',
+    controls: 'W A S D / stick — walk · Shift / B — sprint · J / X — jump · Q / L2 — aim · Space / R2 — shoot',
     talk: 'E / A — talk to {name}',
   },
 
@@ -152,6 +152,12 @@ export const strings = {
     controllerStandard: 'Controller: {id} — standard layout.',
     controllerCalibrated: 'Controller: {id} — sticks taught to the game.',
     controllerUnknown: 'Controller: {id} — an unfamiliar layout.',
+    gyro: 'CONNECT CONTROLLER GYRO',
+    gyroConnected: 'Gyro aiming on ({name}). Tilt the controller to aim while the gun is out.',
+    gyroNone: 'Aim by tilting a PS4 or PS5 controller. Click this with the mouse: Chrome only lets a click connect it.',
+    gyroUnsupported: 'Gyro aiming needs Chrome (or Edge) and a PS4 or PS5 controller.',
+    gyroNeedsClick: 'Chrome needs a mouse click for this one: click the button.',
+    gyroFailed: 'No gyro: {why}',
   },
 
   // Teaching the game an unfamiliar controller (see padSetup.js).

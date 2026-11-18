@@ -1043,7 +1043,8 @@ canvas {
    game pushes apart (--spread) when he moves or fires. Dead centre of
    the viewport — the camera's aim ray goes through exactly this point.
    White with a dark edge so it reads against sky and grass alike. */
-#foot-crosshair {
+#foot-crosshair,
+#ship-crosshair {
   --spread: 5px;
   position: fixed;
   left: 50%;
@@ -1053,23 +1054,24 @@ canvas {
   z-index: 6;
   pointer-events: none;
 }
-#foot-crosshair[hidden] { display: none; }
-#foot-crosshair i {
+#foot-crosshair[hidden],
+#ship-crosshair[hidden] { display: none; }
+:is(#foot-crosshair, #ship-crosshair) i {
   position: absolute;
   background: #fff;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
   border-radius: 1px;
   transition: transform 60ms linear;
 }
-#foot-crosshair .ch-dot { width: 3px; height: 3px; left: -1.5px; top: -1.5px; border-radius: 50%; }
-#foot-crosshair .ch-t,
-#foot-crosshair .ch-b { width: 2px; height: 8px; left: -1px; }
-#foot-crosshair .ch-l,
-#foot-crosshair .ch-r { width: 8px; height: 2px; top: -1px; }
-#foot-crosshair .ch-t { top: calc(-8px - var(--spread)); }
-#foot-crosshair .ch-b { top: var(--spread); }
-#foot-crosshair .ch-l { left: calc(-8px - var(--spread)); }
-#foot-crosshair .ch-r { left: var(--spread); }
+:is(#foot-crosshair, #ship-crosshair) .ch-dot { width: 3px; height: 3px; left: -1.5px; top: -1.5px; border-radius: 50%; }
+:is(#foot-crosshair, #ship-crosshair) .ch-t,
+:is(#foot-crosshair, #ship-crosshair) .ch-b { width: 2px; height: 8px; left: -1px; }
+:is(#foot-crosshair, #ship-crosshair) .ch-l,
+:is(#foot-crosshair, #ship-crosshair) .ch-r { width: 8px; height: 2px; top: -1px; }
+:is(#foot-crosshair, #ship-crosshair) .ch-t { top: calc(-8px - var(--spread)); }
+:is(#foot-crosshair, #ship-crosshair) .ch-b { top: var(--spread); }
+:is(#foot-crosshair, #ship-crosshair) .ch-l { left: calc(-8px - var(--spread)); }
+:is(#foot-crosshair, #ship-crosshair) .ch-r { left: var(--spread); }
 /* What he just picked up: TotK's line at the top-right. Green-edged
    like a thing gained, and gone again in under two seconds. */
 #foot-got {
