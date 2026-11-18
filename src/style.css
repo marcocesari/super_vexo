@@ -1039,6 +1039,37 @@ canvas {
   pointer-events: none;
 }
 #foot-prompt[hidden] { display: none; }
+/* The crosshair, while the gun is out: a dot and four ticks that the
+   game pushes apart (--spread) when he moves or fires. Dead centre of
+   the viewport — the camera's aim ray goes through exactly this point.
+   White with a dark edge so it reads against sky and grass alike. */
+#foot-crosshair {
+  --spread: 5px;
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+#foot-crosshair[hidden] { display: none; }
+#foot-crosshair i {
+  position: absolute;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+  border-radius: 1px;
+  transition: transform 60ms linear;
+}
+#foot-crosshair .ch-dot { width: 3px; height: 3px; left: -1.5px; top: -1.5px; border-radius: 50%; }
+#foot-crosshair .ch-t,
+#foot-crosshair .ch-b { width: 2px; height: 8px; left: -1px; }
+#foot-crosshair .ch-l,
+#foot-crosshair .ch-r { width: 8px; height: 2px; top: -1px; }
+#foot-crosshair .ch-t { top: calc(-8px - var(--spread)); }
+#foot-crosshair .ch-b { top: var(--spread); }
+#foot-crosshair .ch-l { left: calc(-8px - var(--spread)); }
+#foot-crosshair .ch-r { left: var(--spread); }
 /* What he just picked up: TotK's line at the top-right. Green-edged
    like a thing gained, and gone again in under two seconds. */
 #foot-got {

@@ -6,8 +6,11 @@
 // hair above it — messy, in separated clumps, not a smooth cap — heavy
 // plates on shoulders, chest, thighs and shins,
 // and cyan light rings in the boot soles. A sidearm holstered on his
-// left thigh with his hand hanging beside it, magazine pouches on his
-// right, and a lit green panel on the outside of each gauntlet.
+// thigh with his hand hanging beside it, magazine pouches on the other,
+// and a lit green panel on the outside of each gauntlet. (The art has
+// the holster on his left; Marco moved it to the right so that he
+// shoots right-handed under the over-the-right-shoulder aim camera —
+// see GUN_SIDE.)
 //
 // No model files — he's Three.js primitives in a Group, like everything
 // else here. What keeps that from looking like a stack of bricks:
@@ -564,6 +567,11 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
   for (const side of [-1, 1]) {
     const arm = new THREE.Group();
     arm.position.set(side * 0.215, 1.44, 0);
+    // Yaw last, so `rotation.y` swings the whole raised arm in toward
+    // the middle of his chest — the two-handed stance below. With y at
+    // zero this is exactly the default order, so every other pose that
+    // only sets x and z is untouched.
+    arm.rotation.order = 'YXZ';
     body.add(arm);
 
     // Shoulder ball, then the pauldron over it — a dome, not a box.
@@ -706,12 +714,30 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
   // an assignment here into a write to that const.
   let pistol = null;
   let holsterMount = null;
+  // Which side the pistol lives on: its holster, the hand that draws it,
+  // the arm that holds it out. Facing +Z his left is +X, so -1 is his
+  // RIGHT. Right-handed with the pistol, the way Marco wants him: the
+  // aim camera sits over his right shoulder, and a gun in the left hand
+  // is hidden behind his back from there. Everything below that cares
+  // which hand holds the gun reads this rather than a sign of its own.
+  const GUN_SIDE = -1;
   let armed = false;
   // Armed and AIMING is arm-out, level, pointed at something. Armed and
   // not aiming is the gun in his hand by his side — which is how you
   // want him standing in a menu, where an outstretched arm reads as a
   // man about to shoot the furniture.
   let aim = true;
+  // The combat stance: both hands on the gun at eye level, chest square
+  // to wherever the camera is aiming, and the legs free to walk any
+  // direction underneath it. `stancePitch` is where he is aiming, up
+  // (+) or down (-); `moveAngle` is which way he is walking relative to
+  // where his chest faces (0 ahead, ±PI/2 sideways, PI backwards), or
+  // null when he is standing.
+  let stance = false;
+  let stancePitch = 0;
+  let moveAngle = null;
+  let legYaw = 0;           // eased: where the hips point, against the chest
+  let walkBackward = false;
 
   const legs = [];
   for (const side of [-1, 1]) {
@@ -728,10 +754,10 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     const thighPlate = plate(0.125, 0.25, 0.05, armour, 0, -0.19, 0.045, 0.05);
     thighPlate.rotation.x = -0.05;
     leg.add(thighPlate);
-    // Thigh kit, as in the art: a sidearm holstered on his left leg with
-    // his hand hanging beside it, and magazine pouches on his right.
-    // Facing +Z, his left is +X.
-    if (side > 0) {
+    // Thigh kit, as in the art: a sidearm holstered on one leg with his
+    // hand hanging beside it, and magazine pouches on the other. The
+    // art has the holster on the left; it is on GUN_SIDE now.
+    if (side === GUN_SIDE) {
       // Holster: a shell round the barrel, strapped to the thigh.
       const holster = plate(0.052, 0.115, 0.062, armour, side * 0.086, -0.235, 0.004, 0.016);
       holster.rotation.set(0.12, side * 0.3, 0);
@@ -898,8 +924,10 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
   function stowPistol() {
     // Muzzle down the thigh, butt up and back where a hand can reach it,
     // and tucked in against the leg rather than hovering beside it.
-    pistol.group.position.set(0.078, -0.175, 0.014);
-    pistol.group.rotation.set(Math.PI / 2 + 0.3, 0.34, 0.06);
+    // Authored for the left thigh; mirrored by GUN_SIDE.
+    const m = GUN_SIDE;
+    pistol.group.position.set(m * 0.078, -0.175, 0.014);
+    pistol.group.rotation.set(Math.PI / 2 + 0.3, m * 0.34, m * 0.06);
   }
 
   /**
@@ -911,7 +939,7 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     aim = aiming;
     if (on === armed || !pistol) return;
     armed = on;
-    const gunHand = hands.find((h) => h.side > 0);
+    const gunHand = hands.find((h) => h.side === GUN_SIDE);
     if (on) {
       // Into the HAND, not the forearm. The pistol's origin is the top
       // of its grip — the point the web of the hand closes on — so it
@@ -942,6 +970,7 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
       gunHand.group.quaternion.setFromRotationMatrix(
         _basis.makeBasis(GRIP_X, GRIP_Y, GRIP_Z),
       );
+      _gripQ.copy(gunHand.group.quaternion);
       gunHand.group.add(pistol.group);
       // The hand is scaled up; the gun is not. Undo the parent's scale
       // so the pistol stays the size of a pistol.
@@ -956,8 +985,9 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
       // fingers close underneath the gun and hold nothing.
       // In the hand's own (scaled) units, so the numbers are smaller
       // than the metres they end up as.
-      pistol.group.position.set(-0.030, -0.024, 0.019);
-      pistol.group.rotation.set(0, 0, Math.PI / 2);
+      // Authored for the left hand; mirrored by GUN_SIDE.
+      pistol.group.position.set(GUN_SIDE * -0.030, -0.024, 0.019);
+      pistol.group.rotation.set(0, 0, GUN_SIDE * Math.PI / 2);
       poseHand(gunHand, 1);
     } else {
       holsterMount.add(pistol.group);
@@ -968,8 +998,10 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
   }
 
   // The wrist, as a basis rather than as Euler angles — see setArmed.
-  const GRIP_X = new THREE.Vector3(0, 0, -1);
-  const GRIP_Y = new THREE.Vector3(1, 0, 0);
+  // Worked out for the left hand (see setArmed); the right hand is its
+  // mirror image, which for a rotation basis means flipping X and Y.
+  const GRIP_X = new THREE.Vector3(0, 0, -GUN_SIDE);
+  const GRIP_Y = new THREE.Vector3(GUN_SIDE, 0, 0);
   const GRIP_Z = new THREE.Vector3(0, -1, 0);
   const _basis = new THREE.Matrix4();
 
@@ -1216,7 +1248,9 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     run += (clamp01((speed - RUN_FROM) / (RUN_TO - RUN_FROM)) - run)
       * (1 - Math.pow(2, -dt / 0.18));
     const stride = WALK_STRIDE + (RUN_STRIDE - WALK_STRIDE) * run;
-    phase += (speed / stride) * Math.PI * 2 * dt;
+    // Walking backwards in the combat stance is the same cycle run in
+    // reverse — the feet still plant, just heel last.
+    phase += (walkBackward ? -1 : 1) * (speed / stride) * Math.PI * 2 * dt;
     const cycle = phase / (Math.PI * 2);
     // Scale the whole pose with speed: a stroll is a small version of a
     // stride, and a run is a big one.
@@ -1417,6 +1451,102 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     torso.rotation.y = 0;
   }
 
+  // --- The combat stance ------------------------------------------------------
+  // Pistol in both hands, out in front of his face, pointed down the
+  // line the camera is aiming along. The arms converge on the middle of
+  // his chest — an isosceles grip, the way a pistol is actually held —
+  // and the wrist turns back by as much as the arm swung in, so the
+  // barrel still points straight ahead rather than across him.
+  // The gun arm swings in only a little, so the pistol is held out on
+  // his gun side — where the shoulder camera can see it — rather than
+  // dead centre behind his back. The other arm reaches across to it.
+  const STANCE_IN_GUN = 0.03;
+  const STANCE_IN_SUPPORT = 0.74;
+  // Bladed: the chest turned toward the gun side, gun shoulder back, the
+  // way a shooter actually stands (Marco's reference has it), rather
+  // than square on like a man waiting for a bus. The arms and head turn
+  // back by the same amount, so the aim itself does not move.
+  const STANCE_BLADE = 0.38;
+  const STANCE_LEAN = 0.09;        // weight forward, onto the front foot
+  const LEG_YAW_MAX = 1.0;         // ~57°: beyond this he side-steps
+  const _gripQ = new THREE.Quaternion();
+  const _turnQ = new THREE.Quaternion();
+  const _Z = new THREE.Vector3(0, 0, 1);
+  let stanceShown = false;
+
+  function gunHands() {
+    return {
+      gun: hands.find((h) => h.side === GUN_SIDE),
+      support: hands.find((h) => h.side !== GUN_SIDE),
+    };
+  }
+
+  function poseStance(dt) {
+    const ease = 1 - Math.pow(2, -dt / 0.1);
+    const { gun, support } = gunHands();
+    if (!stanceShown) {
+      stanceShown = true;
+      poseHand(support, 0.7);
+    }
+
+    // The legs go where he is walking; the chest stays on the target.
+    // Walking backwards turns the hips the other way and runs the cycle
+    // in reverse, rather than swivelling him round to face his heels.
+    let want = 0;
+    let back = false;
+    if (moveAngle !== null && gait === 'walk') {
+      let m = moveAngle;
+      if (Math.abs(m) > Math.PI * 0.6) {
+        m -= Math.sign(m) * Math.PI;
+        back = true;
+      }
+      want = Math.max(-LEG_YAW_MAX, Math.min(LEG_YAW_MAX, m));
+    }
+    walkBackward = back;
+    legYaw += (want - legYaw) * ease;
+    body.rotation.y = legYaw;
+
+    // Chest: bladed, leaning in, and tilting a little with the aim. The
+    // rest of the pitch is the arms and the head, which is how a person
+    // aims upward — not by bending over backwards.
+    // +Y turns him toward +X, so GUN_SIDE's sign turns his chest toward
+    // the gun side and takes the gun shoulder back.
+    const blade = GUN_SIDE * STANCE_BLADE;
+    upper.rotation.x = STANCE_LEAN - stancePitch * 0.3;
+    upper.rotation.y = -legYaw + blade;
+    headPivot.rotation.x = -stancePitch * 0.85 - upper.rotation.x;
+    headPivot.rotation.y = -blade;
+
+    // Arms out to the gun. Each total is "level, then the aim", less
+    // what the chest is already doing for them; the yaw undoes the blade
+    // and then swings the arm in toward the middle.
+    for (const arm of arms) {
+      const isGun = arm.side === GUN_SIDE;
+      const base = isGun ? -1.47 : -1.3;
+      arm.shoulder.rotation.set(
+        base - stancePitch - upper.rotation.x,
+        -blade - arm.side * (isGun ? STANCE_IN_GUN : STANCE_IN_SUPPORT),
+        0,
+      );
+      arm.forearm.rotation.x = isGun ? -0.1 : -0.45;
+    }
+    // Turn the wrist back by the swing, so the barrel points ahead.
+    _turnQ.setFromAxisAngle(_Z, GUN_SIDE * STANCE_IN_GUN);
+    gun.group.quaternion.copy(_turnQ).multiply(_gripQ);
+    // The other hand cups the gun hand from underneath.
+    support.group.rotation.set(0.5, support.side * 0.9, -support.side * 0.25);
+  }
+
+  function leaveStance() {
+    stanceShown = false;
+    legYaw = 0;
+    body.rotation.y = 0;
+    for (const arm of arms) arm.shoulder.rotation.y = 0;
+    const { support } = gunHands();
+    poseHand(support, 0);
+    support.group.rotation.set(0, -support.side * 1.15, 0);
+  }
+
   function update(dt) {
     t += dt;
     // The circuits pulse in every gait — it is the suit's own light,
@@ -1436,21 +1566,31 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     // Aiming overrides whatever the gait did with that arm: pistol up,
     // pointed where he is facing, and held still while everything else
     // carries on underneath it.
-    if (armed && gait !== 'dying') {
+    const inStance = stance && armed && gait !== 'dying' && gait !== 'climb';
+    if (inStance) {
+      poseStance(dt);
+    } else {
+      if (stanceShown) leaveStance();
+      walkBackward = false;
+    }
+    if (inStance) {
+      // Posed above.
+    } else if (armed && gait !== 'dying') {
       // The wrist stays where setArmed put it — the grip basis — while
       // the arm swings underneath.
-      const gunArm = arms.find((a) => a.side > 0);
+      const gunArm = arms.find((a) => a.side === GUN_SIDE);
+      gunHands().gun.group.quaternion.copy(_gripQ);
       gunArm.shoulder.rotation.x = aim ? -1.42 : -0.28;
       gunArm.shoulder.rotation.z = gunArm.side * (aim ? 0.06 : 0.13);
       gunArm.forearm.rotation.x = aim ? -0.16 : -0.55;
       // The other arm tucks in rather than swinging about.
       if (aim) {
-        const other = arms.find((a) => a.side < 0);
+        const other = arms.find((a) => a.side !== GUN_SIDE);
         other.shoulder.rotation.x = Math.min(other.shoulder.rotation.x, -0.35);
         other.forearm.rotation.x = -0.9;
       }
     } else {
-      const gunHand = hands.find((h) => h.side > 0);
+      const gunHand = hands.find((h) => h.side === GUN_SIDE);
       gunHand.group.rotation.set(0, -gunHand.side * 1.15, 0);
     }
   }
@@ -1460,6 +1600,19 @@ export function createVexo({ suitLight: wantSuitLight = true, environment = null
     update,
     height: VEXO_HEIGHT,
     setArmed,
+    /**
+     * The combat stance: both hands on the gun, chest on the aim.
+     * @param {boolean} on
+     * @param {number} [pitch] radians, + aims up
+     * @param {number|null} [move] walking direction relative to where
+     *        his chest faces (0 ahead, +PI/2 to his left), or null if
+     *        he is standing still
+     */
+    setStance(on, pitch = 0, move = null) {
+      stance = on;
+      stancePitch = pitch;
+      moveAngle = move;
+    },
     fire: firePistol,
     /** The sidearm, for tests and for anything that wants to inspect it. */
     get pistol() { return pistol; },

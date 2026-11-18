@@ -56,7 +56,7 @@ export const strings = {
     board: 'L / A — climb back in',
     down: 'Down! Hauling him back to the ship…',
     shoot: 'Space / X — shoot · they hit back',
-    controls: 'W A S D / stick — walk · Shift / B — sprint',
+    controls: 'W A S D / stick — walk · Shift / B — sprint · Q / L2 — aim · Space / R2 — shoot',
     talk: 'E / A — talk to {name}',
   },
 

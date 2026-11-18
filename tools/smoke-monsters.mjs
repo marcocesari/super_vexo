@@ -163,9 +163,12 @@ const shooting = await page.evaluate(async () => {
   const f = g.onFoot;
   const camp = g.monsters.camps[1];
   g.monsters.reset();
-  // Put the camp straight in front of wherever he happens to be facing.
-  // Aiming is still his job; this only decides where the fight is.
-  const h = f.vexo.group.rotation.y;
+  // Put the camp straight in front of wherever the camera is looking —
+  // the crosshair, which is where he aims and turns to the moment the
+  // gun comes out. Aiming is still his job; this only decides where the
+  // fight is.
+  const look = g.camera.getWorldDirection(g.camera.position.clone());
+  const h = Math.atan2(look.x, look.z);
   f.position.x = camp.x - Math.sin(h) * 13;
   f.position.z = camp.z - Math.cos(h) * 13;
   await new Promise((r) => setTimeout(r, 1200));

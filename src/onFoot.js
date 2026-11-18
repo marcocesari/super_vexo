@@ -140,17 +140,17 @@ const SHIP_CAM_CLEAR = 6.2;
 const CONTROLS_HINT_TIME = 5;
 
 // --- Fighting back --------------------------------------------------------------
-// He has a pistol on his thigh; this is what draws it. Aim is where he
-// is FACING, not where the camera points: the camera can be swung round
-// to look at him, and a shot that came out of the back of his head
-// because the player was admiring the view would be indefensible.
+// He has a pistol on his thigh; this is what draws it. Aim is the
+// crosshair — see "Over the shoulder" below. Once the gun is out the
+// camera is locked behind him, so the old worry (a shot out of the back
+// of his head because the player had swung round to admire him) can no
+// longer arise.
 // How many hearts he starts with. The apothecary in Estronic sells more,
 // so what the game actually uses is `maxHearts()` below — this is the
 // figure before anybody has bought anything.
 const MAX_HEARTS = 5;
 const SHOT_INTERVAL = 0.32;     // seconds between shots
 const SHOT_RANGE = 55;
-const AIM_CONE = 0.7;           // radians either side of his nose (~40 degrees)
 const HOLSTER_AFTER = 4;        // seconds of peace before he puts it away
 // A mercy window after a hit, and a shove away from whatever landed it.
 // Both exist for the same reason: without them a ring of monsters is not
@@ -158,6 +158,32 @@ const HOLSTER_AFTER = 4;        // seconds of peace before he puts it away
 const HURT_INVULNERABLE = 1.5;
 const KNOCKBACK = 3.4;          // m/s, away from the blow
 const DYING_TIME = 2.4;         // collapse, then wake up in the ship
+// --- Over the shoulder ----------------------------------------------------------
+// The moment the gun comes out the camera tucks in over his right
+// shoulder and a crosshair goes up in the middle of the screen. From
+// then on he faces wherever the camera does and walks in any direction
+// under it — strafing, backing off — instead of turning to face the
+// stick. Holding aim (Q, or L2 on a pad) pushes in closer, zooms, and
+// slows him to a walk; letting go of everything for HOLSTER_AFTER
+// seconds puts the gun away and hands the camera back.
+//
+// Where the shot goes is where the crosshair is: a ray from the camera
+// through the middle of the screen, which the bullet then flies to
+// FROM THE MUZZLE. The camera sits half a metre to his right, so aiming
+// along his nose instead would put every shot half a metre left of
+// where the player was pointing.
+const AIM_KEYS = ['KeyQ'];
+const SHOULDER_UP = 1.6;  // pivot height: eye level
+const SHOULDER_RIGHT = 0.85; // and this far to his right
+const SHOULDER_BOOM = 1.75; // gun out
+const ADS_BOOM = 1.3;     // aiming
+const ADS_FOV = 0.85;    // aiming narrows the view to this much of it
+const AIM_PITCH = Math.PI * 0.3;            // ~54 degrees up or down
+const AIM_LOOK_SCALE = 0.55;    // finer stick while aiming
+const AIM_ASSIST = 0.22;        // radians of forgiveness round the crosshair (~13°)
+const STANCE_TURN_HALFLIFE = 0.035;
+const BLOOM_PER_SHOT = 0.45;    // crosshair kick, decays at BLOOM_DECAY/s
+const BLOOM_DECAY = 3.2;
 // How long "no room here" stays up after a refused climb-out.
 const REFUSED_TIME = 2.5;
 
@@ -306,6 +332,19 @@ export function createOnFoot({
   let drawnFor = 0;               // seconds since the pistol was last used
   let dying = 0;
   let camYaw = 0;
+  // Over the shoulder: on while the gun is out, `aiming` while the aim
+  // button is held. `zoom` eases 0 → 1 into the aimed view.
+  let shoulder = false;
+  let aiming = false;
+  let zoom = 0;
+  let bloom = 0;
+  let baseFov = null;
+  const _camDir = new THREE.Vector3();
+  const _aimPoint = new THREE.Vector3();
+  const _ray = new THREE.Raycaster();
+  const _rayDir = new THREE.Vector3();
+  const _rayHits = [];
+  const _chest = new THREE.Vector3();
   // Metres per second across the ground, eased toward the stick.
   const vel = new THREE.Vector3();
   const _target = new THREE.Vector3();
@@ -448,6 +487,10 @@ export function createOnFoot({
    * when it lands.
    */
   function cameraGoal() {
+    if (state === 'walk' && shoulder && dying <= 0 && !down) {
+      shoulderGoal();
+      return;
+    }
     if (state === 'walk' || state === 'stepoff') {
       // Over his shoulder: back along his heading, a head and a half up,
       // on however much boom there is room for.
@@ -497,6 +540,71 @@ export function createOnFoot({
     _camGoal.add(_v);
     _camGoal.y = Math.max(_camGoal.y, _lookGoal.y - 0.4);
     keepAboveGround();
+  }
+
+  /**
+   * Over his right shoulder, looking where the player is aiming. The
+   * pivot is beside his head, not on him: the camera swings round a
+   * point half a metre off his right ear, so he stays on the left of
+   * the frame and the middle of the screen is clear for the crosshair.
+   */
+  function shoulderGoal() {
+    // `camPitch` is + for "camera up, looking down"; the aim is the
+    // other way round.
+    const p = -camPitch;
+    const cp = Math.cos(p);
+    const fx = Math.sin(camYaw) * cp;
+    const fy = Math.sin(p);
+    const fz = Math.cos(camYaw) * cp;
+    // Screen-right for a camera looking along (fx, fz).
+    const rx = -Math.cos(camYaw);
+    const rz = Math.sin(camYaw);
+    // Try the full boom first, then shorter ones until the camera has a
+    // clear place to stand and a clear view of him. As the boom shortens
+    // the camera also comes in behind him, or at arm's length half a
+    // metre to his right is enough to push him off the edge of the frame.
+    const full = SHOULDER_BOOM + (ADS_BOOM - SHOULDER_BOOM) * zoom;
+    const nearShip = surface.parked && foot.distanceTo(ship.mesh.position) < 16;
+    _chest.copy(foot).addScaledVector(UP, VEXO_HEIGHT * 0.7);
+    for (let boom = full; ; boom -= 0.25) {
+      const last = boom <= 0.6;
+      if (last) boom = 0.6;
+      const side = SHOULDER_RIGHT * clamp(boom / SHOULDER_BOOM, 0.4, 1);
+      _v.copy(foot).addScaledVector(UP, SHOULDER_UP);
+      _v.x += rx * side;
+      _v.z += rz * side;
+      _camGoal.set(_v.x - fx * boom, _v.y - fy * boom, _v.z - fz * boom);
+      // On rising ground behind him the camera is lifted clear of it —
+      // and the pivot with it, so the view rises rather than tipping
+      // down. A tilt would leave the crosshair aiming into the grass.
+      const floor = groundAt(_camGoal.x, _camGoal.z) + 0.35;
+      if (_camGoal.y < floor) {
+        _v.y += floor - _camGoal.y;
+        _camGoal.y = floor;
+      }
+      // Walls and trunks from the world's own map. (Not the ship's wide
+      // clearance circle: that is for the long follow boom, and applied
+      // here it crushes the camera into his pauldron beside the ladder.)
+      const ok = world.isClear(_camGoal.x - SURFACE_ORIGIN.x, _camGoal.z - SURFACE_ORIGIN.z, 0.3)
+        // The ship has to be tested for real — a wing and a fuselage
+        // are nothing like a circle. Nothing of it may sit between the
+        // camera and his shoulder, or between the camera and him.
+        && !(nearShip && (shipBetween(_v, _camGoal) || shipBetween(_chest, _camGoal)));
+      if (ok || last) break;
+    }
+    _lookGoal.set(_v.x + fx * 30, _v.y + fy * 30, _v.z + fz * 30);
+  }
+
+  /** Does any part of the parked ship cross the line from a to b? */
+  function shipBetween(a, b) {
+    _rayDir.subVectors(b, a);
+    const len = _rayDir.length();
+    if (len < 1e-4) return false;
+    _ray.set(a, _rayDir.divideScalar(len));
+    _ray.far = len + 0.25;     // and a little room behind the lens
+    _rayHits.length = 0;
+    _ray.intersectObject(ship.mesh, true, _rayHits);
+    return _rayHits.length > 0;
   }
 
   /** Never let a shot end up underneath the street. */
@@ -570,7 +678,9 @@ export function createOnFoot({
   function updateCamera(dt) {
     cameraGoal();
     // The hand-over shot settles quickly; the cutscene shots drift.
-    const halflife = state === 'walk' ? 0.13 : 0.34;
+    // Over the shoulder it has to be tight, or the crosshair swims.
+    const tight = state === 'walk' && shoulder;
+    const halflife = tight ? 0.045 : (state === 'walk' ? 0.13 : 0.34);
     // The descent is the one shot with no easing at all. The ship falls
     // at 22 m/s, and anything that eases toward a target moving that
     // fast trails it by metres — on a landing from altitude that slides
@@ -590,6 +700,38 @@ export function createOnFoot({
     // horizon, so put `up` back before looking.
     camera.up.set(0, 1, 0);
     camera.lookAt(_lookAt);
+
+    // Aiming zooms in a little.
+    zoom += ((tight && aiming ? 1 : 0) - zoom) * alphaFor(dt, 0.07);
+    if (zoom > 0.001) {
+      if (baseFov === null) baseFov = camera.fov;
+      camera.fov = baseFov * (1 + (ADS_FOV - 1) * zoom);
+      camera.updateProjectionMatrix();
+    } else {
+      restoreFov();
+    }
+  }
+
+  /** Hand the lens back exactly as it was lent. */
+  function restoreFov() {
+    zoom = 0;
+    if (baseFov === null) return;
+    camera.fov = baseFov;
+    camera.updateProjectionMatrix();
+    baseFov = null;
+  }
+
+  // The crosshair: four ticks round a dot, pushed apart by movement and
+  // by every shot, the way a sight blooms.
+  const crosshair = document.createElement('div');
+  crosshair.id = 'foot-crosshair';
+  crosshair.hidden = true;
+  crosshair.innerHTML = '<i class="ch-dot"></i><i class="ch-t"></i>'
+    + '<i class="ch-b"></i><i class="ch-l"></i><i class="ch-r"></i>';
+  document.body.appendChild(crosshair);
+  function showCrosshair(on, spread = 0) {
+    if (crosshair.hidden === on) crosshair.hidden = !on;
+    if (on) crosshair.style.setProperty('--spread', `${(5 + spread * 14).toFixed(1)}px`);
   }
 
   // --- The states ---------------------------------------------------------------
@@ -833,8 +975,29 @@ export function createOnFoot({
     // death animation would never play at all.
     if (dying > 0 || down) {
       vel.set(0, 0, 0);
+      shoulder = false;
+      aiming = false;
+      vexo.setStance(false);
+      showCrosshair(false);
       return;
     }
+
+    // --- Gun out? ---------------------------------------------------------------
+    // Decided first, because it changes how everything below reads the
+    // sticks: over the shoulder he faces the camera and strafes.
+    const aimHeld = input.keyboard.isDown(AIM_KEYS[0])
+      || input.gamepad.isButtonDown(BUTTONS.L2);
+    // A tap that starts and ends between two frames still counts.
+    const firing = input.keyboard.consumeJustPressed(['Space'])
+      || input.keyboard.isDown('Space')
+      || input.gamepad.isButtonDown(BUTTONS.R2)
+      || input.gamepad.isButtonDown(BUTTONS.X);
+    if (shotCooldown > 0) shotCooldown -= dt;
+    if (drawnFor > 0) drawnFor -= dt;
+    // Holding either the trigger or aim draws the gun whether or not a
+    // shot happens this frame.
+    if (aimHeld || firing) drawnFor = HOLSTER_AFTER;
+    aiming = aimHeld;
 
     // --- Looking around -------------------------------------------------------
     // Stick as a rate, gyro as a displacement, both into the same angle.
@@ -843,10 +1006,13 @@ export function createOnFoot({
     const lookY = clamp1(axes?.lookY ?? 0);
     const turnX = axes?.lookTurnX ?? 0;
     const turnY = axes?.lookTurnY ?? 0;
-    camYaw += lookX * FOOT_LOOK_RATE * dt + turnX;
+    // Aiming slows the stick down so small corrections are possible.
+    const fine = aiming ? AIM_LOOK_SCALE : 1;
+    const pitchLimit = drawnFor > 0 ? AIM_PITCH : FOOT_LOOK_PITCH;
+    camYaw += lookX * FOOT_LOOK_RATE * fine * dt + turnX;
     camPitch = clamp(
-      camPitch - lookY * FOOT_PITCH_RATE * dt - turnY,
-      -FOOT_LOOK_PITCH, FOOT_LOOK_PITCH,
+      camPitch - lookY * FOOT_PITCH_RATE * fine * dt - turnY,
+      -pitchLimit, pitchLimit,
     );
     const looking = Math.abs(lookX) > 0.05 || Math.abs(turnX) > 0.0015;
 
@@ -872,7 +1038,11 @@ export function createOnFoot({
     const sprintHeld = input.keyboard.isDown('ShiftLeft')
       || input.keyboard.isDown('ShiftRight')
       || input.gamepad.isButtonDown(BUTTONS.B);
-    const wantsSprint = sprintHeld && push > 0.15;
+    // No sprinting down a sight. Sprinting with the gun merely out puts
+    // it away, the way breaking into a run does.
+    const wantsSprint = sprintHeld && push > 0.15 && !aimHeld;
+    if (wantsSprint && !firing) drawnFor = 0;
+    shoulder = drawnFor > 0;
     if (sprintHeld && !sprintWasHeld && stamina > 0 && winded <= 0) {
       // Tapping is dearer than holding.
       stamina = Math.max(0, stamina - STAMINA_TAP_COST);
@@ -908,8 +1078,9 @@ export function createOnFoot({
       : WALK_SPEED + (JOG_SPEED - WALK_SPEED)
         * ((push - WALK_STICK) / (1 - WALK_STICK));
     // Winded means a walk, whatever the stick says.
-    const topSpeed = winded > 0
-      ? Math.min(paced, WALK_SPEED)
+    // And aiming means a walk, too.
+    const topSpeed = winded > 0 || aiming
+      ? Math.min(paced, WALK_SPEED * 1.2)
       : (sprinting ? SPRINT_SPEED : paced);
 
     if (push > 0.05) {
@@ -922,9 +1093,13 @@ export function createOnFoot({
       _target.set(Math.sin(want), 0, Math.cos(want)).multiplyScalar(topSpeed);
       // Shortest way round, so facing +179 and wanting -179 is a two
       // degree turn rather than a 358 degree spin.
-      heading += angleDelta(heading, want) * alphaFor(dt, TURN_HALFLIFE);
+      if (!shoulder) heading += angleDelta(heading, want) * alphaFor(dt, TURN_HALFLIFE);
     } else {
       _target.set(0, 0, 0);
+    }
+    // Over the shoulder he faces the crosshair, whichever way he walks.
+    if (shoulder) {
+      heading += angleDelta(heading, camYaw) * alphaFor(dt, STANCE_TURN_HALFLIFE);
     }
 
     // Momentum. Easing the velocity toward the target rather than
@@ -977,7 +1152,7 @@ export function createOnFoot({
     // Gated, he sets off across the screen in a straight line and the
     // camera only closes up once he is heading away from it again.
     const goingForward = Math.abs(moveX) < 0.4 && push > 0.05;
-    if (!looking && goingForward) {
+    if (!looking && goingForward && !shoulder) {
       camYaw += angleDelta(camYaw, heading) * alphaFor(dt, CAM_RECENTRE_HALFLIFE);
       camPitch += (0 - camPitch) * alphaFor(dt, CAM_RECENTRE_HALFLIFE * 2);
     }
@@ -997,11 +1172,6 @@ export function createOnFoot({
     } : null);
 
     // --- Shooting -------------------------------------------------------------
-    if (shotCooldown > 0) shotCooldown -= dt;
-    if (drawnFor > 0) drawnFor -= dt;
-    const firing = input.keyboard.isDown('Space')
-      || input.gamepad.isButtonDown(BUTTONS.R2)
-      || input.gamepad.isButtonDown(BUTTONS.X);
     if (firing && shotCooldown <= 0 && monsters) {
       // Nothing is fired until the gun is actually in his hand.
       //
@@ -1015,30 +1185,48 @@ export function createOnFoot({
       // was meant to work around: it fired the shot from his sternum
       // instead of waiting the tenth of a second it takes him to bring
       // the gun up. Now he draws first and shoots when he is ready.
-      // Holding the trigger draws the gun whether or not this frame's
-      // shot happens.
-      drawnFor = HOLSTER_AFTER;
+      // (The trigger already drew it, above.)
       if (vexo.getMuzzle(_muzzle)) {
         shotCooldown = SHOT_INTERVAL * (perks ? perks.shotInterval : 1);
-        // Soft lock: anything within thirty degrees of where he is
-        // facing gets shot AT, rather than requiring the player to line
-        // a moving target up with a thumbstick.
         const range = SHOT_RANGE * (perks ? perks.shotRange : 1);
-        const locked = monsters.aimAt(_muzzle, heading, AIM_CONE, range);
+        // Where the crosshair is: straight out of the camera.
+        camera.getWorldDirection(_camDir);
+        // A little forgiveness round it, because a bokoblin is a narrow
+        // thing to hold a thumbstick on — but only a little, now that
+        // there is a crosshair to aim with. The old forty-degree cone
+        // made sense when "aim" meant "the way he happens to be facing".
+        const locked = monsters.aimAt(
+          camera.position, Math.atan2(_camDir.x, _camDir.z), AIM_ASSIST, range + SHOULDER_BOOM,
+        );
         if (locked) {
-          _aim.copy(locked).sub(_muzzle).normalize();
-          // And he turns to it, so the shot doesn't come out sideways.
-          heading += angleDelta(heading, Math.atan2(_aim.x, _aim.z)) * 0.6;
+          _aimPoint.copy(locked);
+          // The lock is flat; don't let it pull a shot aimed at the sky
+          // down onto the monster under it.
+          _v.copy(_aimPoint).sub(camera.position).normalize();
+          if (_v.dot(_camDir) < Math.cos(AIM_ASSIST * 2)) {
+            _aimPoint.copy(camera.position).addScaledVector(_camDir, range);
+          }
         } else {
-          _aim.set(Math.sin(heading), 0, Math.cos(heading));
+          _aimPoint.copy(camera.position).addScaledVector(_camDir, range);
         }
+        // …and the bullet flies there from the end of the barrel.
+        _aim.copy(_aimPoint).sub(_muzzle).normalize();
         const hit = monsters.shoot(_muzzle, _aim, range);
         vexo.fire();                    // muzzle flash on the gun itself
         onShot(_muzzle, _aim, hit);
+        bloom = Math.min(1.2, bloom + BLOOM_PER_SHOT);
       }
     }
     // Pistol out while he is shooting or has just shot; away otherwise.
     vexo.setArmed(drawnFor > 0, heading);
+    // Two hands on it, chest on the crosshair, legs going wherever.
+    vexo.setStance(
+      shoulder,
+      -camPitch,
+      speed > IDLE_SPEED ? angleDelta(heading, Math.atan2(vel.x, vel.z)) : null,
+    );
+    bloom = Math.max(0, bloom - BLOOM_DECAY * dt);
+    showCrosshair(shoulder, bloom + (speed / JOG_SPEED) * 0.5 - zoom * 0.25);
 
     // Somebody to talk to.
     //
@@ -1128,6 +1316,8 @@ export function createOnFoot({
         if (gotT <= 0) got.hidden = true;
       }
       if (state === 'off') {
+        restoreFov();
+        showCrosshair(false);
         // Anywhere over the town: offer the way out, and take it if
         // asked. `axes === null` means the stick belongs to something
         // else this frame (a menu is open), so neither the prompt nor
@@ -1176,6 +1366,12 @@ export function createOnFoot({
           down = true;
           onDown();
         }
+      }
+      if (state !== 'walk') {
+        shoulder = false;
+        aiming = false;
+        vexo.setStance(false);
+        showCrosshair(false);
       }
       vexo.update(dt);
       if (state !== 'off') updateCamera(dt);

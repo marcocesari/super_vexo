@@ -76,8 +76,18 @@ Then open http://localhost:5173.
   the pace — a gentle push walks (1.5 m/s), hard over jogs (3.3). A keyboard
   has no half-press, so W alone is the jog
 - **Shift / B (hold)** — sprint (6.2 m/s), for as long as your stamina lasts
-- **Space / X** — shoot. He draws the pistol off his thigh and holsters it again
-  a few seconds after the last shot
+- **Space / X / R2** — shoot. He draws the pistol off his right thigh (he's
+  right-handed with the pistol) and holsters it
+  again a few seconds after the last shot. While it's out the camera sits over
+  his right shoulder with a crosshair in the middle of the screen, the way a
+  third-person shooter does: he holds the gun in both hands at eye level, faces
+  wherever the crosshair is, body turned side-on with the gun out on the
+  camera's side, and walks in any direction under it — strafing
+  sideways, backing off — instead of turning to face the stick. Shots go to the
+  crosshair, with a little aim assist (~13°) for pads and phones. Sprinting puts
+  the gun away
+- **Q / L2 (hold)** — aim. Draws the gun, pushes the camera in closer and zooms
+  a little, slows the look stick for fine corrections, and slows him to a walk
 - **T, or + on a pad** — the inventory. A row of tabs, weapons down the left,
   and Vexo on the right. It's driven the way Tears of the Kingdom's pause menu
   is: the **left stick, D-pad or arrow keys** are a cursor with two rows to be
