@@ -2,6 +2,8 @@
 
 > *A space adventure across the Solar System, starring a hacker hero with a very powerful tablet.*
 
+### ▶️ [Play it in your browser](https://marcocesari.github.io/super_vexo/)
+
 ## The Story
 
 You play as **Vexo**, captain of the Royal Space Guard — and a professional hacker. The kingdom of Astra lives in peace, until one day **Lord Draxos**, the kingdom's worst enemy, attacks the royal castle with an army of monsters, kidnaps Princess Astra, and escapes into deep space.
