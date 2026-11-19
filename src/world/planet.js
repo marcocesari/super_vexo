@@ -121,6 +121,9 @@ export function createPlanet({ seed = 20260827, profile = null } = {}) {
       holeKey: null,
       tiles: [],
       spare: [],
+      // Tiles this ring no longer wants but is still DRAWING, because
+      // whatever replaces them has not been built yet. See retire().
+      retiring: [],
       group: new THREE.Group(),
     };
     // Rings further out are drawn first, so the near ground paints over
@@ -566,8 +569,11 @@ export function createPlanet({ seed = 20260827, profile = null } = {}) {
       const spare = [];
       for (const t of ring.tiles) {
         const key = `${t.i},${t.j}`;
-        if (need.has(key) && !keeping.has(key)) keeping.add(key);
-        else spare.push(t);
+        if (need.has(key) && !keeping.has(key)) {
+          keeping.add(key);
+          // Wanted again before it was put away: it simply stays.
+          if (t.retiring) unretire(ring, t);
+        } else spare.push(t);
       }
       // The work is not done here. Filling every new tile the moment it
       // is wanted is what made the world judder: crossing one boundary
@@ -582,12 +588,32 @@ export function createPlanet({ seed = 20260827, profile = null } = {}) {
       // them is either inside the hole in the middle of this ring or off
       // its outer edge, and in both cases the ring next door has it
       // covered.
+      //
+      // …except that putting them away NOW, before whatever replaces them
+      // has been built, opens a hole in the ground for the few frames the
+      // queue takes to get there — and through the hole shows the sea
+      // plane (lava, on Pyrox) or the sky. Marco saw exactly that as
+      // patches flashing on and off on every planet while he flew.
+      // So a tile that is still on screen is RETIRED instead: it goes on
+      // being drawn until no job left on the queue covers any of its
+      // ground, and only then is it put away (see releaseCovered). The
+      // overlap that the hiding was there to prevent then lasts at most
+      // the frame or two the replacements take — and only where they
+      // have actually appeared, never as a hole.
+      const free = [];
       for (const t of spare) {
-        t.mesh.visible = false;
-        t.i = NaN;
-        t.j = NaN;
+        if (t.retiring) continue;
+        if (t.mesh.visible && !Number.isNaN(t.i)) {
+          t.retiring = true;
+          ring.retiring.push(t);
+        } else {
+          t.mesh.visible = false;
+          t.i = NaN;
+          t.j = NaN;
+          free.push(t);
+        }
       }
-      ring.spare = spare;
+      ring.spare = free;
       // Throw away this ring's outstanding jobs before queueing the new
       // ones. Without this the same square gets queued again on every
       // frame it is still missing, and at speed the queue fills with
@@ -608,6 +634,9 @@ export function createPlanet({ seed = 20260827, profile = null } = {}) {
       }
     }
     queue.sort((a, b) => a.d2 - b.d2);
+    // Anything retired whose ground nothing is waiting to cover — the
+    // ring next door already draws it — can go at once.
+    releaseCovered();
     lastFocus.x = x;
     lastFocus.z = z;
     sea.position.x = x;
@@ -635,13 +664,76 @@ export function createPlanet({ seed = 20260827, profile = null } = {}) {
     const started = performance.now();
     while (queue.length && performance.now() - started < budgetMs) {
       const job = queue.shift();
-      const tile = job.ring.spare.pop();
-      if (tile) {
-        fillTile(job.ring, tile, job.i, job.j);
-        built++;
+      // A free tile, or — flying fast enough that the ring has moved
+      // again before its last retirees could go — the oldest of those.
+      // A job is never dropped for want of a tile: a dropped job is a
+      // hole that stays until the ring next moves.
+      const tile = job.ring.spare.pop() ?? takeRetired(job.ring);
+      if (!tile) {
+        queue.unshift(job);
+        break;
+      }
+      fillTile(job.ring, tile, job.i, job.j);
+      built++;
+    }
+    // The replacements just built may be all a retired tile was waiting for.
+    releaseCovered();
+    buildMs = performance.now() - started;
+  }
+
+  /** Stop retiring a tile its ring wants again. */
+  function unretire(ring, t) {
+    t.retiring = false;
+    const k = ring.retiring.indexOf(t);
+    if (k >= 0) ring.retiring.splice(k, 1);
+  }
+
+  /** Put a retired tile away and hand it back to its ring's pool. */
+  function putAway(ring, t) {
+    unretire(ring, t);
+    t.mesh.visible = false;
+    t.i = NaN;
+    t.j = NaN;
+  }
+
+  /** The oldest retired tile of this ring, put away for reuse. */
+  function takeRetired(ring) {
+    const t = ring.retiring[0];
+    if (!t) return null;
+    putAway(ring, t);
+    return t;
+  }
+
+  /**
+   * Put away every retired tile whose ground no job on the queue covers.
+   *
+   * A job covers a retired tile if their squares overlap at all — the
+   * replacement may be a finer ring's tile (the retired one was in the
+   * hole that just moved over it) or a coarser one's (the ring moved on
+   * and left it behind) — so the test is on the ground, not on rings.
+   */
+  function releaseCovered() {
+    for (const ring of rings) {
+      for (let k = ring.retiring.length - 1; k >= 0; k--) {
+        const t = ring.retiring[k];
+        const half = ring.tileSize / 2;
+        const tx = t.i * ring.tileSize;
+        const tz = t.j * ring.tileSize;
+        let waiting = false;
+        for (const job of queue) {
+          const jh = job.ring.tileSize / 2;
+          if (Math.abs(job.i * job.ring.tileSize - tx) < half + jh
+              && Math.abs(job.j * job.ring.tileSize - tz) < half + jh) {
+            waiting = true;
+            break;
+          }
+        }
+        if (!waiting) {
+          putAway(ring, t);
+          ring.spare.push(t);
+        }
       }
     }
-    buildMs = performance.now() - started;
   }
 
   // --- What the rest of the game asks the ground ---------------------------------
