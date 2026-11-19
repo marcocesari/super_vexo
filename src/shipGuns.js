@@ -2,10 +2,11 @@
 // view you shoot them from.
 //
 // Pressing fire in the air (R2, or Space) cuts the camera from behind
-// the ship to the cockpit. The crosshair is the middle of the screen —
-// which, from the cockpit, is straight down the ship's nose — and the
-// two cannons sit low at either edge of the frame, the way Marco drew
-// it. The view stays there while he keeps shooting and for a few
+// the ship to Vexo's eyes in the cockpit. The crosshair is the middle of
+// the screen — straight down the ship's nose — and all he sees of his
+// ship is the two cannons, low at either edge of the frame, the way
+// Marco drew it: everything else is hidden, so it is the world through
+// the glass and two guns. The view stays there while he keeps shooting and for a few
 // seconds after, then eases back behind the tail: the same rule as the
 // pistol on foot.
 //
@@ -22,21 +23,25 @@
 import * as THREE from 'three';
 
 // Where the cockpit camera sits, in ship units (multiplied by the
-// ship's scale). Behind and above the canopy rather than inside it: the
-// cannons are out on the wingtips, level with the canopy, and from
-// inside the canopy they are too far round to the side to be on screen.
-// From here they sit at the two lower edges of the frame.
-const COCKPIT_LOCAL = new THREE.Vector3(0, 0.33, -0.5);
-// Look a touch down the nose, so the cannons sit low in the frame and
-// the crosshair has open sky around it.
-const COCKPIT_TILT = -0.05;
+// ship's scale): Vexo's eyes. A little further back than the canopy's
+// middle — the cannons are out on the wingtips, level with the canopy,
+// and from its very centre they would be too far round to the side to
+// be on screen. With the rest of the ship hidden nobody can tell, and
+// from here the two guns sit at the lower edges of the frame.
+const COCKPIT_LOCAL = new THREE.Vector3(0, 0.3, -0.42);
+// No tilt: the crosshair is exactly where the nose points, so flying
+// the ship at something is aiming at it. (Being above the cannons is
+// what puts them low in the frame.)
+const COCKPIT_TILT = 0;
 // A wider lens in the cockpit, so both wingtips fit.
 const COCKPIT_FOV_SCALE = 1.22;
 
 const SHOT_INTERVAL = 0.17;     // seconds between pairs of bolts
 const HOLSTER_AFTER = 4;        // seconds without firing before the view returns
-const BLEND_IN = 0.07;          // half-life into the cockpit
-const BLEND_OUT = 0.2;          // …and back out behind the tail
+// Into the cockpit is a CUT, not a glide: a quarter of a second of the
+// camera sliding forward read as lag, and the first shot waited for it.
+// Back out behind the tail eases, because by then nothing is urgent.
+const BLEND_OUT = 0.2;
 
 // Ranges and speeds are per world, because the two are not the same
 // size: space is measured in game units around a ship two units long,
@@ -159,30 +164,45 @@ export function createShipGuns({
   const _dir = new THREE.Vector3();
   const _aimPoint = new THREE.Vector3();
   const _camDir = new THREE.Vector3();
+  const _eye = new THREE.Vector3();
+
+  /** Where Vexo's eyes are and which way they look, this frame. */
+  function cockpitPose(pos, quat) {
+    pos.copy(COCKPIT_LOCAL).multiplyScalar(ship.mesh.scale.x)
+      .applyQuaternion(ship.mesh.quaternion)
+      .add(ship.mesh.position);
+    // The camera looks down its own -Z; the ship's nose is +Z. Turn it
+    // round, then tip it by the tilt.
+    _tilt.setFromAxisAngle(_X, -COCKPIT_TILT);
+    quat.copy(ship.mesh.quaternion).multiply(_flip).multiply(_tilt);
+  }
 
   function fire() {
     const world = surface.active ? SURFACE : SPACE;
     const scale = ship.mesh.scale.x;
     const range = world.range * scale;
     // The crosshair: the middle of the screen, which in the cockpit is
-    // the line the camera looks along.
-    camera.getWorldDirection(_camDir);
+    // the line Vexo's eyes look along. Worked out from the ship rather
+    // than read off the camera, because on the first shot the camera is
+    // still behind the tail — the cut to the cockpit happens this frame.
+    cockpitPose(_eye, _cockpitQuat);
+    _camDir.set(0, 0, -1).applyQuaternion(_cockpitQuat);
     let rock = -1;
     let dist = range;
     let hitMonster = null;
     if (surface.active) {
       // Over a planet: the camps. A bokoblin is a small thing from the
       // air, so the shot is a fat one.
-      hitMonster = monsters?.shoot(camera.position, _camDir, range, world.hitPad) ?? null;
+      hitMonster = monsters?.shoot(_eye, _camDir, range, world.hitPad) ?? null;
       if (hitMonster) dist = hitMonster.hitDistance ?? dist;
     } else {
-      const hit = rockAlong(camera.position, _camDir, range, world.hitPad * scale);
+      const hit = rockAlong(_eye, _camDir, range, world.hitPad * scale);
       if (hit) {
         rock = hit.index;
         dist = hit.distance;
       }
     }
-    _aimPoint.copy(camera.position).addScaledVector(_camDir, dist);
+    _aimPoint.copy(_eye).addScaledVector(_camDir, dist);
 
     let first = true;
     for (const tip of muzzles) {
@@ -242,9 +262,9 @@ export function createShipGuns({
       if (drawnFor > 0) drawnFor -= dt;
       if (trigger) {
         drawnFor = HOLSTER_AFTER;
-        // The first pair waits until the camera has actually got to the
-        // cockpit, so the opening shot is one you can see leave.
-        if (cooldown <= 0 && blend > 0.6) {
+        // Straight to his eyes, so the first pair leaves on this frame.
+        blend = 1;
+        if (cooldown <= 0) {
           cooldown = SHOT_INTERVAL;
           bloom = Math.min(1, bloom + 0.35);
           fire();
@@ -270,9 +290,10 @@ export function createShipGuns({
      */
     updateCamera(dt) {
       const want = drawnFor > 0 ? 1 : 0;
-      blend += (want - blend) * alphaFor(dt, want ? BLEND_IN : BLEND_OUT);
+      if (want) blend = 1;
+      else blend += (0 - blend) * alphaFor(dt, BLEND_OUT);
       if (want === 0 && blend < 0.002) blend = 0;
-      // The tail fin stands right in front of the cockpit camera.
+      // In the cockpit only the cannons are drawn (see ship.cockpitHide).
       const inside = blend > 0.5;
       for (const m of hidden) m.visible = !inside;
       bloom = Math.max(0, bloom - 3 * dt);
@@ -288,14 +309,7 @@ export function createShipGuns({
       _chasePos.copy(camera.position);
       _chaseQuat.copy(camera.quaternion);
 
-      const s = ship.mesh.scale.x;
-      _cockpitPos.copy(COCKPIT_LOCAL).multiplyScalar(s)
-        .applyQuaternion(ship.mesh.quaternion)
-        .add(ship.mesh.position);
-      // The camera looks down its own -Z; the ship's nose is +Z. Turn
-      // it round, then tip it a little down the nose.
-      _tilt.setFromAxisAngle(_X, -COCKPIT_TILT);
-      _cockpitQuat.copy(ship.mesh.quaternion).multiply(_flip).multiply(_tilt);
+      cockpitPose(_cockpitPos, _cockpitQuat);
 
       camera.position.lerpVectors(_chasePos, _cockpitPos, blend);
       _q.copy(_chaseQuat).slerp(_cockpitQuat, blend);

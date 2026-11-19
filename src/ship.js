@@ -171,8 +171,11 @@ export function createShip() {
   // --- Wings: one per side, each its own group so the panel, wingtip
   // fin, laser cannon and G-diffuser all share the wing's gentle
   // dihedral. The left wing is an X-mirror of the right.
-  // The two cannon tips, for the guns to fire from (see shipGuns.js).
+  // The two cannon tips, for the guns to fire from (see shipGuns.js),
+  // and every piece of the two cannons — the one part of the ship still
+  // drawn in the cockpit view, where everything else is hidden.
   const cannonTips = [];
+  const cannonParts = [];
   for (const side of [+1, -1]) {
     const wing = new THREE.Group();
 
@@ -198,12 +201,14 @@ export function createShip() {
     const barrel = new THREE.Mesh(barrelGeom, panelMat);
     barrel.position.set(0.69, 0.0, 0.3);
     wing.add(barrel);
+    cannonParts.push(barrel);
     const barrelTip = new THREE.Mesh(
       new THREE.CylinderGeometry(0.03, 0.02, 0.15, 10), accentMat,
     );
     barrelTip.rotation.x = Math.PI / 2;
     barrelTip.position.set(0.69, 0.0, 0.62);
     wing.add(barrelTip);
+    cannonParts.push(barrelTip);
     // The muzzle itself: the front face of the gold tip.
     const muzzle = new THREE.Object3D();
     muzzle.position.set(0.69, 0.0, 0.7);
@@ -263,11 +268,17 @@ export function createShip() {
     glows,
     glowMat: engineGlowMat,
     cannonTips,
-    // Parts that stand in front of the cockpit camera and are hidden
-    // while it is up: the dorsal fin is right in the middle of the view,
-    // and the canopy is the glass he is looking out through, not a blue
-    // dome across the bottom of the screen.
-    cockpitHide: [tailFin, tailFinTip, canopy],
+    // In the cockpit view the player is Vexo, looking out through the
+    // glass: the only part of the ship he should see is the two cannons.
+    // Everything else — nose, fuselage, wings, fins, canopy — is hidden
+    // while it is up. (The engine flames are left alone: they are behind
+    // him, and updateShip switches them on and off itself.)
+    cockpitHide: (() => {
+      const keep = new Set([...cannonParts, ...glows]);
+      const out = [];
+      group.traverse((o) => { if (o.isMesh && !keep.has(o)) out.push(o); });
+      return out;
+    })(),
     flame: 0,
     // True while the stick isn't pushed forward — main.js uses it to
     // keep velocity zeroed after collision resolution.
