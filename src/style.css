@@ -1233,3 +1233,19 @@ canvas {
   cursor: pointer;
 }
 .inventory__controller:hover { background: rgba(20, 44, 72, 0.9); }
+
+/* Coming down through a planet's air (src/atmosphereEntry.js): the view
+   tinted with that planet's sky, and the orange glow of entry heat round
+   the edges of the screen. Under the HUD, over the game. */
+#entry-tint,
+#entry-heat {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+}
+#entry-heat {
+  background: radial-gradient(ellipse at 50% 55%,
+    rgba(255, 140, 50, 0) 38%, rgba(255, 110, 30, 0.45) 72%, rgba(255, 70, 10, 0.85) 100%);
+}

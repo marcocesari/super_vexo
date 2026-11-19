@@ -54,6 +54,7 @@ import { createShop } from './shop.js';
 import { strings } from './strings.js';
 import { createTracers } from './world/tracers.js';
 import { createShipGuns } from './shipGuns.js';
+import { createAtmosphereEntry } from './atmosphereEntry.js';
 
 // --- URL switches -----------------------------------------------------------
 // Read before anything is built, because half the setup below branches
@@ -139,6 +140,10 @@ const surface = createSurface(
   },
 );
 
+// Coming down through a planet's air and back up: the haze, the heat, the
+// clouds, and the ship gliding down to the land. See atmosphereEntry.js.
+const entry = createAtmosphereEntry({ scene, camera, ship, surface });
+
 // --- Input + UI -------------------------------------------------------------
 const input = createInput();
 const hud = createHud();
@@ -216,6 +221,7 @@ function resetGame() {
   missionScreens.hideAll();
   chaseCamera.reset();
   shipGuns.reset();
+  entry.reset();
 }
 
 function tryBeginWarp() {
@@ -797,6 +803,11 @@ function frame(now) {
       // The sprint theme plays while he is actually running — moving and
       // spending stamina, not merely holding the button.
       audio.setSprinting(onFoot.sprinting);
+    } else if (entry.suppressInput) {
+      // Gliding down through the air on the way in: the ship flies
+      // itself, and the ground keeps streaming in underneath it.
+      surface.update(ship, dt);
+      audio.setThrottle(0.6);
     } else if (fastTravel.suppressInput || missionScreens.isOpen()) {
       // Ship on rails (warp) or player is in a menu → ignore flight input.
       audio.setThrottle(0);
@@ -906,6 +917,7 @@ function frame(now) {
   // On foot the camera belongs to `onFoot` — it is following a man, not
   // a ship, and the chase camera would drag it back to the cockpit.
   shipGuns.tick(dt);
+  entry.update(dt);
   if (!onFoot.active) {
     chaseCamera.update(ship, look, dt);
     // Bends the chase camera's answer toward the cockpit while the guns
@@ -916,6 +928,7 @@ function frame(now) {
       shipGuns.stand();
     }
     shipGuns.updateCamera(dt);
+    entry.updateCamera();
   } else {
     shipGuns.reset();
   }
@@ -966,7 +979,7 @@ if (import.meta.env.DEV) {
     ship, asteroids, audio, fastTravel, physics,
     renderer, camera,
     rovers: roverApi, mission, upgrades, missionScreens, surface, frameScaler,
-    characterViewer, onFoot, monsters, tracers, shipGuns, inventory, saves, gameOver, dialogue,
+    characterViewer, onFoot, monsters, tracers, shipGuns, entry, inventory, saves, gameOver, dialogue,
     perks, shop, padSetup, input, materials,
     map: worldMap,
     shipConfig, shipConfigDefaults,

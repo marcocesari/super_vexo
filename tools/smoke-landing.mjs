@@ -213,6 +213,47 @@ check('the ground is hidden again', !space.worldVisible);
 check('the banner is gone', !space.banner);
 check('the ship is back in the solar system', Math.abs(space.y) < 5000, `y=${space.y}`);
 
+// --- Flying in for real: the descent through the air ---------------------------
+// Put straight into the atmosphere, as above, the ship simply arrives — that
+// is what loading a save does. FLOWN in, it comes down through the air:
+// arrives 1.5 km up inside the haze, the haze clears, it glides down on its
+// own and hands the controls back level, a couple of hundred metres up.
+// See src/atmosphereEntry.js.
+const descent = await page.evaluate(async () => {
+  const sv = window.__superVexo;
+  const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+  // Just above Earth's air, then into it on the next frame — the way a
+  // ship flying in crosses the line.
+  sv.ship.mesh.position.set(-90, 25 + 112 + 30, -330);
+  sv.ship.velocity.set(0, 0, 0);
+  await frame();
+  await frame();
+  sv.ship.mesh.position.set(-90, 25 + 112 + 10, -330);
+  await frame();
+  await frame();
+  const ground = () => sv.ship.mesh.position.y - sv.surface.hullGroundY(sv.ship);
+  const arrived = {
+    active: sv.surface.active, state: sv.entry.state,
+    height: Math.round(ground()), haze: sv.entry.haze,
+  };
+  await new Promise((r) => setTimeout(r, 2600));
+  const clearing = { haze: sv.entry.haze, height: Math.round(ground()) };
+  // Wait for it to level off and hand over.
+  const t0 = performance.now();
+  while (sv.entry.state === 'descending' && performance.now() - t0 < 15000) await frame();
+  return { arrived, clearing, done: { state: sv.entry.state, height: Math.round(ground()), haze: sv.entry.haze } };
+});
+check('flying in lands you and starts the descent', descent.arrived.active && descent.arrived.state === 'descending',
+  `state ${descent.arrived.state}`);
+check('…arriving high up, inside the haze', descent.arrived.height > 1000 && descent.arrived.haze > 0.5,
+  `${descent.arrived.height}m over the ground, haze ${descent.arrived.haze.toFixed(2)}`);
+check('the haze clears on the way down', descent.clearing.haze < 0.2 && descent.clearing.height < descent.arrived.height,
+  `haze ${descent.clearing.haze.toFixed(2)} at ${descent.clearing.height}m`);
+check('it levels off low and hands the controls back', descent.done.state === 'idle'
+  && descent.done.height > 60 && descent.done.height < 320 && descent.done.haze === 0,
+  `${descent.done.state} at ${descent.done.height}m`);
+await page.evaluate(() => window.__superVexo.resetGame());
+
 // --- Reset from the surface --------------------------------------------------
 const afterReset = await page.evaluate(async () => {
   const sv = window.__superVexo;

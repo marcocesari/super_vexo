@@ -352,6 +352,21 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
     get active() { return active; },
     /** Which body's ground is current: 'home', or a planet's id. */
     get bodyId() { return body.id; },
+    /** The current body's sky — its colour, haze and light. */
+    get sky() { return body.sky; },
+    /**
+     * The landable body nearest the ship in space, and how far above its
+     * surface the ship is (in space units). For the approach effects in
+     * atmosphereEntry.js.
+     */
+    bodyNear(ship) {
+      let best = null;
+      for (const b of bodies) {
+        const depth = ship.mesh.position.distanceTo(b.position) - b.radius;
+        if (!best || depth < best.depth) best = { body: b, depth };
+      }
+      return best;
+    },
     /** Everything you can land on, for the space side of the game. */
     bodies,
     /**
