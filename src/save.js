@@ -69,6 +69,9 @@ export function createSaves({
         scale: ship.mesh.scale.x,
       },
       inTown: surface.active,
+      // Which planet: 'home', or one of Nova Astra's. Older saves have
+      // none, and they were all on the home world.
+      world: surface.active ? surface.bodyId : null,
       // No hearts: a save is loaded with him back in the ship, and
       // climbing down the ladder gives him a fresh five. Storing the
       // three he happened to have left would only be a number nothing
@@ -77,6 +80,7 @@ export function createSaves({
       // battered the rest are. See monsters.snapshot() for why they are
       // keyed by square rather than by position in a list.
       camps: monsters.snapshot(),
+      campsWorld: monsters.worldId,
       credits: mission.credits,
       // What has been bought in Estronic.
       perks: perks ? perks.snapshot() : null,
@@ -129,7 +133,7 @@ export function createSaves({
       onFoot.reset();
       surface.reset(ship);
 
-      if (data.inTown) surface.enter(ship);
+      if (data.inTown) surface.enter(ship, data.world ?? 'home');
       ship.mesh.position.fromArray(data.ship.p);
       ship.mesh.quaternion.fromArray(data.ship.q);
       ship.mesh.scale.setScalar(data.ship.scale ?? 1);
@@ -140,7 +144,7 @@ export function createSaves({
       monsters.reset();
       monsters.focus(ship.mesh.position.x - SURFACE_ORIGIN.x,
         ship.mesh.position.z - SURFACE_ORIGIN.z);
-      monsters.restore(data.camps);
+      if ((data.campsWorld ?? 'home') === monsters.worldId) monsters.restore(data.camps);
 
       rovers.reset();
       for (const [i, fixed] of (data.rovers ?? []).entries()) {

@@ -463,6 +463,7 @@ export function createMonsters({ scene, world, origin }) {
 
   function spawn(camp, x, z, tier, boss) {
     const boko = createBokoblin({ tier });
+    boko.tier = tier;
     if (boss) boko.group.scale.setScalar(1.35);
     const m = {
       boko,
@@ -484,6 +485,30 @@ export function createMonsters({ scene, world, origin }) {
     camp.members.push(m);
     place(m);
     return m;
+  }
+
+  // The home world's mix: blue leading the reds, a black boss.
+  const HOME_TIERS = { mooks: ['blue', 'red'], boss: 'black' };
+  let worldId = 'home';
+  // Each planet's camps as they were left, for when the player comes back.
+  const memory = new Map();
+  let rememberedHere = null;
+
+  /** Swap a monster's body for one of another colour. */
+  function retier(m, tier) {
+    if (m.boko.tier === tier) return;
+    group.remove(m.boko.group);
+    m.boko.group.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((x) => x.dispose());
+    });
+    const boko = createBokoblin({ tier });
+    boko.tier = tier;
+    if (m.boss) boko.group.scale.setScalar(1.35);
+    m.boko = boko;
+    m.hp = boko.maxHp * (m.boss ? 2 : 1);
+    group.add(boko.group);
+    place(m);
   }
 
   const _v = new THREE.Vector3();
@@ -622,6 +647,43 @@ export function createMonsters({ scene, world, origin }) {
       if (!moved && !pending) return;
       lastFocus.set(x, z);
       ensureCampsNear(x, z);
+      // Back on a planet visited before: put back what was done to its
+      // camps, now that they are standing again.
+      if (rememberedHere) {
+        this.restore(rememberedHere);
+        rememberedHere = null;
+      }
+    },
+
+    /** Which planet the camps are on: 'home', or a Nova Astra planet's id. */
+    get worldId() { return worldId; },
+
+    /**
+     * The player has landed on a different planet.
+     *
+     * Every planet has its own camps — the squares are the same grid,
+     * but the ground under them is different, so every site is worked
+     * out again — and its own mix of Draxos's monsters (`tiers`, from
+     * novaAstra.js; the home world's when null). What was done to the
+     * last planet's camps is remembered for when you come back.
+     */
+    setWorld(id, tiers = null) {
+      if (id === worldId) return;
+      memory.set(worldId, this.snapshot());
+      worldId = id;
+      siteCache.clear();
+      clearDrops();
+      const mix = tiers ?? HOME_TIERS;
+      for (const camp of camps) {
+        camp.cell = null;
+        let mook = 0;
+        for (const m of camp.members) {
+          const tier = m.boss ? mix.boss : mix.mooks[mook++ % mix.mooks.length];
+          retier(m, tier);
+        }
+      }
+      lastFocus.set(Infinity, Infinity);
+      rememberedHere = memory.get(id) ?? null;
     },
 
     /**

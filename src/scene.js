@@ -1,6 +1,7 @@
 // Scene + camera + lighting. Kept separate from main.js so the entry stays
 // focused on the game loop and assembly.
 import * as THREE from 'three';
+import { STAR } from './world/novaAstra.js';
 
 export const FOV_DEG = 60;
 // The near plane is what sets depth-buffer precision: what matters is
@@ -38,10 +39,12 @@ export function createScene() {
   // which are plain uniforms and cost nothing.
   scene.fog = new THREE.Fog(0x02030a, SPACE_FOG_NEAR, SPACE_FOG_FAR);
 
-  // A distant directional light stands in for the Sun. Direction matters
-  // more than position for directional lights.
-  const sun = new THREE.DirectionalLight(0xffffff, 1.1);
-  sun.position.set(40, 30, 20);
+  // A directional light stands in for the star's light. Direction is all
+  // that matters for one of these, and it comes FROM the star, Nova (see
+  // world/novaAstra.js) — so the lit side of every planet faces the sun
+  // you can see in the sky.
+  const sun = new THREE.DirectionalLight(0xfff4e0, 1.25);
+  sun.position.copy(STAR.position);
   scene.add(sun);
 
   return scene;

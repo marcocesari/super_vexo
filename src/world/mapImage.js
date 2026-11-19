@@ -150,7 +150,7 @@ export function createMapDrawing({ terrain, width, height, minX, maxX, minZ, max
           const h = rowA[i];
           const k = (row * width + i) * 4;
           pixels[k + 3] = 255;
-          if (h <= SEA_LEVEL) {
+          if (h <= SEA_LEVEL && !terrain.mapPaint) {
             // Deeper water, darker. The shelf around the continent
             // shows as a paler rim, which is what makes the coast
             // legible from across the room.
@@ -170,7 +170,9 @@ export function createMapDrawing({ terrain, width, height, minX, maxX, minZ, max
           here.uplift = mix(a.uplift, b.uplift, t);
           here.moisture = mix(a.moisture, b.moisture, t);
           here.heat = mix(a.heat, b.heat, t);
-          landColour(terrain, x, z, h, here, colour);
+          // A Nova Astra planet paints itself, sea and all.
+          if (terrain.mapPaint) terrain.mapPaint(x, z, h, here, colour);
+          else landColour(terrain, x, z, h, here, colour);
 
           // Shading. The two slopes are read straight off the rows we
           // already have, so this costs nothing beyond the heights.

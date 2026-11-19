@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import { createPlanet } from './world/planet.js';
 import { EARTH_POSITION, EARTH_RADIUS } from './world/earth.js';
 import { SPACE_FOG_NEAR, SPACE_FOG_FAR } from './scene.js';
+import { PLANETS, SYSTEM_NAME } from './world/novaAstra.js';
 import { strings } from './strings.js';
 
 // Where the world sits. Far enough below that nothing in space can be
@@ -72,20 +73,68 @@ const SURFACE_CAMERA_FAR = 24000;
  *        discontinuously, so the chase camera can cut instead of
  *        flying the 20 km between space and the surface itself.
  */
-export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}) {
-  // The world. Nothing is built until somebody asks for a piece of it,
-  // so this costs almost nothing at load — the ground appears as the
-  // ship approaches and travels with it afterwards.
-  const world = createPlanet();
-  world.group.position.copy(SURFACE_ORIGIN);
-  world.group.visible = false;
-  scene.add(world.group);
+export function createSurface(scene, spaceObjects, camera, onTeleport = () => {},
+  onWorldChange = () => {}) {
+  // Everything in Nova Astra you can land on: home, and the four new
+  // planets (see world/novaAstra.js). Each gets its own world, built the
+  // first time anybody lands there — home at load, because it is where
+  // the game starts and its shaders are warmed up below.
+  const HOME_SKY = {
+    color: SKY_COLOR, hazeNear: HAZE_NEAR, hazeFar: HAZE_FAR,
+    sun: 0xfff3e0, sunIntensity: 1.6, skyTop: 0xbcdcff, skyGround: 0x6a7b52, skyIntensity: 0.9,
+  };
+  const bodies = [
+    { id: 'home', name: null, position: EARTH_POSITION, radius: EARTH_RADIUS, profile: null, sky: HOME_SKY },
+    ...PLANETS.map((p) => ({
+      id: p.id, name: p.name, position: p.position, radius: p.radius, profile: p, sky: p.sky,
+    })),
+  ];
+  for (const b of bodies) {
+    b.world = null;
+    // Where the ship was standing when it last left this world's ground.
+    // A world has no edges and no landmarks to come back to, so leaving
+    // and returning should put you where you were.
+    b.lastPlace = null;
+  }
+  const bodyById = new Map(bodies.map((b) => [b.id, b]));
 
-  // Where the ship was standing when it last left the ground. The world
-  // has no edges and no landmarks to come back to, so leaving and
-  // returning should put you where you were rather than at the start.
-  const lastPlace = new THREE.Vector3().copy(world.spawn);
-  let everLanded = false;
+  function worldOf(body) {
+    if (!body.world) {
+      // Nothing is built until somebody asks for a piece of it, so this
+      // costs little — the ground appears as the ship approaches.
+      body.world = createPlanet(body.profile ? { profile: body.profile } : {});
+      body.world.group.position.copy(SURFACE_ORIGIN);
+      body.world.group.visible = false;
+      scene.add(body.world.group);
+    }
+    return body.world;
+  }
+
+  // Which body's ground is the current one. Home until you land elsewhere.
+  let body = bodies[0];
+  let cur = worldOf(body);
+
+  // The world as the rest of the game sees it: ONE object that always
+  // answers for whichever planet you are on. The walker, the monsters
+  // and the map each took a reference to `surface.world` when they were
+  // made, long before anybody landed anywhere; this is what lets the
+  // planet underneath change without any of them having to be told.
+  const world = {
+    get group() { return cur.group; },
+    get terrain() { return cur.terrain; },
+    get spawn() { return cur.spawn; },
+    get heading() { return cur.heading; },
+    get info() { return cur.info; },
+    setFocus: (x, z) => cur.setFocus(x, z),
+    flush: () => cur.flush(),
+    update: (dt, x, z, y) => cur.update(dt, x, z, y),
+    groundHeightAt: (x, z) => cur.groundHeightAt(x, z),
+    isClear: (x, z, r) => cur.isClear(x, z, r),
+    resolveWalk: (x, z, r, out) => cur.resolveWalk(x, z, r, out),
+    nearestPerson: (x, z) => cur.nearestPerson(x, z),
+    findLandingSite: () => cur.findLandingSite(),
+  };
+
   const spaceCameraFar = camera.far;
 
   // Daylight for the surface. Space is lit for drama — one hard sun and
@@ -141,9 +190,27 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
   const savedBackground = scene.background;
   const spaceFogColor = scene.fog.color.clone();
 
-  /** True when the ship is deep enough into Earth's air to land. */
-  function shouldLand(ship) {
-    return ship.mesh.position.distanceTo(EARTH_POSITION) < EARTH_RADIUS + LANDING_BAND;
+  /** The body whose air the ship is deep enough into to land, or null. */
+  function landingOn(ship) {
+    for (const b of bodies) {
+      if (ship.mesh.position.distanceTo(b.position) < b.radius + LANDING_BAND) return b;
+    }
+    return null;
+  }
+
+  /** Put the weather, the haze and the light of this body's sky up. */
+  function applySky(sky) {
+    sunLight.color.setHex(sky.sun);
+    sunLight.intensity = sky.sunIntensity;
+    skyLight.color.setHex(sky.skyTop);
+    skyLight.groundColor.setHex(sky.skyGround);
+    skyLight.intensity = sky.skyIntensity;
+    scene.background = new THREE.Color(sky.color);
+    // Move the existing fog in rather than creating one — see
+    // createScene(): swapping the fog object recompiles every shader.
+    scene.fog.color.setHex(sky.color);
+    scene.fog.near = sky.hazeNear;
+    scene.fog.far = sky.hazeFar;
   }
 
   /** Metres above the street. */
@@ -181,31 +248,38 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
     return best;
   }
 
-  function enter(ship) {
+  /**
+   * Land. `onto` is a body's id — given when a save puts you back on a
+   * particular planet; otherwise it is whichever one the ship flew into.
+   */
+  function enter(ship, onto = null) {
     if (active) return;
+    const target = (onto && bodyById.get(onto)) || landingOn(ship) || bodies[0];
     active = true;
 
+    // A different planet from last time: swap the ground underneath, and
+    // tell whoever cares (the camps, the map).
+    if (target !== body) {
+      cur.group.visible = false;
+      body = target;
+      cur = worldOf(body);
+      onWorldChange(body.id);
+    }
+
     // Remember where to pop back out: just outside the atmosphere, on
-    // the line from Earth's centre through wherever we went in.
-    spaceReturn.copy(ship.mesh.position).sub(EARTH_POSITION)
-      .setLength(EARTH_RADIUS + 60).add(EARTH_POSITION);
+    // the line from the planet's centre through wherever we went in.
+    spaceReturn.copy(ship.mesh.position).sub(body.position);
+    if (spaceReturn.lengthSq() < 1e-6) spaceReturn.set(0, 1, 0);
+    spaceReturn.setLength(body.radius + 60).add(body.position);
 
     world.group.visible = true;
-    sunLight.intensity = SUN_INTENSITY;
-    skyLight.intensity = SKY_INTENSITY;
     ship.mesh.scale.setScalar(SURFACE_SHIP_SCALE);
     for (const o of spaceObjects) o.visible = false;
-    scene.background = new THREE.Color(SKY_COLOR);
-    // Move the existing fog in rather than creating one — see
-    // createScene(): swapping the fog object recompiles every shader.
-    scene.fog.color.setHex(SKY_COLOR);
-    scene.fog.near = HAZE_NEAR;
-    scene.fog.far = HAZE_FAR;
+    applySky(body.sky);
 
     // Come down where you left off, or — the first time — at a flat, dry
     // spot the world picked out for you.
-    const site = everLanded ? lastPlace : world.spawn;
-    everLanded = true;
+    const site = body.lastPlace ?? world.spawn;
     // Build the ground BEFORE the ship is put on it: the height under
     // the ship is asked for on the same frame, and an empty world
     // answers zero, which drops you into the sea. `flush` because the
@@ -222,8 +296,13 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
     camera.updateProjectionMatrix();
     onTeleport();
 
+    // The banner: the planet's name (with the system's), and the kind of
+    // ground you came down on, in that planet's own words if it has them.
+    banner.querySelector('.landing-banner__town').textContent = body.name
+      ? `${SYSTEM_NAME} · ${body.name}` : strings.surface.town;
+    const biome = world.info.biomeAt(site.x, site.z);
     banner.querySelector('.landing-banner__street').textContent =
-      strings.surface.ground[world.info.biomeAt(site.x, site.z)] ?? strings.surface.street;
+      world.info.groundName?.(biome) ?? strings.surface.ground[biome] ?? strings.surface.street;
     banner.hidden = false;
     banner.classList.remove('landing-banner--fading');
     bannerTimer = 6;
@@ -234,7 +313,7 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
     active = false;
     parked = false;
     ship.mesh.scale.setScalar(1);
-    lastPlace.set(
+    body.lastPlace = new THREE.Vector3(
       ship.mesh.position.x - SURFACE_ORIGIN.x, 0, ship.mesh.position.z - SURFACE_ORIGIN.z,
     );
     camera.far = spaceCameraFar;
@@ -252,7 +331,7 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
     ship.mesh.position.copy(spaceReturn);
     // Point the nose away from the planet so the climb-out continues
     // outward instead of dropping you straight back in.
-    const away = spaceReturn.clone().sub(EARTH_POSITION).normalize();
+    const away = spaceReturn.clone().sub(body.position).normalize();
     ship.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), away);
     ship.velocity.set(0, 0, 0);
     onTeleport();
@@ -271,6 +350,10 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
     },
 
     get active() { return active; },
+    /** Which body's ground is current: 'home', or a planet's id. */
+    get bodyId() { return body.id; },
+    /** Everything you can land on, for the space side of the game. */
+    bodies,
     /**
      * True while the ship is sitting on its skids with the player out of
      * it (or on the way out). Parking freezes the flight side of this
@@ -335,7 +418,7 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
      */
     update(ship, dt) {
       if (!active) {
-        if (shouldLand(ship)) enter(ship);
+        if (landingOn(ship)) enter(ship);
         return;
       }
 

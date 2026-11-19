@@ -183,6 +183,32 @@ however you happen to be holding the phone. Touching the right stick puts the
 gyro's offset away, so the stick stays in charge and letting go of it still
 drops the view behind the tail.
 
+## Nova Astra
+
+The solar system Vexo flies in is called **Nova Astra**, after Princess Astra.
+At its heart is **Nova**, the star. It used to be a glow pinned behind the
+camera that backed away as fast as you flew at it. Now it's a real star at a
+real place, behind you at the start, and you can fly toward it and watch it
+grow. Its light is where the planets' lit sides face.
+
+Besides home (Earth) and Mars, there are four new planets. You can land on
+every one of them the way you land on Earth: fly into its atmosphere.
+
+| Planet | What it is | What grows there | Camps |
+|---|---|---|---|
+| **Pyrox** | A lava world close to the star: black basalt, ash fields, volcano slopes, rivers and lakes of glowing lava, a red sky | obsidian shards, burned trees, ember tufts | black and red, silver bosses |
+| **Glacius** | An ice world out in the cold: snowfields, a frozen sea of flat blue ice, ice cliffs | crystal spires and crystal clusters, frost | blue, silver bosses |
+| **Sahrun** | A desert world with two moons: a dune sea, layered mesas, stony flats, oases | cacti, palms by the oases, thorn bushes | red, black bosses |
+| **Verdania** | An alien jungle: violet moss, teal meadows, lilac beaches, green sky | giant glowing mushrooms, fern-trees, umbrella trees, glowing bulbs | blue and red, black bosses |
+
+Each planet is its own endless world, generated from noise (`world/alienTerrain.js`)
+rather than drawn, and remembers where you last left it. The landing banner
+names the planet and the ground you came down on, the map (M) draws that
+planet, and every planet has its own camps: clearing one on Pyrox leaves
+Verdania's alone. What each planet is made of (its shape, colours, sky, sea,
+plants and monsters) is all in one place, `src/world/novaAstra.js`, so a
+fifth planet is one more entry there.
+
 ## Landing on Earth
 
 Turn around at the spawn point, fly into the planet, and the game puts you down

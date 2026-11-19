@@ -334,7 +334,11 @@ function grassAt(biome, clump) {
  *   something — inside a town, mostly, where a tree through a roof
  *   would be nobody's idea of scenery.
  */
-export function createFlora({ terrain, blocked = null, seed = 20260905 }) {
+export function createFlora({ terrain, blocked = null, seed = 20260905, look = null }) {
+  // A Nova Astra planet's plants (novaAstra.js): which shape stands in
+  // for each species, what colour the rocks are, and where its trees and
+  // grass grow on top of (or instead of) the home world's rules.
+  const swap = look?.species ?? {};
   const group = new THREE.Group();
   group.name = 'flora';
 
@@ -403,11 +407,11 @@ ${shader.vertexShader}`.replace('#include <begin_vertex>', `#include <begin_vert
     // its scale — near enough the trunk's own radius, so a walker stops
     // against the wood rather than against a circle drawn round the
     // whole canopy.
-    conifer: { geom: buildConifer(), mat: foliageMat, layer: TREE, solid: 0.32 },
-    broadleaf: { geom: buildBroadleaf(), mat: foliageMat, layer: TREE, solid: 0.38 },
-    acacia: { geom: buildAcacia(), mat: foliageMat, layer: TREE, solid: 0.3 },
-    scrub: { geom: buildScrub(), mat: foliageMat, layer: TREE, solid: 0 },
-    rock: { geom: buildRock(), mat: rockMat, layer: ROCK, solid: 0.75 },
+    conifer: { geom: (swap.conifer ?? buildConifer)(), mat: foliageMat, layer: TREE, solid: 0.32 },
+    broadleaf: { geom: (swap.broadleaf ?? buildBroadleaf)(), mat: foliageMat, layer: TREE, solid: 0.38 },
+    acacia: { geom: (swap.acacia ?? buildAcacia)(), mat: foliageMat, layer: TREE, solid: 0.3 },
+    scrub: { geom: (swap.scrub ?? buildScrub)(), mat: foliageMat, layer: TREE, solid: 0 },
+    rock: { geom: (swap.rock ?? buildRock)(), mat: rockMat, layer: ROCK, solid: 0.75 },
     grass: { geom: buildGrass(), mat: grassMat, layer: GRASS, solid: 0 },
   };
 
@@ -525,7 +529,10 @@ ${shader.vertexShader}`.replace('#include <begin_vertex>', `#include <begin_vert
         let p = 0;
         let tint;
         if (layer === TREE) {
-          const t = treeAt(centre.biome, centre.region, centre.slopeDeg, clump);
+          const extra = look?.trees?.[centre.biome];
+          const t = extra && centre.slopeDeg <= 33
+            ? { p: extra.p * (0.4 + clump), kind: extra.kind }
+            : treeAt(centre.biome, centre.region, centre.slopeDeg, clump);
           if (!t) continue;
           species = t.kind;
           p = t.p;
@@ -533,7 +540,9 @@ ${shader.vertexShader}`.replace('#include <begin_vertex>', `#include <begin_vert
           species = 'rock';
           p = rockAt(centre.biome, centre.slopeDeg, clump);
         } else {
-          const g = grassAt(centre.biome, clump);
+          const own = look?.grass?.[centre.biome];
+          const g = own ? { p: own.p * (0.4 + clump), color: own.color }
+            : (look ? null : grassAt(centre.biome, clump));
           if (!g) continue;
           species = 'grass';
           p = g.p;
@@ -561,7 +570,7 @@ ${shader.vertexShader}`.replace('#include <begin_vertex>', `#include <begin_vert
           // Rocks sit IN the ground, not on it: a boulder resting
           // exactly on the surface looks dropped there.
           slot = place('rock', x, y - _scale.y * 0.28, z, rnd() * Math.PI * 2,
-            (rnd() - 0.5) * 0.5, shade(0x77736a, rnd()), reach);
+            (rnd() - 0.5) * 0.5, shade(look?.rockColor ?? 0x77736a, rnd()), reach);
         } else {
           // Every tree is its own height and leans its own way — a wood
           // of identical trees is a wallpaper.

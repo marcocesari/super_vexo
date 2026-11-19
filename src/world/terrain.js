@@ -148,7 +148,7 @@ const GRAD2 = [
 const F2 = 0.5 * (Math.sqrt(3) - 1);
 const G2 = (3 - Math.sqrt(3)) / 6;
 
-function makeNoise(seed) {
+export function makeNoise(seed) {
   const rnd = mulberry32(seed);
   const perm = new Uint8Array(512);
   const p = new Uint8Array(256);

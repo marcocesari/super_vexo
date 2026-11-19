@@ -99,7 +99,7 @@ export function createMap({ world }) {
   const sheetCtx = sheet.getContext('2d');
   const image = sheetCtx.createImageData(MAP_W, MAP_H);
 
-  const drawing = createMapDrawing({
+  let drawing = createMapDrawing({
     terrain: world.terrain,
     width: MAP_W,
     height: MAP_H,
@@ -139,6 +139,14 @@ export function createMap({ world }) {
     if (!drawing.done) requestAnimationFrame(keepDrawing);
   }
   requestAnimationFrame(keepDrawing);
+
+  /** The title: "MAP", or the planet's name when it is not the home world. */
+  const titleEl = root.querySelector('.map-title');
+  function setTitle() {
+    const id = world.info.id;
+    titleEl.textContent = id && id !== 'home'
+      ? `${strings.map.title} · ${world.info.name}` : strings.map.title;
+  }
 
   /** A nudge of the zoom, for the buttons and the wheel. */
   function step(dir) {
@@ -342,6 +350,24 @@ export function createMap({ world }) {
   }
 
   return {
+    /**
+     * The player has landed on another planet: draw its ground instead.
+     * Started over in the background, a few rows a frame, like the first.
+     */
+    redraw() {
+      drawing = createMapDrawing({
+        terrain: world.terrain,
+        width: MAP_W,
+        height: MAP_H,
+        minX: -WORLD_HALF_X,
+        maxX: WORLD_HALF_X,
+        minZ: -WORLD_HALF_Z,
+        maxZ: WORLD_HALF_Z,
+      });
+      setTitle();
+      requestAnimationFrame(keepDrawing);
+      dirty = true;
+    },
     get isOpen() { return open; },
     /** How much of the world has been drawn, 0 to 1. For tests. */
     get progress() { return drawing.progress; },

@@ -38,6 +38,7 @@ import { PLACES, TOWNSFOLK, CROWD_NAMES, CROWD_LINES } from './continentAlpha.js
 import { createSettlement } from './settlement.js';
 import { createTownsfolk } from './townsfolk.js';
 import { createFlora, FLORA_CEILING, BUILD_BUDGET_MS as FLORA_BUDGET_MS } from './flora.js';
+import { createAlienTerrain } from './alienTerrain.js';
 
 // Tiles across each ring, odd so there is a middle one.
 const RING_TILES = 6;
@@ -89,10 +90,14 @@ const SHORE_TOP = fromReal(45);
 const COLOR_SLOPE_STEP = 8;
 
 /**
- * @param {{seed?: number, detail?: number}} opts
+ * @param {{seed?: number, profile?: object}} opts
+ *   `profile` is one of the Nova Astra planets (novaAstra.js). Without
+ *   one this builds the home world Marco drew, towns and all; with one
+ *   it builds that planet: its own ground, colours, sea and plants, and
+ *   nobody living there.
  */
-export function createPlanet({ seed = 20260827 } = {}) {
-  const terrain = createTerrain({ seed });
+export function createPlanet({ seed = 20260827, profile = null } = {}) {
+  const terrain = profile ? createAlienTerrain(profile) : createTerrain({ seed });
   const group = new THREE.Group();
 
   // One material for all the ground: the colour is in the vertices, so
@@ -162,7 +167,7 @@ export function createPlanet({ seed = 20260827 } = {}) {
   // Built once at load: three of them, two and a half thousand triangles
   // between them, which is less than one tile of ground. They are hidden
   // until you are near enough to see them, so they cost nothing to have.
-  const settlements = PLACES.map((place) => {
+  const settlements = (profile ? [] : PLACES).map((place) => {
     const town = terrain.towns.find((t) => t.name === place.name);
     const s = createSettlement(place, town.x, town.z, town.level);
     s.group.visible = false;
@@ -264,6 +269,8 @@ export function createPlanet({ seed = 20260827 } = {}) {
   // is, so the same wood is there every time you come back to it.
   const flora = createFlora({
     terrain,
+    look: profile?.flora ?? null,
+    seed: profile ? profile.seed + 55 : undefined,
     // Not where the town is. Nothing grows through concrete, and a
     // tree through a roof is nobody's idea of scenery — but the whole
     // of Estronic's disc is 1.8 km across, and blocking all of it left
@@ -288,13 +295,18 @@ export function createPlanet({ seed = 20260827 } = {}) {
   const sea = new THREE.Mesh(
     new THREE.PlaneGeometry(WORLD_REACH * 2.4, WORLD_REACH * 2.4, 1, 1),
     new THREE.MeshStandardMaterial({
-      color: GROUND_COLOR[BIOME.SEA],
-      roughness: 0.22,
+      color: profile?.sea?.color ?? GROUND_COLOR[BIOME.SEA],
+      roughness: profile?.sea?.roughness ?? 0.22,
       metalness: 0.1,
       transparent: true,
-      opacity: 0.88,
+      opacity: profile?.sea?.opacity ?? 0.88,
+      // Lava glows. (A black emissive costs nothing on any other sea.)
+      emissive: profile?.sea?.emissive ?? 0x000000,
+      emissiveIntensity: profile?.sea?.emissiveIntensity ?? 1,
     }),
   );
+  // A planet with no sea at all (Glacius: its seas are frozen solid).
+  if (profile && !profile.sea) sea.visible = false;
   sea.rotation.x = -Math.PI / 2;
   sea.position.y = SEA_LEVEL;
   sea.renderOrder = RINGS + 1;
@@ -311,6 +323,8 @@ export function createPlanet({ seed = 20260827 } = {}) {
    */
   function colorAt(x, z, sample, out) {
     const { height, slopeDeg, region } = sample;
+    // A Nova Astra planet paints itself.
+    if (terrain.paint) return terrain.paint(x, z, height, slopeDeg, region, out);
     const dryness = 1 - region.moisture;
     const { sandy, plateau } = terrain.styleAt(region);
 
@@ -748,7 +762,10 @@ export function createPlanet({ seed = 20260827 } = {}) {
       // Low ground, gently sloping, and somewhere a person would want
       // to stand: not a snowfield, not a salt pan, not the sea.
       if (s.height < 20 || s.height > 320 || s.slopeDeg > 5) continue;
-      if (s.biome === BIOME.SEA || s.biome === BIOME.SALT || s.biome === BIOME.SNOW) continue;
+      if (s.biome === BIOME.SEA || s.biome === BIOME.SALT) continue;
+      // Snow is no place to start on the home world; on Glacius it is
+      // the only place there is.
+      if (s.biome === BIOME.SNOW && !profile) continue;
       return { x, z, height: s.height, biome: s.biome };
     }
     return { x: AWAY_FROM_SPIRE, z: 0, height: terrain.heightAt(AWAY_FROM_SPIRE, 0),
@@ -832,7 +849,11 @@ export function createPlanet({ seed = 20260827 } = {}) {
     spawn: new THREE.Vector3(start.x, start.height, start.z),
     heading: -Math.PI / 2,
     info: {
-      name: 'an unnamed world',
+      name: profile ? profile.name : 'an unnamed world',
+      /** Which planet this is: 'home', or a Nova Astra planet's id. */
+      id: profile ? profile.id : 'home',
+      /** What to call the kind of ground at a point, on the landing banner. */
+      groundName: (biome) => profile?.ground?.[biome] ?? null,
       biomeAt: (x, z) => terrain.biomeAt(x, z),
       get tilesBuilt() { return built; },
       /** The towns, for the map and for tests. */

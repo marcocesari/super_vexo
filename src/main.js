@@ -17,6 +17,8 @@ import { createAsteroids } from './world/asteroids.js';
 import { createMars } from './world/mars.js';
 import { createEarth } from './world/earth.js';
 import { createSun } from './world/sun.js';
+import { createSpacePlanet } from './world/spacePlanet.js';
+import { PLANETS } from './world/novaAstra.js';
 import { createRovers } from './world/rovers.js';
 import { createRepairEffect } from './world/repairEffect.js';
 import * as physics from './physics.js';
@@ -91,6 +93,8 @@ const asteroids = createAsteroids();
 const mars = createMars();
 const earth = createEarth();
 const sun = createSun();
+// The planets of Nova Astra you can land on, as seen from space.
+const spacePlanets = PLANETS.map((p) => createSpacePlanet(p));
 const roverApi = createRovers();
 const repairFx = createRepairEffect();
 
@@ -100,6 +104,7 @@ scene.add(asteroids.mesh);
 scene.add(mars.mesh);
 scene.add(earth.mesh);
 scene.add(sun.sprite);
+for (const p of spacePlanets) scene.add(p.group);
 for (const r of roverApi.rovers) scene.add(r.mesh);
 scene.add(repairFx.points);
 
@@ -117,6 +122,7 @@ const surface = createSurface(
   [
     starfield, asteroids.mesh, mars.mesh, earth.mesh, sun.sprite,
     repairFx.points, ...roverApi.rovers.map((r) => r.mesh),
+    ...spacePlanets.map((p) => p.group),
   ],
   // The camera's far plane has to reach much further down there than it
   // does in space, so the surface borrows it while it has it.
@@ -124,6 +130,13 @@ const surface = createSurface(
   // Landing and taking off move the ship 20 km in one frame; without
   // this the camera would spend the next few seconds flying there.
   () => chaseCamera.reset(),
+  // Landed on a different planet from last time: its own camps, with its
+  // own mix of monsters, and its own map.
+  (id) => {
+    const planet = PLANETS.find((p) => p.id === id);
+    monsters.setWorld(id, planet ? planet.tiers : null);
+    worldMap.redraw();
+  },
 );
 
 // --- Input + UI -------------------------------------------------------------
@@ -885,7 +898,8 @@ function frame(now) {
   asteroids.update(dt);
   mars.update(dt);
   earth.update(dt);
-  sun.update(camera);
+  sun.update(camera, dt);
+  for (const p of spacePlanets) p.update(dt);
   roverApi.update(dt);
   repairFx.update(dt);
   updateStarfield(starfield, camera);

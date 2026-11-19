@@ -1,32 +1,32 @@
-// Distant Sun: a 2D billboard sprite behind the player. Using a sprite
-// (not a 3D sphere) means it always faces the camera regardless of how
-// the ship is oriented. We also paint a soft radial glow so it reads
-// as a light source, not a dot.
+// Nova, the star at the heart of Nova Astra.
 //
-// The sun is far down -Z so the player flies *away* from it toward Mars
-// at +Z. From the chase camera (which sits at the ship's local -Z),
-// the sun is initially "behind the camera" — to actually see it,
-// glance back. We re-center the sun's position on the camera each
-// frame (skybox trick) so it stays infinitely far away no matter where
-// the ship flies.
+// It used to be a glow pinned 2 km behind the camera wherever the ship
+// went — a skybox trick, so it always looked infinitely far away. That
+// also meant you could never fly toward it: it backed away exactly as
+// fast as you came. Now it is a real body at a real place (novaAstra.js)
+// that grows as you approach, with the planets set out around it.
+//
+// Three layers, all self-lit:
+//   1. the star itself, a white-hot sphere;
+//   2. a tight bright corona, a sprite just bigger than the sphere;
+//   3. a wide soft glow, a much bigger sprite that reads as light
+//      spilling into space from across the whole system.
+// The sprites always face the camera, so the glow is round from every
+// side. Additive, so they brighten whatever is behind them rather than
+// covering it.
 import * as THREE from 'three';
+import { STAR } from './novaAstra.js';
 
 const GLOW_TEX_SIZE = 256;
-const SUN_OFFSET_FROM_CAMERA = new THREE.Vector3(0, 0, -2000);
-const SUN_SCALE = 350;
 
-function makeGlowTexture() {
+function makeGlowTexture(stops) {
   const canvas = document.createElement('canvas');
   canvas.width = GLOW_TEX_SIZE;
   canvas.height = GLOW_TEX_SIZE;
   const ctx = canvas.getContext('2d');
   const c = GLOW_TEX_SIZE / 2;
   const grad = ctx.createRadialGradient(c, c, 0, c, c, c);
-  grad.addColorStop(0.0, 'rgba(255, 245, 220, 1)');
-  grad.addColorStop(0.08, 'rgba(255, 230, 180, 0.95)');
-  grad.addColorStop(0.25, 'rgba(255, 200, 130, 0.45)');
-  grad.addColorStop(0.55, 'rgba(255, 170, 100, 0.15)');
-  grad.addColorStop(1.0, 'rgba(255, 150, 90, 0)');
+  for (const [at, colour] of stops) grad.addColorStop(at, colour);
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, GLOW_TEX_SIZE, GLOW_TEX_SIZE);
   const tex = new THREE.CanvasTexture(canvas);
@@ -35,21 +35,53 @@ function makeGlowTexture() {
 }
 
 export function createSun() {
-  const map = makeGlowTexture();
-  const mat = new THREE.SpriteMaterial({
-    map,
+  const group = new THREE.Group();
+  group.name = 'sun';
+  group.position.copy(STAR.position);
+
+  const star = new THREE.Mesh(
+    new THREE.SphereGeometry(STAR.radius, 48, 32),
+    // Unlit: a star is the light, not something lit by it. Fog off, so
+    // nothing ever greys it out.
+    new THREE.MeshBasicMaterial({ color: STAR.color, fog: false }),
+  );
+  group.add(star);
+
+  const glowMat = (stops) => new THREE.SpriteMaterial({
+    map: makeGlowTexture(stops),
     depthWrite: false,
     transparent: true,
     blending: THREE.AdditiveBlending,
+    fog: false,
   });
-  const sprite = new THREE.Sprite(mat);
-  sprite.scale.setScalar(SUN_SCALE);
+  const corona = new THREE.Sprite(glowMat([
+    [0.0, 'rgba(255, 250, 230, 1)'],
+    [0.42, 'rgba(255, 236, 190, 0.95)'],
+    [0.5, 'rgba(255, 210, 140, 0.55)'],
+    [0.75, 'rgba(255, 180, 110, 0.15)'],
+    [1.0, 'rgba(255, 160, 90, 0)'],
+  ]));
+  corona.scale.setScalar(STAR.radius * 4.2);
+  group.add(corona);
 
-  // Re-center on the camera so the sun feels infinitely far away,
-  // exactly like a skybox.
-  function update(camera) {
-    sprite.position.copy(camera.position).add(SUN_OFFSET_FROM_CAMERA);
-  }
+  const halo = new THREE.Sprite(glowMat([
+    [0.0, 'rgba(255, 220, 160, 0.55)'],
+    [0.2, 'rgba(255, 190, 120, 0.25)'],
+    [0.5, 'rgba(255, 160, 100, 0.08)'],
+    [1.0, 'rgba(255, 140, 90, 0)'],
+  ]));
+  halo.scale.setScalar(STAR.radius * 14);
+  group.add(halo);
 
-  return { sprite, update };
+  return {
+    group,
+    // The old name, for the list of things hidden while landed.
+    sprite: group,
+    update(_camera, dt = 0) {
+      // A slow pulse, so it reads as burning rather than painted on.
+      const t = performance.now() * 0.001;
+      corona.scale.setScalar(STAR.radius * (4.2 + Math.sin(t * 0.8) * 0.12));
+      star.rotation.y += dt * 0.01;
+    },
+  };
 }
