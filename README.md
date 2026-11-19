@@ -220,9 +220,10 @@ Climb back above 620 m and you're in orbit again.
 planet. As you dive in, the planet fills the view, its sky colour tints the
 screen, the nose glows with the heat of entry and the camera shakes. At the
 atmosphere the view whites out into that planet's sky. Behind that haze you
-arrive 1.5 km up, the haze clears, you fall through a layer of cloud, and the
-ship glides down on its own and levels off about 200 m up, where the controls
-come back. Taking off is the same backwards: above 1.7 km the haze thickens,
+arrive 1.5 km up, nose down toward the land, still moving as fast as you were
+diving in. The haze clears and you fly down through a layer of cloud yourself.
+The controls are yours the whole way: dive steeply, glide in gently, or level
+off and look around first. Taking off is the same backwards: above 1.7 km the haze thickens,
 at the 2.8 km ceiling you're in space, and the stars clear around you. The
 cloud layer, between 900 and 1400 m, is there all the time, so from the ground
 it's weather. Loading a save on the ground, or `?land=1`, puts you straight

@@ -803,11 +803,6 @@ function frame(now) {
       // The sprint theme plays while he is actually running — moving and
       // spending stamina, not merely holding the button.
       audio.setSprinting(onFoot.sprinting);
-    } else if (entry.suppressInput) {
-      // Gliding down through the air on the way in: the ship flies
-      // itself, and the ground keeps streaming in underneath it.
-      surface.update(ship, dt);
-      audio.setThrottle(0.6);
     } else if (fastTravel.suppressInput || missionScreens.isOpen()) {
       // Ship on rails (warp) or player is in a menu → ignore flight input.
       audio.setThrottle(0);

@@ -35,6 +35,10 @@ page.on('console', (m) => {
 });
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
 
+// No real controller: whatever pad is plugged into the machine running the
+// test would otherwise be read by the game — a resting stick a little off
+// centre flies the ship, and "nobody at the controls" stops being true.
+await page.addInitScript(() => { navigator.getGamepads = () => []; });
 await page.goto(`${URL}/?skipIntro=1`, { waitUntil: 'load' });
 await page.keyboard.press('Space');
 await page.waitForTimeout(400);
@@ -216,9 +220,9 @@ check('the ship is back in the solar system', Math.abs(space.y) < 5000, `y=${spa
 // --- Flying in for real: the descent through the air ---------------------------
 // Put straight into the atmosphere, as above, the ship simply arrives — that
 // is what loading a save does. FLOWN in, it comes down through the air:
-// arrives 1.5 km up inside the haze, the haze clears, it glides down on its
-// own and hands the controls back level, a couple of hundred metres up.
-// See src/atmosphereEntry.js.
+// arrives 1.5 km up inside the haze, nose down, and the haze clears while
+// the PLAYER flies it down. Nothing flies the ship for them. See
+// src/atmosphereEntry.js.
 const descent = await page.evaluate(async () => {
   const sv = window.__superVexo;
   const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
@@ -236,22 +240,28 @@ const descent = await page.evaluate(async () => {
     active: sv.surface.active, state: sv.entry.state,
     height: Math.round(ground()), haze: sv.entry.haze,
   };
+  // Hands off for a moment: the ship must NOT fly itself down.
+  const y0 = sv.ship.mesh.position.y;
   await new Promise((r) => setTimeout(r, 2600));
-  const clearing = { haze: sv.entry.haze, height: Math.round(ground()) };
-  // Wait for it to level off and hand over.
-  const t0 = performance.now();
-  while (sv.entry.state === 'descending' && performance.now() - t0 < 15000) await frame();
-  return { arrived, clearing, done: { state: sv.entry.state, height: Math.round(ground()), haze: sv.entry.haze } };
+  const handsOff = { drop: Math.round(y0 - sv.ship.mesh.position.y), haze: sv.entry.haze, state: sv.entry.state };
+  return { arrived, handsOff };
 });
-check('flying in lands you and starts the descent', descent.arrived.active && descent.arrived.state === 'descending',
-  `state ${descent.arrived.state}`);
-check('…arriving high up, inside the haze', descent.arrived.height > 1000 && descent.arrived.haze > 0.5,
-  `${descent.arrived.height}m over the ground, haze ${descent.arrived.haze.toFixed(2)}`);
-check('the haze clears on the way down', descent.clearing.haze < 0.2 && descent.clearing.height < descent.arrived.height,
-  `haze ${descent.clearing.haze.toFixed(2)} at ${descent.clearing.height}m`);
-check('it levels off low and hands the controls back', descent.done.state === 'idle'
-  && descent.done.height > 60 && descent.done.height < 320 && descent.done.haze === 0,
-  `${descent.done.state} at ${descent.done.height}m`);
+check('flying in lands you, high up and inside the haze', descent.arrived.active
+  && descent.arrived.state === 'arriving' && descent.arrived.height > 1000 && descent.arrived.haze > 0.5,
+  `${descent.arrived.state}, ${descent.arrived.height}m over the ground, haze ${descent.arrived.haze.toFixed(2)}`);
+check('the haze clears', descent.handsOff.haze < 0.2, `haze ${descent.handsOff.haze.toFixed(2)}`);
+check('and the ship does not fly itself down', Math.abs(descent.handsOff.drop) < 5,
+  `moved ${descent.handsOff.drop}m with nobody at the controls`);
+// The player can fly it down: throttle, nose already pointing at the ground.
+await page.keyboard.down('KeyW');
+await page.waitForTimeout(2000);
+await page.keyboard.up('KeyW');
+const flown = await page.evaluate(() => {
+  const sv = window.__superVexo;
+  return { height: Math.round(sv.ship.mesh.position.y - sv.surface.hullGroundY(sv.ship)) };
+});
+check('the player flies it down', flown.height < descent.arrived.height - 40,
+  `${descent.arrived.height}m → ${flown.height}m after two seconds of throttle`);
 await page.evaluate(() => window.__superVexo.resetGame());
 
 // --- Reset from the surface --------------------------------------------------

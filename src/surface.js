@@ -114,6 +114,49 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
   let body = bodies[0];
   let cur = worldOf(body);
 
+  // --- Getting a planet ready before you arrive -----------------------------
+  // Landing on a planet whose ground has not been built is a freeze: every
+  // tile round the landing spot, and everything growing on them, made in
+  // one go — measured at 130-145 ms on each Nova Astra planet, which with
+  // the entry haze on screen looked exactly like a loading screen. So the
+  // work is moved earlier and cut into slices too thin to notice:
+  //
+  //   * each planet's world is CREATED a little after the game loads,
+  //     one at a time in idle moments (about 15 ms apiece);
+  //   * its ground is BUILT while the ship is diving toward it, a few
+  //     milliseconds a frame round the spot it will come down on —
+  //     well under a second's worth, over a dive that takes several;
+  //
+  // so by the time the ship touches the air there is nothing left to do.
+  const PREPARE_WITHIN = 3;   // planet radii above the surface
+  const idle = (fn) => (typeof requestIdleCallback === 'function'
+    ? requestIdleCallback(fn, { timeout: 3000 })
+    : setTimeout(fn, 200));
+  const createQueue = bodies.filter((b) => !b.world);
+  function createNext() {
+    const next = createQueue.shift();
+    if (!next) return;
+    worldOf(next);
+    setTimeout(() => idle(createNext), 600);
+  }
+  setTimeout(() => idle(createNext), 2500);
+
+  /** Build the ground round where the ship will come down on the planet it is diving at. */
+  function prepare(ship) {
+    let near = null;
+    for (const b of bodies) {
+      const depth = ship.mesh.position.distanceTo(b.position) - b.radius;
+      if (!near || depth < near.depth) near = { body: b, depth };
+    }
+    if (!near || near.depth > near.body.radius * PREPARE_WITHIN) return;
+    const w = worldOf(near.body);
+    const site = near.body.lastPlace ?? w.spawn;
+    // A few milliseconds of tiles (setFocus does a slice of the queue),
+    // and of what grows on them.
+    w.setFocus(site.x, site.z);
+    w.update(0, site.x, site.z, null);
+  }
+
   // The world as the rest of the game sees it: ONE object that always
   // answers for whichever planet you are on. The walker, the monsters
   // and the map each took a reference to `surface.world` when they were
@@ -434,6 +477,7 @@ export function createSurface(scene, spaceObjects, camera, onTeleport = () => {}
     update(ship, dt) {
       if (!active) {
         if (landingOn(ship)) enter(ship);
+        else prepare(ship);
         return;
       }
 

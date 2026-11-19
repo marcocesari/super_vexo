@@ -18,10 +18,13 @@
 //   2. THE SWAP. surface.js puts the ship into the world 1.5 km up, still
 //      inside the haze — the overlay is the same colour as that world's
 //      sky, so nothing visibly changes.
-//   3. DESCENT (ground). The haze clears over two seconds, the ship
-//      falls through a layer of cloud, the land opens out below, and it
-//      glides down, nose low, and levels off a couple of hundred metres
-//      up — where the controls are handed back.
+//   3. DESCENT (ground). The haze clears over two seconds and the land
+//      opens out below, through a layer of cloud. The PLAYER flies it
+//      down: the ship arrives nose-down toward the ground and is theirs
+//      from the very first frame — steep or gentle, straight down or
+//      levelling off to look around, it is their landing. (A first
+//      version flew the ship down by itself for seven seconds; Marco
+//      said the player is supposed to be in control, and he is right.)
 //   4. CLIMB-OUT is the same thing backwards: above 1700 m the haze
 //      thickens, at the ceiling the swap happens inside it, and space
 //      clears around the ship with the planet behind it.
@@ -34,12 +37,11 @@ import { SURFACE_ORIGIN, LEAVE_ALTITUDE } from './surface.js';
 
 // How far out a planet's air starts to show, as a fraction of its radius.
 const ATMOSPHERE = 0.85;
-// Coming down: where the ship arrives, where it levels off, and how long.
+// Coming down: where the ship arrives, and how it is pointing.
 const ENTRY_ALT = 1500;          // metres above the ground it arrives over
-const LEVEL_ALT = 220;           // …and where the controls come back
-const DESCENT_TIME = 7.5;        // seconds from arrival to level flight
-const GLIDE_SPEED = 210;         // m/s across the ground while descending
+const ENTRY_PITCH = 0.35;        // nose-down, radians (~20°): diving, not falling
 const CLEAR_TIME = 2.2;          // seconds for the haze to open up
+const HEAT_FADE = 3;             // seconds for the glow and shake to die away
 // Going up: the haze starts thickening here (metres above the street).
 const ASCENT_FADE_FROM = 1700;
 const EMERGE_TIME = 1.4;         // seconds for space to clear after leaving
@@ -152,7 +154,7 @@ export function createAtmosphereEntry({ scene, camera, ship, surface }) {
   }
 
   // --- State ----------------------------------------------------------------------
-  // 'idle' | 'descending' | 'emerging'
+  // 'idle' | 'arriving' (haze clearing, player flying) | 'emerging'
   let state = 'idle';
   let t = 0;
   let heat = 0;          // 0..1, the glow and the shake
@@ -167,10 +169,11 @@ export function createAtmosphereEntry({ scene, camera, ship, surface }) {
   // means to put you back exactly where you were.
   let lastDepth = Infinity;
   const FLEW_IN_WITHIN = 40;
-  // The descent: where it started and which way it is going.
-  const start = new THREE.Vector3();
-  let heading = 0;
-  let startGround = 0;
+  // How fast the ship was diving in, as a share of its top speed in space,
+  // so it comes out of the haze still diving rather than stopped dead.
+  let lastSpeedShare = 0;
+  const SPACE_TOP_SPEED = 60;          // shipConfig.maxSpeed
+  const ARRIVAL_TOP_SPEED = 230;       // m/s on the ground side at full speed
   const _e = new THREE.Euler(0, 0, 0, 'YXZ');
   const _shake = new THREE.Vector3();
 
@@ -178,54 +181,37 @@ export function createAtmosphereEntry({ scene, camera, ship, surface }) {
     return SURFACE_ORIGIN.y + surface.world.groundHeightAt(x - SURFACE_ORIGIN.x, z - SURFACE_ORIGIN.z);
   }
 
-  /** The ship has just been put on a planet: begin the descent. */
+  /**
+   * The ship has just been put on a planet: up high, inside the haze,
+   * nose down toward the land. From here the player flies it.
+   */
   function beginDescent() {
-    state = 'descending';
+    state = 'arriving';
     t = 0;
     _e.setFromQuaternion(ship.mesh.quaternion, 'YXZ');
-    heading = _e.y;
+    const heading = _e.y;
     // surface.enter put us ninety metres over where we are coming down;
-    // lift that to the top of the descent.
-    startGround = groundY(ship.mesh.position.x, ship.mesh.position.z);
-    start.copy(ship.mesh.position);
-    start.y = startGround + ENTRY_ALT;
-    ship.mesh.position.copy(start);
-    ship.velocity.set(0, 0, 0);
+    // lift that to the top of the air.
+    ship.mesh.position.y = groundY(ship.mesh.position.x, ship.mesh.position.z) + ENTRY_ALT;
+    // (+X tips the nose down.)
+    _e.set(ENTRY_PITCH, heading, 0, 'YXZ');
+    ship.mesh.quaternion.setFromEuler(_e);
+    // Still moving the way it was: down the nose, at the same share of
+    // top speed it came in at. It is the player's from here — let go
+    // of the throttle and it stops, the way it always does.
+    ship.velocity.set(0, 0, 1).applyQuaternion(ship.mesh.quaternion)
+      .multiplyScalar(lastSpeedShare * ARRIVAL_TOP_SPEED);
     hazeColor.setHex(surface.sky.color);
     haze = Math.max(haze, 0.95);
+    heat = Math.max(heat, 0.9);
   }
 
-  /** Fly the ship down the glide path. */
-  function descend(dt) {
+  /** The haze opening up and the heat dying away. Nothing here moves the ship. */
+  function clearing(dt) {
     t += dt;
-    const k = clamp01(t / DESCENT_TIME);
-    const fx = Math.sin(heading);
-    const fz = Math.cos(heading);
-    // Across the ground at a steady speed, slowing a little at the end.
-    const along = GLIDE_SPEED * DESCENT_TIME * (k - 0.18 * k * k);
-    const x = start.x + fx * along;
-    const z = start.z + fz * along;
-    // Down on an S-curve: slow to start, steepest in the middle, flaring
-    // out to level flight at the bottom.
-    const alt = mix(ENTRY_ALT, LEVEL_ALT, ease(k));
-    // Never closer to the ground under the ship than this, whatever hill
-    // the path happens to cross.
-    const y = Math.max(startGround + alt, groundY(x, z) + Math.min(alt, 160));
-    const prevY = ship.mesh.position.y;
-    const dxz = Math.max(1e-3, GLIDE_SPEED * (1 - 0.36 * k) * dt);
-    ship.mesh.position.set(x, y, z);
-    // Nose along the path: down while it is falling, level at the end.
-    // (+X tips the nose down.)
-    const pitch = Math.max(-0.2, Math.min(0.75, Math.atan2(prevY - y, dxz)));
-    _e.set(t > dt ? pitch : 0.4, heading, 0, 'YXZ');
-    ship.mesh.quaternion.setFromEuler(_e);
-    ship.velocity.set(0, 0, 0);
-    heat = Math.max(0, 1 - t / 3);
-    haze = Math.min(haze, 0.95 * (1 - ease(clamp01(t / CLEAR_TIME))));
-    if (k >= 1) {
-      // Level, a couple of hundred metres up: over to the player.
-      _e.set(0, heading, 0, 'YXZ');
-      ship.mesh.quaternion.setFromEuler(_e);
+    heat = 0.9 * Math.max(0, 1 - t / HEAT_FADE);
+    haze = 0.95 * (1 - ease(clamp01(t / CLEAR_TIME)));
+    if (t >= Math.max(CLEAR_TIME, HEAT_FADE)) {
       state = 'idle';
       heat = 0;
       haze = 0;
@@ -233,8 +219,6 @@ export function createAtmosphereEntry({ scene, camera, ship, surface }) {
   }
 
   return {
-    /** True while the ship is flying itself down. */
-    get suppressInput() { return state === 'descending'; },
     get state() { return state; },
     get haze() { return haze; },
     get heat() { return heat; },
@@ -251,13 +235,17 @@ export function createAtmosphereEntry({ scene, camera, ship, surface }) {
       wasActive = active;
       if (active) lastDepth = Infinity;
 
-      if (state === 'descending') {
-        descend(dt);
+      if (state === 'arriving' && active) {
+        clearing(dt);
+        // Climbing straight back up while it clears still thickens it.
+        const up = clamp01((surface.altitude(ship) - ASCENT_FADE_FROM) / (LEAVE_ALTITUDE - ASCENT_FADE_FROM));
+        haze = Math.max(haze, 0.95 * up * up);
       } else if (!active) {
         // Space. How deep into the nearest planet's air the ship is.
         const near = surface.bodyNear(ship);
         let depth = 0;
         lastDepth = near ? near.depth : Infinity;
+        lastSpeedShare = clamp01(ship.velocity.length() / SPACE_TOP_SPEED);
         if (near) {
           const thick = near.body.radius * ATMOSPHERE;
           depth = clamp01(1 - near.depth / thick);
